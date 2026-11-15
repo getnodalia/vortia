@@ -8,7 +8,7 @@
   <p><strong>A free desktop application for CFD simulation with OpenFOAM, from geometry to 3D post-processing.</strong></p>
 
   <p>
-    <img src="https://img.shields.io/badge/version-0.7.1-3D9BFF" alt="Version 0.7.1">
+    <img src="https://img.shields.io/badge/version-0.10.0-3D9BFF" alt="Version 0.10.0">
     <img src="https://img.shields.io/badge/status-experimental-orange" alt="Experimental">
     <img src="https://img.shields.io/badge/platform-macOS%20arm64%20%7C%20Linux%20x86__64-5E81AC" alt="macOS arm64 and Linux x86_64">
     <img src="https://img.shields.io/badge/Qt-6-41CD52?logo=qt&logoColor=white" alt="Qt 6">

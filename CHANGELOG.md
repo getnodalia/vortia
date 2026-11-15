@@ -7,6 +7,8 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-11-15
+
 ### Cambiado
 - **Motor propio por defecto:** los casos de tobera se calculan con el motor
   propio de Vortia, sin OpenFOAM, a menos que se desmarque en Preferencias ›
