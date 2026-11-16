@@ -1,4 +1,5 @@
 #include "vortia/ui/UiIcon.hpp"
+#include "vortia/ui/IssueReport.hpp"
 #include "vortia/ui/FlowSetup.hpp"
 #include "vortia/ui/MeshRegionsWidget.hpp"
 #include <functional>
@@ -61,6 +62,8 @@
 #include <QSize>
 
 #include <QAction>
+#include <QClipboard>
+#include <QPlainTextEdit>
 #include <QCloseEvent>
 #include <algorithm>
 #include <QApplication>
@@ -408,6 +411,7 @@ void MainWindow::buildMenusAndToolbar() {
     themeAction_ = viewMenu->addAction(tr("Toggle Dark/Light Theme"), this, &MainWindow::onToggleTheme);
 
     auto* helpMenu = menuBar()->addMenu(tr("Help"));
+    helpMenu->addAction(tr("Report a bug…"), this, &MainWindow::onReportIssue);
     helpMenu->addAction(tr("Check for updates…"), this, &MainWindow::onCheckForUpdates);
     shortcutsAction_ = helpMenu->addAction(tr("Keyboard Shortcuts"), this, &MainWindow::onShortcuts);
     shortcutsAction_->setShortcut(QKeySequence(QStringLiteral("Ctrl+?")));
@@ -2448,6 +2452,89 @@ void MainWindow::onShortcuts() {
     scroll->setWidget(content);
     layout->addWidget(scroll, 1);
     dialog.resize(520, 600);
+    dialog.exec();
+}
+
+void MainWindow::onReportIssue() {
+    // Capture only when requested; nothing is attached or uploaded by Vortia.
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Report a bug"));
+    dialog.resize(620, 650);
+    auto* layout = new QVBoxLayout(&dialog);
+    auto* notice = new QLabel(tr("Reports on GitHub are public. Review the text and any screenshot before submitting it there."), &dialog);
+    notice->setWordWrap(true);
+    layout->addWidget(notice);
+    auto* form = new QFormLayout;
+    auto* title = new QLineEdit(&dialog);
+    title->setMaxLength(160);
+    auto* description = new QPlainTextEdit(&dialog);
+    description->setPlaceholderText(tr("Describe what happened"));
+    description->setMaximumHeight(100);
+    auto* steps = new QPlainTextEdit(&dialog);
+    steps->setPlaceholderText(tr("Steps to reproduce (optional)"));
+    steps->setMaximumHeight(100);
+    auto* expected = new QPlainTextEdit(&dialog);
+    expected->setPlaceholderText(tr("What did you expect? (optional)"));
+    expected->setMaximumHeight(75);
+    form->addRow(tr("Title"), title);
+    form->addRow(tr("What happened?"), description);
+    form->addRow(tr("Steps"), steps);
+    form->addRow(tr("Expected result"), expected);
+    layout->addLayout(form);
+    auto* previewLabel = new QLabel(tr("Report preview"), &dialog);
+    layout->addWidget(previewLabel);
+    auto* preview = new QPlainTextEdit(&dialog);
+    preview->setReadOnly(true);
+    layout->addWidget(preview, 1);
+    const auto update = [=]() {
+        preview->setPlainText(tr("## What happened?\n%1\n\n## Steps to reproduce\n%2\n\n## Expected result\n%3\n\n## Version\nVortia %4")
+            .arg(description->toPlainText(), steps->toPlainText(), expected->toPlainText(), QCoreApplication::applicationVersion()));
+    };
+    connect(description, &QPlainTextEdit::textChanged, &dialog, update);
+    connect(steps, &QPlainTextEdit::textChanged, &dialog, update);
+    connect(expected, &QPlainTextEdit::textChanged, &dialog, update);
+    update();
+    auto* note = new QLabel(tr("Screenshots are not attached automatically. Open GitHub first, then copy and paste a screenshot if you choose."), &dialog);
+    note->setWordWrap(true);
+    layout->addWidget(note);
+    auto* buttons = new QHBoxLayout;
+    auto* screenshot = new QPushButton(tr("Copy window screenshot"), &dialog);
+    auto* copy = new QPushButton(tr("Copy report"), &dialog);
+    auto* open = new QPushButton(tr("Open GitHub issue form"), &dialog);
+    auto* close = new QPushButton(tr("Close"), &dialog);
+    buttons->addWidget(screenshot);
+    buttons->addWidget(copy);
+    buttons->addStretch();
+    buttons->addWidget(open);
+    buttons->addWidget(close);
+    layout->addLayout(buttons);
+    connect(screenshot, &QPushButton::clicked, &dialog, [this, note]() {
+        const auto image = this->grab().toImage();
+        if (image.isNull()) {
+            note->setText(tr("Could not capture the window screenshot."));
+            return;
+        }
+        QApplication::clipboard()->setImage(image);
+        note->setText(tr("Screenshot copied. Review it before pasting it into GitHub."));
+    });
+    connect(copy, &QPushButton::clicked, &dialog, [=]() {
+        QApplication::clipboard()->setText(preview->toPlainText());
+        note->setText(tr("Report copied. You can paste it into GitHub."));
+    });
+    connect(open, &QPushButton::clicked, &dialog, [=]() {
+        if (title->text().trimmed().isEmpty() || description->toPlainText().trimmed().isEmpty()) {
+            note->setText(tr("Enter a title and describe what happened first."));
+            return;
+        }
+        const auto body = preview->toPlainText();
+        QApplication::clipboard()->setText(body);
+        if (!QDesktopServices::openUrl(issueDraftUrl(title->text().trimmed(), body))) {
+            note->setText(tr("Could not open the browser. The report was copied for you to submit later."));
+            return;
+        }
+        note->setText(tr("The report was copied. Review and submit it on GitHub; paste it if the form is empty."));
+    });
+    connect(close, &QPushButton::clicked, &dialog, &QDialog::reject);
     dialog.exec();
 }
 

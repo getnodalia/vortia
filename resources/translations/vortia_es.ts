@@ -752,6 +752,48 @@ Failed case retained: %2
 Caso fallido conservado: %2
 </translation></message>
     <message><source>Fresh initial fields prepared with acoustic Courant %1. Review the controls, then press Run Simulation.</source><translation>Campos iniciales nuevos preparados con Courant acústico %1. Revisa los controles y pulsa Ejecutar simulación.</translation></message>
+    <message><source>Report a bug…</source><translation>Informar de un error…</translation></message>
+    <message><source>Report a bug</source><translation>Informar de un error</translation></message>
+    <message><source>Reports on GitHub are public. Review the text and any screenshot before submitting it there.</source><translation>Los informes de GitHub son públicos. Revisa el texto y la captura antes de enviarlos.</translation></message>
+    <message><source>Describe what happened</source><translation>Describe lo que ha sucedido</translation></message>
+    <message><source>Steps to reproduce (optional)</source><translation>Pasos para reproducirlo (opcional)</translation></message>
+    <message><source>What did you expect? (optional)</source><translation>¿Qué esperabas que ocurriera? (opcional)</translation></message>
+    <message><source>Title</source><translation>Título</translation></message>
+    <message><source>What happened?</source><translation>¿Qué ha pasado?</translation></message>
+    <message><source>Steps</source><translation>Pasos</translation></message>
+    <message><source>Expected result</source><translation>Resultado esperado</translation></message>
+    <message><source>Report preview</source><translation>Vista previa del informe</translation></message>
+    <message><source>## What happened?
+%1
+
+## Steps to reproduce
+%2
+
+## Expected result
+%3
+
+## Version
+Vortia %4</source><translation>## ¿Qué ha pasado?
+%1
+
+## Pasos para reproducirlo
+%2
+
+## Resultado esperado
+%3
+
+## Versión
+Vortia %4</translation></message>
+    <message><source>Screenshots are not attached automatically. Open GitHub first, then copy and paste a screenshot if you choose.</source><translation>Las capturas no se adjuntan automáticamente. Abre GitHub primero y, si quieres, copia y pega una captura.</translation></message>
+    <message><source>Copy window screenshot</source><translation>Copiar captura de la ventana</translation></message>
+    <message><source>Copy report</source><translation>Copiar informe</translation></message>
+    <message><source>Open GitHub issue form</source><translation>Abrir formulario de GitHub</translation></message>
+    <message><source>Could not capture the window screenshot.</source><translation>No se ha podido capturar la ventana.</translation></message>
+    <message><source>Screenshot copied. Review it before pasting it into GitHub.</source><translation>Captura copiada. Revísala antes de pegarla en GitHub.</translation></message>
+    <message><source>Report copied. You can paste it into GitHub.</source><translation>Informe copiado. Puedes pegarlo en GitHub.</translation></message>
+    <message><source>Enter a title and describe what happened first.</source><translation>Escribe primero un título y describe lo sucedido.</translation></message>
+    <message><source>Could not open the browser. The report was copied for you to submit later.</source><translation>No se ha podido abrir el navegador. El informe se ha copiado para enviarlo más tarde.</translation></message>
+    <message><source>The report was copied. Review and submit it on GitHub; paste it if the form is empty.</source><translation>El informe se ha copiado. Revísalo y envíalo en GitHub; pégalo si el formulario está vacío.</translation></message>
 </context>
 <context>
     <name>vortia::PropertiesPanel</name>
