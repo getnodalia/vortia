@@ -794,6 +794,10 @@ Vortia %4</translation></message>
     <message><source>Enter a title and describe what happened first.</source><translation>Escribe primero un título y describe lo sucedido.</translation></message>
     <message><source>Could not open the browser. The report was copied for you to submit later.</source><translation>No se ha podido abrir el navegador. El informe se ha copiado para enviarlo más tarde.</translation></message>
     <message><source>The report was copied. Review and submit it on GitHub; paste it if the form is empty.</source><translation>El informe se ha copiado. Revísalo y envíalo en GitHub; pégalo si el formulario está vacío.</translation></message>
+    <message><source>No screenshot selected.</source><translation>No hay ninguna captura seleccionada.</translation></message>
+    <message><source>Capture window</source><translation>Capturar ventana</translation></message>
+    <message><source>Copy screenshot</source><translation>Copiar captura</translation></message>
+    <message><source>Review the screenshot before copying it to GitHub.</source><translation>Revisa la captura antes de copiarla en GitHub.</translation></message>
 </context>
 <context>
     <name>vortia::PropertiesPanel</name>

@@ -63,6 +63,8 @@
 
 #include <QAction>
 #include <QClipboard>
+#include <QImage>
+#include <QPixmap>
 #include <QPlainTextEdit>
 #include <QCloseEvent>
 #include <algorithm>
@@ -2497,24 +2499,40 @@ void MainWindow::onReportIssue() {
     auto* note = new QLabel(tr("Screenshots are not attached automatically. Open GitHub first, then copy and paste a screenshot if you choose."), &dialog);
     note->setWordWrap(true);
     layout->addWidget(note);
+    auto* imagePreview = new QLabel(tr("No screenshot selected."), &dialog);
+    imagePreview->setAlignment(Qt::AlignCenter);
+    imagePreview->setMinimumHeight(80);
+    imagePreview->setMaximumHeight(150);
+    layout->addWidget(imagePreview);
+    auto image = std::make_shared<QImage>();
     auto* buttons = new QHBoxLayout;
-    auto* screenshot = new QPushButton(tr("Copy window screenshot"), &dialog);
+    auto* screenshot = new QPushButton(tr("Capture window"), &dialog);
+    auto* copyImage = new QPushButton(tr("Copy screenshot"), &dialog);
+    copyImage->setEnabled(false);
     auto* copy = new QPushButton(tr("Copy report"), &dialog);
     auto* open = new QPushButton(tr("Open GitHub issue form"), &dialog);
     auto* close = new QPushButton(tr("Close"), &dialog);
     buttons->addWidget(screenshot);
+    buttons->addWidget(copyImage);
     buttons->addWidget(copy);
     buttons->addStretch();
     buttons->addWidget(open);
     buttons->addWidget(close);
     layout->addLayout(buttons);
-    connect(screenshot, &QPushButton::clicked, &dialog, [this, note]() {
-        const auto image = this->grab().toImage();
-        if (image.isNull()) {
+    connect(screenshot, &QPushButton::clicked, &dialog, [this, note, image, imagePreview, copyImage]() {
+        *image = this->grab().toImage();
+        if (image->isNull()) {
+            copyImage->setEnabled(false);
+            imagePreview->setText(tr("No screenshot selected."));
             note->setText(tr("Could not capture the window screenshot."));
             return;
         }
-        QApplication::clipboard()->setImage(image);
+        imagePreview->setPixmap(QPixmap::fromImage(*image).scaled(380, 140, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        copyImage->setEnabled(true);
+        note->setText(tr("Review the screenshot before copying it to GitHub."));
+    });
+    connect(copyImage, &QPushButton::clicked, &dialog, [image, note]() {
+        QApplication::clipboard()->setImage(*image);
         note->setText(tr("Screenshot copied. Review it before pasting it into GitHub."));
     });
     connect(copy, &QPushButton::clicked, &dialog, [=]() {
