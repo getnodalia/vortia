@@ -128,6 +128,11 @@ endif()
 # AppUpdater pure helpers (SHA-256 digest + macOS publisher policy). Needs Qt Core only.
 find_package(Qt6 QUIET COMPONENTS Core)
 if(Qt6_FOUND)
+    add_executable(test_issue_report unit/test_issue_report.cpp)
+    target_include_directories(test_issue_report PRIVATE ${PROJECT_SOURCE_DIR}/src/ui/include)
+    target_link_libraries(test_issue_report PRIVATE Qt6::Core GTest::gtest_main vortia_warnings)
+    gtest_discover_tests(test_issue_report)
+
     add_executable(test_app_updater unit/test_app_updater.cpp unit/test_update_helper.cpp)
     target_include_directories(test_app_updater PRIVATE
         ${PROJECT_SOURCE_DIR}/src/ui/include

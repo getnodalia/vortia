@@ -77,6 +77,7 @@ private slots:
     void onFindTool();
     void onDetectOpenFoam();
     void onAbout();
+    void onReportIssue();
     void onShortcuts();
     void onCheckForUpdates();
     void onUpdateAvailable(const AppUpdateInfo& info);
