@@ -374,7 +374,8 @@ impl VortiaApp {
     pub fn open_case(&mut self, dir: &Path) -> Result<(), String> {
         if matches!(&self.screen, Screen::Case(case) if case.running()) {
             return Err(
-                "Stop the current run and wait for it to finish before opening another case.".into(),
+                "Stop the current run and wait for it to finish before opening another case."
+                    .into(),
             );
         }
         if !dir.is_dir() {
