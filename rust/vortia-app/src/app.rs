@@ -372,6 +372,11 @@ impl VortiaApp {
 
     /// Opens a case folder: it has to hold `system/controlDict`.
     pub fn open_case(&mut self, dir: &Path) -> Result<(), String> {
+        if matches!(&self.screen, Screen::Case(case) if case.running()) {
+            return Err(
+                "Stop the current run and wait for it to finish before opening another case.".into(),
+            );
+        }
         if !dir.is_dir() {
             return Err(format!("'{}' is not a folder.", dir.display()));
         }
@@ -1228,6 +1233,30 @@ mod tests {
         };
         assert_eq!(view.application.as_deref(), Some("vortiaCentralFoam"));
         assert_eq!(app.prefs.recent, [case.path().to_path_buf()]);
+    }
+
+    #[test]
+    fn opening_another_case_does_not_abandon_a_running_session() {
+        let first = case_dir();
+        let second = case_dir();
+        let mut app = VortiaApp::with_prefs(Prefs::default(), None);
+        app.open_case(first.path()).unwrap();
+        let Screen::Case(case) = &mut app.screen else {
+            panic!("the case did not open");
+        };
+        // The session remains active in the UI until its completion event is polled.
+        case.session = Some(Session::start(first.path(), || {}).unwrap());
+        assert!(
+            app.open_case(second.path())
+                .unwrap_err()
+                .contains("Stop the current run")
+        );
+        let Screen::Case(case) = &app.screen else {
+            panic!("the active case was lost");
+        };
+        assert_eq!(case.dir, first.path());
+        assert!(case.running());
+        assert_eq!(app.prefs.recent, [first.path().to_path_buf()]);
     }
 
     #[test]
