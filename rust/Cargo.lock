@@ -2699,6 +2699,7 @@ dependencies = [
  "vortia-core",
  "vortia-foamfile",
  "vortia-mesh",
+ "vortia-sketch",
  "vortia-solvers",
 ]
 
@@ -2713,6 +2714,7 @@ dependencies = [
  "vortia-foamfile",
  "vortia-mesh",
  "vortia-post",
+ "vortia-sketch",
  "vortia-solvers",
 ]
 
@@ -2778,6 +2780,16 @@ dependencies = [
  "vortia-fields",
  "vortia-foamfile",
  "vortia-mesh",
+]
+
+[[package]]
+name = "vortia-sketch"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "vortia-foamfile",
 ]
 
 [[package]]

@@ -208,6 +208,67 @@ fn the_nozzle_volume_is_that_of_its_profile() {
     );
 }
 
+/// A rounded-throat nozzle drawn as a sketch and solved.
+fn sketched() -> vortia_sketch::Sketch {
+    let mut s = vortia_sketch::templates::rounded_nozzle(50.0, 26.0, 60.0, 158.0, 420.0, 30.0);
+    s.solve().unwrap();
+    s
+}
+
+#[test]
+fn a_nozzle_drawn_in_a_sketch_is_meshed_with_the_volume_of_its_wall() {
+    let sketch = sketched();
+    let wall = sketch.profile(0.25).unwrap();
+    // The fine wall, as the area under it: trapezoids between its points.
+    let exact: f64 = wall
+        .windows(2)
+        .map(|w| (w[1].0 - w[0].0) * (w[0].1 + w[1].1) / 2.0)
+        .sum();
+    let n = Nozzle::from_sketch(NozzleKind::Planar, &sketch, 60).unwrap();
+    assert_eq!(n.stations().len(), 61);
+    assert!((n.inlet_diameter - 100.0).abs() < 1e-9);
+    assert!((n.outlet_diameter - 120.0).abs() < 1e-9);
+    assert!(
+        (n.throat_diameter - 52.0).abs() < 0.05,
+        "{}",
+        n.throat_diameter
+    );
+    let dir = tempfile::tempdir().unwrap();
+    let made = create(dir.path(), &Geometry::Nozzle(n.clone())).unwrap();
+    assert_eq!(made.cells, 60 * n.axial_cells_per_segment * n.radial_cells);
+    let mesh = PolyMesh::read_case(dir.path()).unwrap();
+    let volume = MeshGeometry::compute(&mesh).total_volume();
+    // Sixty chords against a quarter-degree arc: the area differs by a fraction of a percent.
+    let expected = 2.0 * exact * n.thickness * 1.0e-9;
+    assert!(
+        (volume - expected).abs() < 3.0e-3 * expected,
+        "{volume} against {expected}"
+    );
+}
+
+#[test]
+fn a_sketched_nozzle_runs_both_ways_and_a_bad_wall_is_refused() {
+    for kind in [NozzleKind::Planar, NozzleKind::Axisymmetric] {
+        let n = Nozzle {
+            axial_cells_per_segment: 2,
+            radial_cells: 8,
+            ..Nozzle::from_sketch(kind, &sketched(), 12).unwrap()
+        };
+        let dir = tempfile::tempdir().unwrap();
+        create(dir.path(), &Geometry::Nozzle(n)).unwrap();
+        end_at(dir.path(), 2);
+        let case = vortia_solvers::Case::open(dir.path()).unwrap();
+        vortia_solvers::run(&case, |_| {}).unwrap();
+    }
+    // A wall that is not a chain from the inlet to the outlet makes no mesh.
+    let mut s = vortia_sketch::Sketch::default();
+    let (a, b, c) = (s.point(0.0, 1.0), s.point(2.0, 1.0), s.point(1.0, 1.0));
+    s.line(a, b);
+    s.line(b, c);
+    assert!(Nozzle::from_sketch(NozzleKind::Planar, &s, 10).is_err());
+    assert!(Nozzle::from_sketch(NozzleKind::Planar, &sketched(), 1).is_err());
+}
+
 #[test]
 fn a_coarse_nozzle_runs() {
     for kind in [NozzleKind::Planar, NozzleKind::Axisymmetric] {

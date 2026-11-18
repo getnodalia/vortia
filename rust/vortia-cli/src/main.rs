@@ -36,8 +36,12 @@ mod forces;
 mod new;
 mod post;
 mod section;
+mod sketch;
 
 const USAGE: &str = "usage: vortia new channel|cavity|plate|nozzle|nozzle-wedge DIR [NAME=VALUE...]\n\
+    \x20      vortia new sketch DIR FILE [planar|axisymmetric] [segments=N] [NAME=VALUE...]\n\
+    \x20      vortia sketch template duct|nozzle|rounded-nozzle FILE [NAME=VALUE...]\n\
+    \x20      vortia sketch info FILE\n\
     \x20      vortia check-mesh [CASE]\n\
     \x20      vortia fields [CASE [TIME]]\n\
     \x20      vortia solve [CASE]\n\
@@ -62,6 +66,8 @@ const USAGE: &str = "usage: vortia new channel|cavity|plate|nozzle|nozzle-wedge 
     \x20      vortia wall CASE PATCH [TIME]\n\n\
     new          make a case in DIR: a channel, a planar nozzle or an axisymmetric one,\n\
     \x20            with its mesh, fields and settings (NAME=VALUE changes a size or a condition)\n\
+    sketch       a dimensioned wall profile (lines, arcs and dimensions) in a file: start one from a\n\
+    \x20            template, or solve one and read its wall; `new sketch` meshes it into a case\n\
     check-mesh   read CASE/constant/polyMesh (default: the current directory)\n\
     \x20            and report its size, geometry and quality\n\
     fields       read every field of TIME (default: the latest), check it\n\
@@ -99,6 +105,7 @@ fn main() -> ExitCode {
         .as_slice()
     {
         ["new", rest @ ..] => new::run(rest),
+        ["sketch", rest @ ..] => sketch::run(rest),
         ["check-mesh"] => check_mesh(Path::new(".")),
         ["check-mesh", case] => check_mesh(Path::new(case)),
         ["blockmesh"] => blockmesh(Path::new(".")),

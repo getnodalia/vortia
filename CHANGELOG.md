@@ -8,6 +8,11 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 ## [Unreleased]
 
 ### Añadido
+- **Boceto acotado y malla desde el boceto (solo línea de órdenes por ahora):** el crate
+  `vortia-sketch` guarda un perfil de pared hecho de puntos, líneas y arcos con restricciones,
+  lo resuelve y lo convierte en una malla estructurada propia (sin Gmsh). `vortia sketch template
+  duct|nozzle|rounded-nozzle ARCHIVO`, `vortia sketch info ARCHIVO` y `vortia new sketch CARPETA
+  ARCHIVO [planar|axisymmetric]` crean el caso. El editor dentro de la app llega después.
 - **Tipo de condición de contorno como lista:** en Condiciones, el tipo de cada parche que no
   decide la malla se elige de una lista de lo que el motor sabe hacer (`fixedValue`, `noSlip`,
   `zeroGradient`, y `slip` y `symmetry` en `icoFoam` y `simpleFoam`; `fixedValue`, `zeroGradient` y

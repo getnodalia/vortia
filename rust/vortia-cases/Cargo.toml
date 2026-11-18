@@ -9,6 +9,7 @@ description = "Starts a Vortia case: a box channel or a nozzle, with its mesh, f
 vortia-core = { path = "../vortia-core" }
 vortia-foamfile = { path = "../vortia-foamfile" }
 vortia-mesh = { path = "../vortia-mesh" }
+vortia-sketch = { path = "../vortia-sketch" }
 
 [dev-dependencies]
 tempfile = "3"

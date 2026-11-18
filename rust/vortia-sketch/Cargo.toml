@@ -1,0 +1,14 @@
+[package]
+name = "vortia-sketch"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "A dimensioned 2D sketch of a flow profile: points, lines and arcs, constraints, and the wall profile a mesh is made from"
+
+[dependencies]
+serde_json = "1"
+thiserror = "2"
+vortia-foamfile = { path = "../vortia-foamfile" }
+
+[dev-dependencies]
+tempfile = "3"

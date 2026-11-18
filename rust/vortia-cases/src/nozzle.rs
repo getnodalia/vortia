@@ -62,6 +62,9 @@ pub struct Nozzle {
     pub inlet_temperature: f64,
     /// Static pressure at the outlet, in Pa.
     pub outlet_pressure: f64,
+    /// A wall profile drawn in a sketch, as `(x, radius)` stations in millimetres, instead of the
+    /// smoothstep nozzle the dimensions above describe.
+    pub profile: Option<Vec<(f64, f64)>>,
 }
 
 impl Nozzle {
@@ -84,7 +87,37 @@ impl Nozzle {
             inlet_speed: 20.0,
             inlet_temperature: 300.0,
             outlet_pressure: 101_325.0,
+            profile: None,
         }
+    }
+
+    /// A duct whose wall is the profile of `sketch`, cut into `segments` blocks along its length.
+    /// The diameters and lengths come from the sketch; the rest is as for [`Nozzle::new`].
+    pub fn from_sketch(
+        kind: NozzleKind,
+        sketch: &vortia_sketch::Sketch,
+        segments: usize,
+    ) -> Result<Self> {
+        let invalid = |e: vortia_sketch::SketchError| CaseError::Invalid(e.to_string());
+        let wall = sketch.profile(2.0).map_err(invalid)?;
+        let stations = vortia_sketch::stations(&wall, segments).map_err(invalid)?;
+        let mut nozzle = Self::new(kind);
+        let (first, last) = (stations.first().copied(), stations.last().copied());
+        let (Some(first), Some(last)) = (first, last) else {
+            return Err(CaseError::Invalid("the sketch has no wall".into()));
+        };
+        // The narrowest point of the drawn wall, not of the stations cut from it.
+        let narrowest = wall
+            .iter()
+            .copied()
+            .fold(first, |best, p| if p.1 < best.1 { p } else { best });
+        nozzle.inlet_diameter = 2.0 * first.1;
+        nozzle.outlet_diameter = 2.0 * last.1;
+        nozzle.throat_diameter = 2.0 * narrowest.1;
+        nozzle.converging_length = narrowest.0 - first.0;
+        nozzle.diverging_length = last.0 - narrowest.0;
+        nozzle.profile = Some(stations);
+        Ok(nozzle)
     }
 
     /// Sets one number by its name (`inlet-diameter`, `throat-diameter`,
@@ -117,6 +150,9 @@ impl Nozzle {
 
     /// The wall profile: `(x, radius)` at each station, in millimetres.
     pub(crate) fn stations(&self) -> Vec<(f64, f64)> {
+        if let Some(profile) = &self.profile {
+            return profile.clone();
+        }
         let smooth = |t: f64| t * t * (3.0 - 2.0 * t);
         let (ri, rt, ro) = (
             self.inlet_diameter / 2.0,
@@ -140,13 +176,16 @@ impl Nozzle {
     }
 
     fn validate(&self) -> Result<()> {
-        let sizes = [
+        let sketched = self.profile.is_some();
+        let mut sizes = vec![
             ("the inlet diameter", self.inlet_diameter),
             ("the throat diameter", self.throat_diameter),
             ("the outlet diameter", self.outlet_diameter),
-            ("the converging length", self.converging_length),
-            ("the diverging length", self.diverging_length),
         ];
+        if !sketched {
+            sizes.push(("the converging length", self.converging_length));
+            sizes.push(("the diverging length", self.diverging_length));
+        }
         for (name, value) in sizes {
             size(name, value, 1.0e6)?;
         }
@@ -156,8 +195,26 @@ impl Nozzle {
                 "the throat must not be wider than the inlet or the outlet".into(),
             ));
         }
-        count("the converging segments", self.converging_segments, 2, 200)?;
-        count("the diverging segments", self.diverging_segments, 2, 200)?;
+        let segments = match &self.profile {
+            Some(profile) => {
+                let n = profile.len().saturating_sub(1);
+                count("the segments of the sketched wall", n, 2, 2000)?;
+                if profile
+                    .iter()
+                    .any(|(x, r)| !(x.is_finite() && r.is_finite() && *r > 0.0 && x.abs() < 1.0e6))
+                {
+                    return Err(CaseError::Invalid(
+                        "the sketched wall has a point that cannot be meshed".into(),
+                    ));
+                }
+                n as u64
+            }
+            None => {
+                count("the converging segments", self.converging_segments, 2, 200)?;
+                count("the diverging segments", self.diverging_segments, 2, 200)?;
+                (self.converging_segments + self.diverging_segments) as u64
+            }
+        };
         count(
             "the cells per segment",
             self.axial_cells_per_segment,
@@ -188,7 +245,6 @@ impl Nozzle {
         size("the inlet speed", self.inlet_speed, 1.0e5)?;
         size("the inlet temperature", self.inlet_temperature, 1.0e5)?;
         size("the outlet pressure", self.outlet_pressure, 1.0e10)?;
-        let segments = (self.converging_segments + self.diverging_segments) as u64;
         let cells = segments * self.axial_cells_per_segment as u64 * self.radial_cells as u64;
         if cells > MAX_CELLS {
             return Err(CaseError::Invalid(format!(

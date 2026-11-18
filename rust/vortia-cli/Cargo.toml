@@ -16,6 +16,7 @@ vortia-fields = { path = "../vortia-fields" }
 vortia-foamfile = { path = "../vortia-foamfile" }
 vortia-mesh = { path = "../vortia-mesh" }
 vortia-post = { path = "../vortia-post" }
+vortia-sketch = { path = "../vortia-sketch" }
 vortia-solvers = { path = "../vortia-solvers" }
 
 [dev-dependencies]

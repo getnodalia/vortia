@@ -105,6 +105,13 @@ Decided on 2026-11-18, from Daniel's all-Rust rule: Vortia gets its own 2D meshe
 (structured and unstructured, enough for nozzles and channels). The Qt application's Gmsh is
 GPL and not Rust, so it is not used or bundled unless Daniel says otherwise.
 
+Progress: the `vortia-sketch` crate holds the dimensioned sketch (points, lines, arcs,
+constraints), its solver, the templates (duct, nozzle, rounded nozzle) and a versioned file
+format. A sketched wall becomes a structured block mesh through `Nozzle::from_sketch`, and the
+CLI reaches it with `vortia sketch template|info` and `vortia new sketch`. Still to do: the
+editor in the application (canvas, snapping, dimensions, "New > From sketch") and a general
+mesher for shapes that are not a profile of revolution or extrusion.
+
 ## What this changes in the public text
 
 Until R11, the README, the website and the releases keep describing what the
