@@ -272,6 +272,22 @@ pub const ES: &[(&str, &str)] = &[
     ("Forces on plate", "Fuerzas sobre la placa"),
     ("From", "Desde"),
     ("From sketch", "Desde un croquis"),
+    ("Channel with a block", "Canal con un bloque"),
+    ("Drawn region", "Región dibujada"),
+    (
+        "Name one edge inlet: the fluid comes in there.",
+        "Pon el nombre «inlet» a una arista: por ahí entra el fluido.",
+    ),
+    (
+        "Name one edge outlet: the fluid leaves there.",
+        "Pon el nombre «outlet» a una arista: por ahí sale el fluido.",
+    ),
+    ("Name of edge {}", "Nombre de la arista {}"),
+    ("Size of the triangles", "Tamaño de los triángulos"),
+    (
+        "A closed outline you dimension in a sketch, with a name on every edge: `inlet` is where the fluid comes in, `outlet` where it leaves, `symmetry` a symmetry plane and any other name a wall. Meshed with triangles by Vortia itself and run as laminar, incompressible, steady flow (simpleFoam). The sketch is kept in the case.",
+        "Un contorno cerrado que acotas en un croquis, con un nombre en cada arista: `inlet` es por donde entra el fluido, `outlet` por donde sale, `symmetry` un plano de simetría y cualquier otro nombre una pared. Vortia lo malla con triángulos y lo ejecuta como flujo laminar, incompresible y estacionario (simpleFoam). El croquis se guarda en el caso.",
+    ),
     (
         "Go to the boundary conditions",
         "Ir a las condiciones de contorno",

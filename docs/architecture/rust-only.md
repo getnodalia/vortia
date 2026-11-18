@@ -143,8 +143,9 @@ digits on the wedge). Still to do: drawing new lines and arcs and dragging point
 snapping, adding dimensions and opening a saved sketch. Closed sketches with several loops and
 named edges now exist (`Sketch::loops`, `Sketch::name`, the `channel-with-block` template) and
 `vortia_cases::Drawn` meshes and runs them (`vortia new region DIR FILE`; the same case run by
-OpenFOAM v1912 gives the same fields to eight digits). Still to do: drawing and naming a closed
-outline on the canvas and a "Drawn region" entry in Home.
+OpenFOAM v1912 gives the same fields to eight digits). Home's "Drawn region" starts from a channel
+with a block, edits its dimensions and names its edges (`RegionEditor`). Still to do: drawing new
+lines and arcs of a closed outline on the canvas.
 
 ## What this changes in the public text
 

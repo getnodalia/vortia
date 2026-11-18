@@ -17,8 +17,11 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
   channel-with-block FILE` y `vortia new region DIR FILE` lo prueban. Comparado con OpenFOAM
   v1912 sobre el mismo caso (canal con bloque): `checkMesh` da «Mesh OK», ambos convergen en 110
   iteraciones y la presión y la velocidad coinciden a 8 cifras; un test comprueba que el caudal
-  que entra es el que sale y que la pared del bloque no deja pasar nada. Aún sin pantalla en la
-  app: falta dibujar contornos y poner nombres en el lienzo.
+  que entra es el que sale y que la pared del bloque no deja pasar nada. En la app, «Nuevo caso
+  ▸ Región dibujada» parte de un canal con un bloque, deja acotarlo, poner nombre a cada arista
+  (se dibujan con el color de lo que hacen), elegir el tamaño de los triángulos y crear el caso;
+  si falta `inlet` o `outlet` lo dice antes de escribir nada y el croquis se guarda con el caso.
+  Aún falta trazar líneas y arcos nuevos sobre el lienzo.
 - **Mallador 2D propio, no estructurado (R3):** `vortia_mesh::tri2d` convierte una región (lazos
   cerrados de segmentos con nombre de parche y, si quieren, tamaño propio) en triángulos de
   Delaunay con refinamiento de Ruppert (ángulo mínimo de 20°, tamaño que crece con la distancia a
