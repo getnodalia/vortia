@@ -67,7 +67,10 @@ STL, updater, issue-report or translation code exists there).
   pressure and viscous parts and the coefficients against a reference density, speed, area and
   length; a kinematic case reports force per unit density, and a gas without a reference density
   is refused. `vortia compare NUMBER BASELINE REPORT...` compares two sealed reports and refuses those whose
-  definitions differ. Still to do for R6: the comparison in the app (it is CLI-only for now).
+  definitions differ. The Results tab has the same comparison as a card (`Compare`): it lists the
+  reports saved in the case (or added from a file), picks a baseline and a number, shows the change
+  against it, warns when the definitions differ and saves a CSV in `postProcessing/comparison/`.
+  R6 is done.
 
 - **R8, on 2026-11-18:** the app speaks English or Spanish (`rust/vortia-app/src/i18n.rs`: the
   system language by default, a selector in Preferences, English as the key and anything the
@@ -143,8 +146,9 @@ digits on the wedge). Still to do: drawing new lines and arcs and dragging point
 snapping, adding dimensions and opening a saved sketch. Closed sketches with several loops and
 named edges now exist (`Sketch::loops`, `Sketch::name`, the `channel-with-block` template) and
 `vortia_cases::Drawn` meshes and runs them (`vortia new region DIR FILE`; the same case run by
-OpenFOAM v1912 gives the same fields to eight digits). Still to do: drawing and naming a closed
-outline on the canvas and a "Drawn region" entry in Home.
+OpenFOAM v1912 gives the same fields to eight digits). Home's "Drawn region" starts from a channel
+with a block, edits its dimensions and names its edges (`RegionEditor`). Still to do: drawing new
+lines and arcs of a closed outline on the canvas.
 
 ## What this changes in the public text
 

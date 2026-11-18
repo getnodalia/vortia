@@ -272,6 +272,64 @@ pub const ES: &[(&str, &str)] = &[
     ("Forces on plate", "Fuerzas sobre la placa"),
     ("From", "Desde"),
     ("From sketch", "Desde un croquis"),
+    ("Compare", "Comparar"),
+    (
+        "One number of saved reports side by side, against the baseline.",
+        "Un número de los informes guardados, uno junto a otro, frente al de referencia.",
+    ),
+    (
+        "Save a Section or Forces report, or add a report file, to compare runs.",
+        "Guarda un informe de Sección o de Fuerzas, o añade un archivo de informe, para comparar ejecuciones.",
+    ),
+    ("Baseline", "Referencia"),
+    ("Report", "Informe"),
+    ("{} at {}", "{} en {}"),
+    ("Number", "Número"),
+    (
+        "{} files were not reports.",
+        "{} archivos no eran informes.",
+    ),
+    (
+        "A report file from another run",
+        "Un archivo de informe de otra ejecución",
+    ),
+    ("Add", "Añadir"),
+    (
+        "That report is already in the list.",
+        "Ese informe ya está en la lista.",
+    ),
+    (
+        "There are too many reports in the list.",
+        "Hay demasiados informes en la lista.",
+    ),
+    (
+        "There are no reports to compare.",
+        "No hay informes que comparar.",
+    ),
+    (
+        "Tick at least one more report of the same kind.",
+        "Marca al menos un informe más del mismo tipo.",
+    ),
+    (
+        "Different section or reference definitions: compare the assumptions before interpreting a change.",
+        "Secciones o referencias distintas: compara las hipótesis antes de interpretar un cambio.",
+    ),
+    ("Channel with a block", "Canal con un bloque"),
+    ("Drawn region", "Región dibujada"),
+    (
+        "Name one edge inlet: the fluid comes in there.",
+        "Pon el nombre «inlet» a una arista: por ahí entra el fluido.",
+    ),
+    (
+        "Name one edge outlet: the fluid leaves there.",
+        "Pon el nombre «outlet» a una arista: por ahí sale el fluido.",
+    ),
+    ("Name of edge {}", "Nombre de la arista {}"),
+    ("Size of the triangles", "Tamaño de los triángulos"),
+    (
+        "A closed outline you dimension in a sketch, with a name on every edge: `inlet` is where the fluid comes in, `outlet` where it leaves, `symmetry` a symmetry plane and any other name a wall. Meshed with triangles by Vortia itself and run as laminar, incompressible, steady flow (simpleFoam). The sketch is kept in the case.",
+        "Un contorno cerrado que acotas en un croquis, con un nombre en cada arista: `inlet` es por donde entra el fluido, `outlet` por donde sale, `symmetry` un plano de simetría y cualquier otro nombre una pared. Vortia lo malla con triángulos y lo ejecuta como flujo laminar, incompresible y estacionario (simpleFoam). El croquis se guarda en el caso.",
+    ),
     (
         "Go to the boundary conditions",
         "Ir a las condiciones de contorno",

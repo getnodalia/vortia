@@ -26,6 +26,7 @@ pub mod globalmenu;
 pub mod i18n;
 pub mod numerics;
 pub mod prefs;
+pub mod region_editor;
 pub mod report;
 pub mod residuals;
 pub mod section;

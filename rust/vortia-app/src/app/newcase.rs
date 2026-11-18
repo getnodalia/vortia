@@ -1,14 +1,15 @@
 //! Home's "New": the form that starts a case (`vortia_cases`).
 
-use crate::i18n::tr;
+use crate::i18n::{tr, trf};
 use std::path::{Path, PathBuf};
 
 use eframe::egui::{self, DragValue, Ui};
 use nodalia_theme::engineering::Look;
 use nodalia_theme::office;
 use nodalia_theme::{Palette, space};
-use vortia_cases::{Cavity, Channel, Geometry, Jet, Nozzle, NozzleKind, Plate};
+use vortia_cases::{Cavity, Channel, Drawn, Geometry, Jet, Nozzle, NozzleKind, Plate};
 
+use crate::region_editor::{self, DrawnEdge, RegionEditor, Role};
 use crate::sketch_editor::{Outline, SketchEditor, Template};
 
 /// Which of the cases Home offers.
@@ -21,10 +22,11 @@ pub(super) enum Kind {
     AxisymmetricNozzle,
     Jet,
     Sketch,
+    Region,
 }
 
 impl Kind {
-    const ALL: [Kind; 7] = [
+    const ALL: [Kind; 8] = [
         Kind::Channel,
         Kind::Cavity,
         Kind::Plate,
@@ -32,6 +34,7 @@ impl Kind {
         Kind::AxisymmetricNozzle,
         Kind::Jet,
         Kind::Sketch,
+        Kind::Region,
     ];
 
     fn title(self) -> &'static str {
@@ -43,6 +46,7 @@ impl Kind {
             Kind::AxisymmetricNozzle => tr("Axisymmetric nozzle"),
             Kind::Jet => tr("Jet into the atmosphere"),
             Kind::Sketch => tr("From sketch"),
+            Kind::Region => tr("Drawn region"),
         }
     }
 
@@ -69,6 +73,9 @@ impl Kind {
             Kind::Sketch => {
                 "A duct whose wall you dimension in a sketch: lines and arcs held by lengths, heights and radii, meshed by Vortia itself and run as a nozzle (rhoSimpleFoam). The sketch is kept in the case."
             }
+            Kind::Region => {
+                "A closed outline you dimension in a sketch, with a name on every edge: `inlet` is where the fluid comes in, `outlet` where it leaves, `symmetry` a symmetry plane and any other name a wall. Meshed with triangles by Vortia itself and run as laminar, incompressible, steady flow (simpleFoam). The sketch is kept in the case."
+            }
         }
     }
 }
@@ -89,6 +96,9 @@ pub(super) struct NewCase {
     sketched: Nozzle,
     sketch_axisymmetric: bool,
     segments: usize,
+    region: RegionEditor,
+    /// The flow and mesh settings of the drawn region; its edges come from the sketch.
+    drawn: Drawn,
 }
 
 /// What the form asks for.
@@ -113,6 +123,8 @@ impl NewCase {
             sketched: Nozzle::new(NozzleKind::Axisymmetric),
             sketch_axisymmetric: true,
             segments: 60,
+            region: RegionEditor::default(),
+            drawn: Drawn::default(),
         };
         form.propose(base);
         form
@@ -135,6 +147,7 @@ impl NewCase {
             Kind::AxisymmetricNozzle => "nozzle",
             Kind::Jet => "jet",
             Kind::Sketch => "sketch",
+            Kind::Region => "region",
         };
         let free = (1..1000)
             .map(|n| {
@@ -164,6 +177,7 @@ impl NewCase {
             Kind::AxisymmetricNozzle => Geometry::Nozzle(self.wedge.clone()),
             Kind::Jet => Geometry::Jet(self.jet.clone()),
             Kind::Sketch => Geometry::Nozzle(self.sketched_nozzle()?),
+            Kind::Region => Geometry::Drawn(self.drawn_region()?),
         })
     }
 
@@ -184,6 +198,16 @@ impl NewCase {
         Ok(nozzle)
     }
 
+    /// The region the sketch makes, with the flow and mesh settings of the form.
+    fn drawn_region(&self) -> Result<Drawn, String> {
+        if let Some(missing) = self.region.missing() {
+            return Err(missing.into());
+        }
+        let mut drawn = self.drawn.clone();
+        drawn.sketch = self.region.sketch().clone();
+        Ok(drawn)
+    }
+
     /// Writes the case; the folder it made, or why not.
     pub(super) fn create(&self) -> Result<PathBuf, String> {
         let dir = PathBuf::from(self.folder.trim());
@@ -191,11 +215,17 @@ impl NewCase {
             return Err(tr("Say which folder the case goes in.").into());
         }
         vortia_cases::create(&dir, &self.geometry()?).map_err(|e| e.to_string())?;
-        if self.kind == Kind::Sketch {
-            // The drawing stays with the case it was meshed into.
-            self.sketch
+        // The drawing stays with the case it was meshed into.
+        match self.kind {
+            Kind::Sketch => self
+                .sketch
                 .save(&dir.join("sketch.vortia-sketch"))
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| e.to_string())?,
+            Kind::Region => self
+                .region
+                .save(&dir.join("sketch.vortia-sketch"))
+                .map_err(|e| e.to_string())?,
+            _ => {}
         }
         Ok(dir)
     }
@@ -230,6 +260,7 @@ impl NewCase {
                 Kind::AxisymmetricNozzle => nozzle_fields(ui, &mut self.wedge),
                 Kind::Jet => jet_fields(ui, &mut self.jet),
                 Kind::Sketch => self.sketch_fields(ui),
+                Kind::Region => self.region_fields(ui),
             }
             ui.add_space(space::SM);
             ui.horizontal(|ui| {
@@ -249,6 +280,80 @@ impl NewCase {
 }
 
 impl NewCase {
+    fn region_fields(&mut self, ui: &mut Ui) {
+        ui.horizontal(|ui| {
+            ui.label(tr("Start from"));
+            for outline in region_editor::Outline::ALL {
+                if ui
+                    .selectable_label(self.region.outline == outline, outline.title())
+                    .clicked()
+                    && self.region.outline != outline
+                {
+                    self.region.restart(outline);
+                }
+            }
+        });
+        ui.add_space(space::SM);
+        draw_region(ui, &self.region.drawing());
+        if let Some(problem) = &self.region.problem {
+            ui.colored_label(ui.visuals().error_fg_color, problem);
+        } else if let Some(missing) = self.region.missing() {
+            ui.colored_label(ui.visuals().warn_fg_color, missing);
+        }
+        ui.add_space(space::SM);
+        let mut edit = None;
+        let mut rename = None;
+        egui::Grid::new("new_region_dimensions")
+            .num_columns(2)
+            .spacing([space::MD, space::SM])
+            .show(ui, |ui| {
+                for mut d in self.region.dimensions() {
+                    let speed = 0.01 * d.value.abs().max(1.0);
+                    row(ui, &d.label, |ui| {
+                        if ui
+                            .add(
+                                DragValue::new(&mut d.value)
+                                    .speed(speed)
+                                    .suffix(format!(" {}", d.unit))
+                                    .max_decimals(4),
+                            )
+                            .changed()
+                        {
+                            edit = Some((d.index, d.value));
+                        }
+                    });
+                }
+                for (entity, mut name) in self.region.names() {
+                    row(ui, &trf("Name of edge {}", &[&entity]), |ui| {
+                        let answer = ui.add(
+                            egui::TextEdit::singleline(&mut name)
+                                .id_salt(("region_edge", entity))
+                                .desired_width(140.0),
+                        );
+                        if answer.changed() {
+                            rename = Some((entity, name.clone()));
+                        }
+                    });
+                }
+                row(ui, tr("Size of the triangles"), |ui| {
+                    value(ui, &mut self.drawn.cell_size, "mm")
+                });
+                row(ui, tr("Inlet speed"), |ui| {
+                    value(ui, &mut self.drawn.speed, "m/s")
+                });
+                row(ui, tr("Viscosity"), |ui| {
+                    value(ui, &mut self.drawn.viscosity, "m²/s")
+                });
+            });
+        // A refused edit keeps the sketch as it was and says why above the dimensions.
+        if let Some((index, v)) = edit {
+            let _ = self.region.set_dimension(index, v);
+        }
+        if let Some((entity, name)) = rename {
+            let _ = self.region.rename(entity, &name);
+        }
+    }
+
     fn sketch_fields(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
             ui.label(tr("Start from"));
@@ -360,6 +465,50 @@ fn draw(ui: &mut Ui, outline: &Outline) {
             );
         } else {
             painter.circle_filled(c, 3.5, visuals.selection.stroke.color);
+        }
+    }
+}
+
+/// The loops of the region, each edge in the colour of what its name makes it, with the name
+/// beside it.
+fn draw_region(ui: &mut Ui, drawing: &[Vec<DrawnEdge>]) {
+    let width = ui.available_width().clamp(200.0, 640.0);
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(width, 220.0), egui::Sense::hover());
+    let painter = ui.painter_at(rect);
+    let visuals = ui.visuals();
+    painter.rect_filled(rect, 6.0, visuals.extreme_bg_color);
+    let Some((x0, x1, y0, y1)) = region_editor::bounds(drawing) else {
+        return;
+    };
+    let inner = rect.shrink(24.0);
+    let scale = (inner.width() as f64 / (x1 - x0).max(1.0e-9))
+        .min(inner.height() as f64 / (y1 - y0).max(1.0e-9));
+    let at = |(x, y): (f64, f64)| {
+        egui::pos2(
+            inner.center().x + ((x - (x0 + x1) / 2.0) * scale) as f32,
+            inner.center().y - ((y - (y0 + y1) / 2.0) * scale) as f32,
+        )
+    };
+    for edge in drawing.iter().flatten() {
+        let color = match Role::of(&edge.patch) {
+            Role::Inlet => visuals.selection.stroke.color,
+            Role::Outlet => visuals.warn_fg_color,
+            Role::Symmetry => visuals.weak_text_color(),
+            Role::Wall => visuals.text_color(),
+        };
+        let line: Vec<_> = edge.points.iter().copied().map(at).collect();
+        painter.add(egui::Shape::line(
+            line.clone(),
+            egui::Stroke::new(2.0, color),
+        ));
+        if let Some(&mid) = line.get(line.len() / 2) {
+            painter.text(
+                mid,
+                egui::Align2::CENTER_CENTER,
+                &edge.patch,
+                egui::FontId::proportional(11.0),
+                color,
+            );
         }
     }
 }
@@ -596,6 +745,36 @@ mod tests {
         let folder = broken.folder.clone();
         assert!(broken.create().is_err());
         assert!(!Path::new(&folder).exists());
+    }
+
+    #[test]
+    fn a_drawn_region_keeps_its_sketch_and_needs_an_inlet_and_an_outlet() {
+        let base = tempfile::tempdir().unwrap();
+        let mut form = NewCase::new(base.path());
+        form.kind = Kind::Region;
+        form.propose(base.path());
+        form.drawn.cell_size = 10.0;
+        let (outlet, _) = form
+            .region
+            .names()
+            .into_iter()
+            .find(|(_, n)| n == "outlet")
+            .unwrap();
+        // Without an outlet nothing is written.
+        form.region.rename(outlet, "wall").unwrap();
+        let folder = form.folder.clone();
+        assert!(form.create().unwrap_err().contains("outlet"));
+        assert!(!Path::new(&folder).exists());
+        form.region.rename(outlet, "outlet").unwrap();
+        let dir = form.create().unwrap();
+        assert!(dir.join("0/U").is_file());
+        let kept = dir.join("sketch.vortia-sketch");
+        assert_eq!(
+            &vortia_sketch::Sketch::open(&kept).unwrap(),
+            form.region.sketch()
+        );
+        let boundary = std::fs::read_to_string(dir.join("constant/polyMesh/boundary")).unwrap();
+        assert!(boundary.contains("block") && boundary.contains("inlet"));
     }
 
     #[test]

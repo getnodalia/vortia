@@ -83,70 +83,19 @@ impl SketchEditor {
 
     /// The dimensions that have a number to edit, in the order the sketch holds them.
     pub fn dimensions(&self) -> Vec<Dimension> {
-        let item = |index: usize, label: String, unit, value| Dimension {
-            index,
-            label,
-            unit,
-            value,
-        };
-        self.sketch
-            .constraints
-            .iter()
-            .enumerate()
-            .filter_map(|(i, c)| match *c {
-                Constraint::Distance { a, b, value } => Some(item(
-                    i,
-                    trf("Distance, point {} to {}", &[&a, &b]),
-                    "mm",
-                    value,
-                )),
-                Constraint::DeltaX { a, b, value } => Some(item(
-                    i,
-                    trf("Length along, point {} to {}", &[&a, &b]),
-                    "mm",
-                    value,
-                )),
-                Constraint::DeltaY { a, b, value } => Some(item(
-                    i,
-                    trf("Height, point {} to {}", &[&a, &b]),
-                    "mm",
-                    value,
-                )),
-                Constraint::Radius { arc, value } => {
-                    Some(item(i, trf("Radius of arc {}", &[&arc]), "mm", value))
-                }
-                Constraint::Angle { a, b, degrees } => Some(item(
-                    i,
-                    trf("Angle, point {} to {}", &[&a, &b]),
-                    "°",
-                    degrees,
-                )),
-                Constraint::Horizontal { .. } | Constraint::Vertical { .. } => None,
-            })
-            .collect()
+        dimensions_of(&self.sketch)
     }
 
     /// Gives dimension `index` a new value and solves again. On an error the sketch is as it was,
     /// and the reason is kept in [`Self::problem`].
     pub fn set_dimension(&mut self, index: usize, value: f64) -> Result<(), SketchError> {
-        let mut next = self.sketch.clone();
-        match next.constraints.get_mut(index) {
-            Some(
-                Constraint::Distance { value: v, .. }
-                | Constraint::DeltaX { value: v, .. }
-                | Constraint::DeltaY { value: v, .. }
-                | Constraint::Radius { value: v, .. }
-                | Constraint::Angle { degrees: v, .. },
-            ) => *v = value,
-            _ => {
-                return Err(SketchError::Invalid(format!(
-                    "dimension {index} has no number to change"
-                )));
-            }
-        }
-        let solved = next.solve().and_then(|_| next.profile(5.0));
+        let solved = with_dimension(&self.sketch, index, value).and_then(|mut next| {
+            next.solve()?;
+            next.profile(5.0)?;
+            Ok(next)
+        });
         match solved {
-            Ok(_) => {
+            Ok(next) => {
                 self.sketch = next;
                 self.problem = None;
                 Ok(())
@@ -194,6 +143,71 @@ impl SketchEditor {
     pub fn save(&self, path: &Path) -> Result<(), SketchError> {
         self.sketch.save(path)
     }
+}
+
+/// The dimensions of `sketch` that have a number to edit, in the order it holds them.
+pub fn dimensions_of(sketch: &Sketch) -> Vec<Dimension> {
+    let item = |index: usize, label: String, unit, value| Dimension {
+        index,
+        label,
+        unit,
+        value,
+    };
+    sketch
+        .constraints
+        .iter()
+        .enumerate()
+        .filter_map(|(i, c)| match *c {
+            Constraint::Distance { a, b, value } => Some(item(
+                i,
+                trf("Distance, point {} to {}", &[&a, &b]),
+                "mm",
+                value,
+            )),
+            Constraint::DeltaX { a, b, value } => Some(item(
+                i,
+                trf("Length along, point {} to {}", &[&a, &b]),
+                "mm",
+                value,
+            )),
+            Constraint::DeltaY { a, b, value } => Some(item(
+                i,
+                trf("Height, point {} to {}", &[&a, &b]),
+                "mm",
+                value,
+            )),
+            Constraint::Radius { arc, value } => {
+                Some(item(i, trf("Radius of arc {}", &[&arc]), "mm", value))
+            }
+            Constraint::Angle { a, b, degrees } => Some(item(
+                i,
+                trf("Angle, point {} to {}", &[&a, &b]),
+                "°",
+                degrees,
+            )),
+            Constraint::Horizontal { .. } | Constraint::Vertical { .. } => None,
+        })
+        .collect()
+}
+
+/// A copy of `sketch` whose dimension `index` has `value`, not yet solved.
+pub fn with_dimension(sketch: &Sketch, index: usize, value: f64) -> Result<Sketch, SketchError> {
+    let mut next = sketch.clone();
+    match next.constraints.get_mut(index) {
+        Some(
+            Constraint::Distance { value: v, .. }
+            | Constraint::DeltaX { value: v, .. }
+            | Constraint::DeltaY { value: v, .. }
+            | Constraint::Radius { value: v, .. }
+            | Constraint::Angle { degrees: v, .. },
+        ) => *v = value,
+        _ => {
+            return Err(SketchError::Invalid(format!(
+                "dimension {index} has no number to change"
+            )));
+        }
+    }
+    Ok(next)
 }
 
 /// The drawing of a sketch, in millimetres.

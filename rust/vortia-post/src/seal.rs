@@ -123,6 +123,20 @@ impl Sealed {
             .filter(|v| v.is_finite())
     }
 
+    /// The names of the payload's `metrics` that are numbers, in the order the report has them.
+    pub fn metric_names(&self) -> Vec<String> {
+        self.payload
+            .get("metrics")
+            .and_then(Value::as_object)
+            .map(|m| {
+                m.iter()
+                    .filter(|(_, v)| v.as_f64().is_some_and(f64::is_finite))
+                    .map(|(k, _)| k.clone())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     /// A text of the payload.
     pub fn text(&self, key: &str) -> &str {
         self.payload
