@@ -663,3 +663,76 @@ fn the_faces_of_the_grid_point_out_of_their_cell() {
         }
     }
 }
+
+/// A `phi` at `time` giving every patch of the box (sizes 2, 2, 4, 4, 8, 8) one
+/// uniform value `v`: the flux through the patch is `v` times its face count.
+fn write_phi(dir: &TempDir, case: &Case, time: &str, uniform: [f64; 6]) {
+    let n = case.mesh().n_internal_faces();
+    let mut text = format!(
+        "FoamFile\n{{\n    version 2.0;\n    format ascii;\n    class surfaceScalarField;\n    object phi;\n}}\n\
+         dimensions [0 3 -1 0 0 0 0];\ninternalField uniform 0 /* {n} */;\nboundaryField\n{{\n"
+    );
+    for (p, v) in PATCHES.iter().zip(uniform) {
+        let _ = writeln!(text, "    {p} {{ type calculated; value uniform {v}; }}");
+    }
+    text.push_str("}\n");
+    let folder = dir.path().join(time);
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join("phi"), text).unwrap();
+}
+
+#[test]
+fn the_balance_compares_what_enters_with_what_leaves() {
+    let (dir, case) = case();
+    // In: 2 faces × 1.5 = 3. Out: 2 faces × 0.5 = 1 and 4 × 0.5 = 2 through yMax.
+    write_phi(&dir, &case, "10", [-1.5, 0.5, 0.0, 0.5, 0.0, 0.0]);
+    let b = case.mass_balance("10").unwrap();
+    assert_eq!((b.inflow(), b.outflow(), b.net()), (3.0, 3.0, 0.0));
+    assert_eq!(b.percent(), 0.0);
+    // The leak is a percentage of the larger side.
+    write_phi(&dir, &case, "20", [-1.5, 0.25, 0.0, 0.5, 0.0, 0.0]);
+    let b = case.mass_balance("20").unwrap();
+    assert_eq!((b.inflow(), b.outflow(), b.net()), (3.0, 2.5, -0.5));
+    assert!((b.percent() + 100.0 * 0.5 / 3.0).abs() < 1e-12);
+    // Nothing flowing is balanced, not a division by zero.
+    write_phi(&dir, &case, "30", [0.0; 6]);
+    assert_eq!(case.mass_balance("30").unwrap().percent(), 0.0);
+}
+
+#[test]
+fn the_balance_lists_the_flux_through_each_patch() {
+    let (dir, case) = case();
+    write_phi(&dir, &case, "10", [-1.0, 1.0, 0.0, 0.0, 0.0, 0.0]);
+    let b = case.mass_balance("10").unwrap();
+    assert_eq!(b.patches.len(), 6);
+    assert_eq!(b.patches[0], ("xMin".to_owned(), -2.0));
+}
+
+#[test]
+fn the_history_covers_the_last_times_with_a_flux() {
+    let (dir, case) = case();
+    write_phi(&dir, &case, "10", [-1.0, 0.5, 0.0, 0.0, 0.0, 0.0]); // 50 % short
+    write_phi(&dir, &case, "20", [-1.0, 0.5, 0.0, 0.0, 0.0, 0.0]);
+    write_phi(&dir, &case, "30", [-1.0, 0.5, 0.0, 0.0, 0.0, 0.0]);
+    write_phi(&dir, &case, "40", [-1.0, 1.0, 0.0, 0.0, 0.0, 0.0]); // closed
+    write_phi(&dir, &case, "50", [-1.0, 0.75, 0.0, 0.0, 0.0, 0.0]); // 25 %
+    let h = case.mass_balance_history(2).unwrap();
+    assert_eq!(
+        (h.first.as_str(), h.last.as_str(), h.samples),
+        ("40", "50", 2)
+    );
+    assert!((h.mean_abs_percent - 12.5).abs() < 1e-12);
+    assert!((h.max_abs_percent - 25.0).abs() < 1e-12);
+    assert_eq!(h.latest.time, "50");
+    // A window longer than what exists takes what there is, never time 0.
+    let all = case.mass_balance_history(100).unwrap();
+    assert_eq!((all.first.as_str(), all.samples), ("10", 5));
+}
+
+#[test]
+fn the_history_of_a_case_that_never_ran_is_an_error() {
+    let (_dir, case) = case();
+    assert!(case.mass_balance_history(5).is_err());
+    assert!(case.mass_balance_history(0).is_err());
+    assert!(case.mass_balance("0").is_err());
+}

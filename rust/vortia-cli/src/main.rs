@@ -50,6 +50,7 @@ const USAGE: &str = "usage: vortia new channel|nozzle|nozzle-wedge DIR [NAME=VAL
     \x20      vortia export CASE csv|vtu FILE [TIME [FIELD...]]\n\
     \x20      vortia patch CASE PATCH FIELD [TIME]\n\
     \x20      vortia flux CASE PATCH [TIME]\n\
+    \x20      vortia balance CASE [WINDOW]\n\
     \x20      vortia volume CASE FIELD [TIME]\n\
     \x20      vortia wall CASE PATCH [TIME]\n\n\
     new          make a case in DIR: a channel, a planar nozzle or an axisymmetric one,\n\
@@ -71,6 +72,8 @@ const USAGE: &str = "usage: vortia new channel|nozzle|nozzle-wedge DIR [NAME=VAL
     export        every cell as CSV, or the mesh and fields as a VTK grid for ParaView\n\
     patch        area, integral, average and range of FIELD over a patch\n\
     flux         what flows out through a patch (the sum of phi on it)\n\
+    balance      what enters against what leaves over the last WINDOW times (default 10)\n\
+    \x20            written, from phi: the net flux as a percentage of the larger side\n\
     volume       volume, integral, average and range of FIELD over the domain\n\
     wall         shear stress, y+, forces and heat flux on a wall patch";
 

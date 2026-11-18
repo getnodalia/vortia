@@ -52,6 +52,10 @@ STL, updater, issue-report or translation code exists there).
   setup), where the boundaries are chosen. The planar nozzle is the whole slot, not the Qt
   application's half section: the compressible solver has no symmetry condition for T, k and
   omega yet (an engine task for R4).
+- **R5, started on 2026-11-18:** the mass balance (`Case::mass_balance` and
+  `mass_balance_history` in `rust/vortia-post`, `vortia balance`, a card in the Run tab) reads
+  the written `phi`, as the Qt `nozzleMassBalance` does. Still to do for R5: the residual plot,
+  the run monitor's early-stop and divergence checks and the pause/resume of a job.
 
 ## Order
 

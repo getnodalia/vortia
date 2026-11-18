@@ -59,6 +59,16 @@ pub fn run(args: &[&str]) -> Option<ExitCode> {
         ["flux", case, patch, time @ ..] if time.len() <= 1 => {
             finish(flux(case, patch, time.first().copied()))
         }
+        ["balance", case, rest @ ..] if rest.len() <= 1 => {
+            let window = match rest.first() {
+                None => Ok(DEFAULT_WINDOW),
+                Some(w) => w.parse::<usize>().ok().filter(|w| *w > 0).ok_or(()),
+            };
+            window.map_or_else(
+                |_| usage_error("the window is a whole number of times above zero"),
+                |window| finish(balance(case, window)),
+            )
+        }
         ["volume", case, field, time @ ..] if time.len() <= 1 => {
             finish(volume(case, field, time.first().copied()))
         }
@@ -66,7 +76,8 @@ pub fn run(args: &[&str]) -> Option<ExitCode> {
             finish(wall(case, patch, time.first().copied()))
         }
         [
-            "probe" | "sample" | "streamline" | "export" | "patch" | "flux" | "volume" | "wall",
+            "probe" | "sample" | "streamline" | "export" | "patch" | "flux" | "balance" | "volume"
+            | "wall",
             ..,
         ] => usage_error("wrong number of arguments"),
         _ => return None,
@@ -227,6 +238,33 @@ fn flux(case: &str, patch: &str, time: Option<&str>) -> Result<String, String> {
         shown(&time),
         shown(patch)
     ))
+}
+
+/// How many of the last times `balance` looks at unless told.
+const DEFAULT_WINDOW: usize = 10;
+
+fn balance(case: &str, window: usize) -> Result<String, String> {
+    let case = Case::open(case).map_err(|e| e.to_string())?;
+    let h = case
+        .mass_balance_history(window)
+        .map_err(|e| e.to_string())?;
+    let mut text = format!(
+        "Mass balance over {} time(s), {} to {}\n  mean |net| {:.4} %   worst {:.4} %\n  at {}: in {:e}  out {:e}  net {:e} ({:+.4} %)\n",
+        h.samples,
+        shown(&h.first),
+        shown(&h.last),
+        h.mean_abs_percent,
+        h.max_abs_percent,
+        shown(&h.latest.time),
+        h.latest.inflow(),
+        h.latest.outflow(),
+        h.latest.net(),
+        h.latest.percent(),
+    );
+    for (patch, q) in &h.latest.patches {
+        text.push_str(&format!("    {} {q:e}\n", shown(patch)));
+    }
+    Ok(text)
 }
 
 fn volume(case: &str, field: &str, time: Option<&str>) -> Result<String, String> {

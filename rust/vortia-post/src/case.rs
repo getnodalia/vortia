@@ -215,7 +215,7 @@ impl Case {
         Self::patch_flux(&field, patch)
     }
 
-    fn flux_field(&self, time: &str) -> Result<Field<f64>> {
+    pub(crate) fn flux_field(&self, time: &str) -> Result<Field<f64>> {
         let path = self.field_path(time, "phi")?;
         let field = Field::<f64>::read(&path)?;
         if field.location != Location::Faces {
@@ -224,7 +224,7 @@ impl Case {
         Ok(field)
     }
 
-    fn patch_flux(phi: &Field<f64>, patch: &Patch) -> Result<f64> {
+    pub(crate) fn patch_flux(phi: &Field<f64>, patch: &Patch) -> Result<f64> {
         let pf = phi
             .patch_field(patch)
             .ok_or_else(|| PostError::Invalid(format!("phi has no entry for '{}'", patch.name)))?;

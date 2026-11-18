@@ -21,6 +21,10 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
   simetría para la temperatura y la turbulencia. Las toberas entran con velocidad fija (20 m/s por
   defecto): con presión total de entrada y el fluido en reposo, tanto el motor como `rhoSimpleFoam`
   de OpenFOAM divergen en las primeras iteraciones (temperatura negativa).
+- **Balance de masa de la corrida:** la pestaña Run muestra lo que entra frente a lo que sale por
+  cada contorno, a partir del flujo `phi` que escribe el solver: media y peor caso en porcentaje
+  sobre los últimos 10 tiempos escritos, y el neto del último (el mismo control que hace el
+  Qt con sus toberas). En la línea de comandos, `vortia balance CASO [VENTANA]`.
 
 ## [0.10.0] — 2026-11-15
 

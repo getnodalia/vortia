@@ -21,6 +21,7 @@ use super::{
 use crate::numerics::File;
 use crate::summary::Summary;
 use crate::viewer::Source;
+use vortia_post::BalanceHistory;
 
 /// Something the user asked for, from the File menu, the ribbon or the command search.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1008,8 +1009,62 @@ fn case_view(ui: &mut egui::Ui, ctx: &Context, look: &Look, p: &Palette, case: &
     }
 }
 
+/// What entered against what left, from the flux the run wrote: a case that conserves mass
+/// closes this to a small fraction of a percent once it has converged.
+fn balance_card(ui: &mut egui::Ui, p: &Palette, balance: Option<&BalanceHistory>) {
+    Frame::NONE
+        .fill(for_egui::color(p.surface_sunken))
+        .corner_radius(super::corner(nodalia_theme::component::CONTROL_RADIUS))
+        .inner_margin(Margin::same(space::MD as i8))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.label(RichText::new("Mass balance").strong());
+            let Some(b) = balance else {
+                ui.label(
+                    RichText::new("It appears once a run has written the flux (phi).")
+                        .color(muted(p)),
+                );
+                return;
+            };
+            ui.label(
+                RichText::new(format!(
+                    "Times {} to {} ({} written): mean {:.3} %, worst {:.3} %",
+                    b.first, b.last, b.samples, b.mean_abs_percent, b.max_abs_percent
+                ))
+                .color(muted(p)),
+            );
+            ui.add_space(space::SM);
+            egui::Grid::new("balance")
+                .num_columns(2)
+                .spacing([space::XL, space::XS])
+                .show(ui, |ui| {
+                    for (patch, flux) in &b.latest.patches {
+                        ui.label(RichText::new(patch).color(muted(p)));
+                        ui.label(RichText::new(format!("{flux:+.4e}")).monospace());
+                        ui.end_row();
+                    }
+                    ui.label(RichText::new("Net").strong());
+                    ui.label(
+                        RichText::new(format!(
+                            "{:+.4e} ({:+.3} %)",
+                            b.latest.net(),
+                            b.latest.percent()
+                        ))
+                        .monospace(),
+                    );
+                    ui.end_row();
+                });
+        });
+}
+
 fn run_view(ui: &mut egui::Ui, p: &Palette, case: &CaseView) {
     convergence_card(ui, p, case.report.as_ref());
+    ui.add_space(space::MD);
+    balance_card(
+        ui,
+        p,
+        case.summary.as_ref().and_then(|s| s.balance.as_ref()),
+    );
     ui.add_space(space::MD);
     ui.label(RichText::new("Log").color(muted(p)));
     Frame::NONE
