@@ -12,7 +12,7 @@ pub fn run(args: &[&str]) -> ExitCode {
     }
     let [kind, dir, settings @ ..] = args else {
         eprintln!(
-            "vortia: new needs a kind (channel, cavity, plate, nozzle or nozzle-wedge) and a folder"
+            "vortia: new needs a kind (channel, cavity, plate, plate-turbulent, nozzle or nozzle-wedge) and a folder"
         );
         return ExitCode::from(2);
     };
@@ -49,11 +49,12 @@ fn geometry(kind: &str, settings: &[&str]) -> Result<Geometry, String> {
         "channel" => Geometry::Channel(Channel::default()),
         "cavity" => Geometry::Cavity(Cavity::default()),
         "plate" => Geometry::Plate(Plate::default()),
+        "plate-turbulent" => Geometry::Plate(Plate::turbulent()),
         "nozzle" => Geometry::Nozzle(Nozzle::new(NozzleKind::Planar)),
         "nozzle-wedge" => Geometry::Nozzle(Nozzle::new(NozzleKind::Axisymmetric)),
         other => {
             return Err(format!(
-                "'{other}' is not a kind of case: channel, cavity, plate, nozzle or nozzle-wedge"
+                "'{other}' is not a kind of case: channel, cavity, plate, plate-turbulent, nozzle or nozzle-wedge"
             ));
         }
     };

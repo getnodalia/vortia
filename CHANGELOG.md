@@ -8,6 +8,10 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 ## [Unreleased]
 
 ### Añadido
+- **Placa plana turbulenta:** `vortia new plate-turbulent` y la casilla «Turbulent» de la placa en Home
+  escriben el caso de `benchmarks/turbulent-flat-plate-sst` (k-ω SST con funciones de pared,
+  Re = 10⁷). El motor Rust lo resuelve en `cargo test` y su coeficiente de fricción queda dentro de
+  la banda del 15 % de Prandtl–Schlichting (−10,2 %, igual que OpenFOAM).
 - **Boceto acotado y malla desde el boceto (solo línea de órdenes por ahora):** el crate
   `vortia-sketch` guarda un perfil de pared hecho de puntos, líneas y arcos con restricciones,
   lo resuelve y lo convierte en una malla estructurada propia (sin Gmsh). `vortia sketch template

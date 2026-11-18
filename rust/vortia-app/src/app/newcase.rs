@@ -393,18 +393,42 @@ fn cavity_fields(ui: &mut Ui, c: &mut Cavity) {
 }
 
 fn plate_fields(ui: &mut Ui, p: &mut Plate) {
+    let mut turbulent = p.turbulent;
+    if ui
+        .checkbox(&mut turbulent, "Turbulent (k-ω SST, wall functions)")
+        .changed()
+    {
+        // The two plates have different sizes, so each starts from its own numbers.
+        *p = if turbulent {
+            Plate::turbulent()
+        } else {
+            Plate::default()
+        };
+    }
     egui::Grid::new("new_plate")
         .num_columns(2)
         .spacing([space::MD, space::SM])
         .show(ui, |ui| {
             row(ui, "Plate length", |ui| value(ui, &mut p.length, "m"));
-            row(ui, "Slip wall ahead", |ui| value(ui, &mut p.upstream, "m"));
+            if !p.turbulent {
+                row(ui, "Slip wall ahead", |ui| value(ui, &mut p.upstream, "m"));
+            }
             row(ui, "Height", |ui| value(ui, &mut p.height, "m"));
             row(ui, "Cells along the plate", |ui| count(ui, &mut p.cells_x));
-            row(ui, "Cells ahead", |ui| count(ui, &mut p.cells_up));
+            if !p.turbulent {
+                row(ui, "Cells ahead", |ui| count(ui, &mut p.cells_up));
+            }
             row(ui, "Cells across", |ui| count(ui, &mut p.cells_y));
             row(ui, "Stream speed", |ui| value(ui, &mut p.speed, "m/s"));
             row(ui, "Viscosity", |ui| value(ui, &mut p.viscosity, "m²/s"));
+            if p.turbulent {
+                row(ui, "Turbulence intensity", |ui| {
+                    value(ui, &mut p.intensity, "")
+                });
+                row(ui, "Mixing length", |ui| {
+                    value(ui, &mut p.length_scale, "m")
+                });
+            }
         });
 }
 
