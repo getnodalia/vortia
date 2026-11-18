@@ -2706,6 +2706,7 @@ dependencies = [
 name = "vortia-cli"
 version = "0.1.0"
 dependencies = [
+ "tempfile",
  "vortia-cases",
  "vortia-core",
  "vortia-fields",

@@ -3,12 +3,14 @@
 use std::path::Path;
 use std::process::ExitCode;
 
-use vortia_cases::{Channel, Geometry, Nozzle, NozzleKind};
+use vortia_cases::{Cavity, Channel, Geometry, Nozzle, NozzleKind};
 
 /// `vortia new KIND DIR [NAME=VALUE...]`.
 pub fn run(args: &[&str]) -> ExitCode {
     let [kind, dir, settings @ ..] = args else {
-        eprintln!("vortia: new needs a kind (channel, nozzle or nozzle-wedge) and a folder");
+        eprintln!(
+            "vortia: new needs a kind (channel, cavity, nozzle or nozzle-wedge) and a folder"
+        );
         return ExitCode::from(2);
     };
     let geometry = match geometry(kind, settings) {
@@ -42,11 +44,12 @@ pub fn run(args: &[&str]) -> ExitCode {
 fn geometry(kind: &str, settings: &[&str]) -> Result<Geometry, String> {
     let mut geometry = match kind {
         "channel" => Geometry::Channel(Channel::default()),
+        "cavity" => Geometry::Cavity(Cavity::default()),
         "nozzle" => Geometry::Nozzle(Nozzle::new(NozzleKind::Planar)),
         "nozzle-wedge" => Geometry::Nozzle(Nozzle::new(NozzleKind::Axisymmetric)),
         other => {
             return Err(format!(
-                "'{other}' is not a kind of case: channel, nozzle or nozzle-wedge"
+                "'{other}' is not a kind of case: channel, cavity, nozzle or nozzle-wedge"
             ));
         }
     };
@@ -59,6 +62,7 @@ fn geometry(kind: &str, settings: &[&str]) -> Result<Geometry, String> {
             .map_err(|_| format!("'{value}' in '{setting}' is not a number"))?;
         match &mut geometry {
             Geometry::Channel(c) => c.set(name, number),
+            Geometry::Cavity(c) => c.set(name, number),
             Geometry::Nozzle(n) => n.set(name, number),
         }
         .map_err(|e| e.to_string())?;

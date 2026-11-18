@@ -11,12 +11,12 @@ Distinguimos tres niveles (no intercambiables):
 | # | Caso | Nivel | Estado | Evidencia |
 |---|---|---|---|---|
 | 1 | Poiseuille (perfil analítico y fuerza de pared) | Verificación | 🧪 Nativa, cumple | `benchmarks/poiseuille-laminar-2d/`, registro 2026-11-10 |
-| 2 | Cavidad tapa móvil Re=100 (Ghia et al. 1982) | Verificación | 🧪 Nativa, cumple | `benchmarks/lid-driven-cavity-ghia-re100/`, registro 2026-11-10 |
+| 2 | Cavidad tapa móvil Re=100 (Ghia et al. 1982) | Verificación | 🧪 Nativa (OpenFOAM y motor Rust), cumple | `benchmarks/lid-driven-cavity-ghia-re100/`, registros 2026-11-10 y 2026-11-18 |
 | 3 | Placa plana turbulenta, k-ω SST (ley de Prandtl–Schlichting) | Plausibilidad frente a correlación | 🧪 Nativa, dentro de la banda fijada (sesgo −10 %) | `benchmarks/turbulent-flat-plate-sst/`, registro 2026-11-10 |
 | 4 | Placa plana laminar (Blasius) | Verificación | 🟡 Caso y referencia; sin ejecución nativa | `benchmarks/blasius-flat-plate/` |
 | 5 | Canal con escalón | Verificación | ⬜ Pendiente | — |
 | 6 | Perfil aerodinámico | Verificación/Validación | ⬜ Pendiente | — |
-| 7 | Sensibilidad a la malla (GCI de tres mallas) | Verificación | 🟡 Herramienta lista; ningún estudio registrado | `benchmarks/common/gci.py` |
+| 7 | Sensibilidad a la malla (GCI de tres mallas) | Verificación | 🟡 Un estudio registrado (Poiseuille, motor Rust); faltan los demás casos | `benchmarks/common/gci.py`, `vortia_post::gci`, registro 2026-11-18 |
 | 8 | Tobera práctica 2026 (rhoSimpleFoam, wedge, SST) | Verificación | 🟡 Ejecutado, pendiente comparación | examples/nozzle-practice-2026 |
 
 ## Procedimiento por caso
@@ -27,8 +27,8 @@ Plan técnico 0.2.0: [`docs/VORTIA_0.2.0.md`](VORTIA_0.2.0.md). Las ejecuciones 
 las hace el job `native-verification` del workflow `Release packages`, con el
 mismo motor que va en la AppImage; un caso omitido cuenta como fallo.
 
-Lo que estos registros **no** demuestran: independencia de malla (no hay ningún
-GCI registrado), validez fuera de los casos listados, ni validación frente a
+Lo que estos registros **no** demuestran: independencia de malla (solo hay un
+GCI registrado, el de Poiseuille), validez fuera de los casos listados, ni validación frente a
 experimentos. En la primera ejecución nativa Poiseuille no cumplió (relL2 =
 3,1 %) porque se comparó una solución sin converger; se corrigió el presupuesto
 de iteraciones y el criterio de convergencia, no la tolerancia.
@@ -43,6 +43,8 @@ de iteraciones y el criterio de convergencia, no la tolerancia.
 | 2026-11-10 | Placa plana turbulenta Re_L = 1e7, malla 200×60, k-ω SST con funciones de pared | Coeficiente de fricción medio frente a Prandtl–Schlichting | C_D = 0,002698 frente a 0,003004: −10,2 % (banda fijada a priori: 15 %). **Dentro de la banda, con sesgo a la baja** | Convergió en 375 iteraciones. y+ en la placa: 25–36 (media 27), en el extremo bajo del rango de funciones de pared. Una sola malla: sin estudio de independencia. Misma ejecución |
 | 2026-11-13 | Placa plana turbulenta Re_L = 1e7, mismo caso, en el motor Rust (`vortia blockmesh` + `vortia solve`) | Coeficiente de fricción medio frente a Prandtl–Schlichting y frente a OpenFOAM v2606 en los mismos ficheros | C_D = 0,00269801634 frente a 0,002698016903 de OpenFOAM (2e-7) y 0,003004 de la correlación: −10,2 %. **Dentro de la banda** | Convergió en 375 iteraciones (OpenFOAM v2606: 374). y+ 25–36 (media 27), igual que OpenFOAM. Campos finales a 1,3e-3 (U), 4,8e-3 (p) y 1e-4 (k, ω, ν_t) de su máximo. Fuerzas integradas con `forces` de OpenFOAM. `benchmarks/turbulent-flat-plate-sst/scripts/run_rust.sh` |
 | 2026-11-14 | Cavidad cuadrada calentada lateralmente, Pr = 0,71, motor Rust (`buoyantBoussinesqSimpleFoam`) | Nusselt medio en la pared caliente (extrapolación cuadrática), velocidad máxima u de la línea vertical central y v de la horizontal central, frente a de Vahl Davis (1983) | Ra = 1e3, 20×20: Nu 1,122 (1,118: +0,4 %), u_max 3,649 (3,649), v_max 3,674 (3,697). Ra = 1e4, 32×32: Nu 2,268 (2,243: +1,1 %), u_max 16,155 (16,178), v_max 19,462 (19,617). Ra = 1e5, 64×64: Nu 4,565 (4,519: +1,0 %), u_max 34,57 (34,73), v_max 68,51 (68,59). Ra = 1e6, 80×80: Nu 9,036 (8,800: +2,7 %), u_max 65,58 (64,63), v_max 217,9 (219,36). **Cumple** las bandas fijadas en la prueba | Mallas uniformes: el Nusselt de Ra alto está limitado por la resolución de la capa límite. T centrosimétrica a 1e-6. Sin comparar aún con OpenFOAM en los mismos ficheros. `cargo test -p vortia-solvers --test buoyant` (1e3 y 1e4) y `-- --ignored` en `--release` (1e5 y 1e6) |
+| 2026-11-18 | Poiseuille, motor Rust (canal de `vortia new channel`, Re = 10 sobre la altura, lectura en x = 0,9 L) | Perfil u(y) frente al exacto, con malla 80×20; y velocidad en el plano medio con tres mallas de 8, 16 y 32 filas (razón 2) y su índice de convergencia de malla | Malla 80×20: L∞ del perfil sobre el máximo 2,5e-3 (límite 3 %). Tres mallas: 1,4545, 1,4884, 1,4971; orden observado 1,96, extrapolado 1,50007 frente al exacto 1,5, GCI fino 0,25 %, razón asintótica 1,006. **Cumple** | `cargo test -p vortia-cli --test verification` (25 s en debug). El índice es `vortia_post::gci`, que reproduce `benchmarks/common/gci.py` en cuatro tripletes. Solo una cantidad en un caso 2D laminar: no demuestra independencia de malla en otros casos |
+| 2026-11-18 | Cavidad Re = 100, malla 32×32, motor Rust (`vortia new cavity`, `simpleFoam` estacionario) | u en la línea central vertical (tabla I, puntos interiores) y v en la horizontal (tabla II) frente a Ghia et al. (1982), interpolando linealmente entre centros de celda y con el valor de pared en las paredes | Diferencia máxima de u 4,2e-3 y de v 8,6e-3 de la velocidad de la tapa (límite 5 %). **Cumple** | `cargo test -p vortia-cli --test verification` (17 s en debug). Se comparan las dos componentes (el registro de OpenFOAM del 2026-11-10 solo comparó u, con otra métrica y otra malla, 48×48). Con 48×48 el motor Rust da 4,5e-3 (u) y 8,4e-3 (v). Una sola malla por caso, sin GCI |
 | 2026-11-10 | Motor integrado | Autoprueba: malla, `checkMesh`, `simpleFoam` en serie, `decomposePar`, 2 procesos MPI, reconstrucción, `foamToVTK` | **Pasa** en Ubuntu 20.04/22.04/24.04, Debian 12/13, Fedora, Arch, openSUSE Tumbleweed, Rocky 9 (contenedores limpios), Ubuntu 22.04/24.04 (VM con FUSE) y macOS 15/26 (runners limpios) | Prueba de funcionamiento del motor, no de exactitud |
 
 *(Solo resultados reales; prohibido registrar campos inventados como validación.)*

@@ -41,6 +41,37 @@ fn end_at(dir: &Path, iterations: usize) {
 }
 
 #[test]
+fn a_cavity_is_meshed_with_a_lid_and_runs() {
+    let dir = tempfile::tempdir().unwrap();
+    let cavity = Cavity {
+        cells: 12,
+        ..Cavity::default()
+    };
+    let made = create(dir.path(), &Geometry::Cavity(cavity)).unwrap();
+    assert_eq!(made.cells, 12 * 12);
+    assert_eq!(made.application, "simpleFoam");
+    let boundary = std::fs::read_to_string(dir.path().join("constant/polyMesh/boundary")).unwrap();
+    for patch in ["movingWall", "fixedWalls", "frontAndBack"] {
+        assert!(boundary.contains(patch), "no patch {patch}");
+    }
+    let velocity = std::fs::read_to_string(dir.path().join("0/U")).unwrap();
+    assert!(
+        velocity.contains("uniform (1 0 0)"),
+        "the lid moves at 1 m/s"
+    );
+    let mesh = PolyMesh::read_case(dir.path()).unwrap();
+    let volume = MeshGeometry::compute(&mesh).total_volume();
+    assert!(
+        (volume - 0.1).abs() < 1e-12,
+        "the box is 1 × 1 × 0.1: {volume}"
+    );
+    end_at(dir.path(), 5);
+    let case = vortia_solvers::Case::open(dir.path()).unwrap();
+    vortia_solvers::run(&case, |_| {}).unwrap();
+    assert!(dir.path().join("5").is_dir());
+}
+
+#[test]
 fn a_channel_is_meshed_and_runs() {
     let dir = tempfile::tempdir().unwrap();
     let made = create(dir.path(), &Geometry::Channel(Channel::default())).unwrap();
@@ -194,6 +225,31 @@ fn what_cannot_make_a_case_is_refused() {
     for c in bad_channels {
         assert!(create(&target, &Geometry::Channel(c)).is_err());
     }
+    let bad_cavities = [
+        Cavity {
+            cells: 0,
+            ..Cavity::default()
+        },
+        Cavity {
+            cells: 10_000,
+            ..Cavity::default()
+        },
+        Cavity {
+            lid_speed: f64::NAN,
+            ..Cavity::default()
+        },
+        Cavity {
+            side: -1.0,
+            ..Cavity::default()
+        },
+        Cavity {
+            viscosity: 0.0,
+            ..Cavity::default()
+        },
+    ];
+    for c in bad_cavities {
+        assert!(create(&target, &Geometry::Cavity(c)).is_err());
+    }
     for kind in [NozzleKind::Planar, NozzleKind::Axisymmetric] {
         let base = nozzle(kind);
         let mut bad = vec![
@@ -272,6 +328,7 @@ fn openfoam_makes_the_same_meshes() {
     }
     let geometries = [
         Geometry::Channel(Channel::default()),
+        Geometry::Cavity(Cavity::default()),
         Geometry::Nozzle(nozzle(NozzleKind::Planar)),
         Geometry::Nozzle(nozzle(NozzleKind::Axisymmetric)),
     ];
