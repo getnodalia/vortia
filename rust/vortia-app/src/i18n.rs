@@ -133,6 +133,33 @@ fn spanish() -> &'static HashMap<&'static str, &'static str> {
 /// English → Spanish. The wording follows the other Nodalia apps ("Caso", "Ejecutar").
 pub const ES: &[(&str, &str)] = &[
     ("About Vortia", "Acerca de Vortia"),
+    ("Report a problem", "Informar de un problema"),
+    ("Open a geometry", "Abrir una geometría"),
+    ("An STL file", "Un archivo STL"),
+    ("Show geometry", "Ver geometría"),
+    ("Close geometry", "Cerrar la geometría"),
+    ("Reading the geometry…", "Leyendo la geometría…"),
+    ("The file could not be read.", "No se pudo leer el archivo."),
+    ("{} triangles, {} vertices", "{} triángulos, {} vértices"),
+    ("Size {} × {} × {}", "Tamaño {} × {} × {}"),
+    ("Area {}", "Área {}"),
+    ("Closed solid, volume {}", "Sólido cerrado, volumen {}"),
+    (
+        "Not closed: {} open edges, {} edges shared by more than two triangles",
+        "No está cerrada: {} aristas abiertas, {} aristas compartidas por más de dos triángulos",
+    ),
+    ("{} triangles have no area", "{} triángulos no tienen área"),
+    ("Title", "Título"),
+    ("What happened", "Qué ha pasado"),
+    ("Open on GitHub", "Abrir en GitHub"),
+    (
+        "Nothing is sent from here: GitHub opens with this text for you to review. The version, the system and the solver are added; no path or case name is.",
+        "Desde aquí no se envía nada: GitHub se abre con este texto para que lo revises. Se añaden la versión, el sistema y el solver; nunca una ruta ni el nombre del caso.",
+    ),
+    (
+        "The text was too long for the address: it is on the clipboard, paste it into the issue.",
+        "El texto era demasiado largo para la dirección: está en el portapapeles, pégalo en la incidencia.",
+    ),
     ("Analyse", "Analizar"),
     ("Appearance", "Apariencia"),
     ("Area", "Área"),

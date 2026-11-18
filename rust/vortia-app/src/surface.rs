@@ -103,6 +103,43 @@ impl Surface {
         surface
     }
 
+    /// An STL surface as one patch: each triangle is a face, so a border is an open edge (a hole
+    /// in the surface), and a closed solid has none.
+    pub fn from_stl(name: &str, stl: &vortia_mesh::stl::Stl) -> Self {
+        let mut surface = Surface::default();
+        let points: Vec<[f32; 3]> = stl
+            .vertices
+            .iter()
+            .map(|p| [p[0] as f32, p[1] as f32, p[2] as f32])
+            .collect();
+        surface.face_starts.push(0);
+        let kept = stl.triangles.len().min(MAX_TRIANGLES);
+        surface.truncated = kept < stl.triangles.len();
+        for (n, triangle) in stl.triangles.iter().take(kept).enumerate() {
+            if triangle.iter().any(|&i| i as usize >= points.len()) {
+                continue;
+            }
+            surface.triangles.push(*triangle);
+            surface
+                .triangle_cells
+                .push(u32::try_from(n).unwrap_or(u32::MAX));
+            surface.loops.extend(triangle);
+            surface.face_starts.push(surface.loops.len() as u32);
+        }
+        surface.cells = surface.triangles.len();
+        let faces = surface.face_starts.len().saturating_sub(1);
+        surface.patches.push(PatchSurface {
+            name: name.to_owned(),
+            kind: "wall".to_owned(),
+            faces,
+            triangles: 0..surface.triangles.len(),
+            face_range: 0..faces,
+            border: 0..0,
+        });
+        surface.fit(points);
+        surface
+    }
+
     fn push_patch(
         &mut self,
         patch: &vortia_foamfile::RawPatch,

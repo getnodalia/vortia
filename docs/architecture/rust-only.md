@@ -71,8 +71,11 @@ STL, updater, issue-report or translation code exists there).
 
 - **R8, on 2026-11-18:** the app speaks English or Spanish (`rust/vortia-app/src/i18n.rs`: the
   system language by default, a selector in Preferences, English as the key and anything the
-  table lacks left in English). Still to do for R8: the issue report, STL import and the
-  updater (which waits for the Rust releases).
+  table lacks left in English). The problem report (`vortia-app/src/report.rs`: a GitHub
+  new-issue draft with the version, the system and the solver, never a path) and STL import
+  (`vortia_mesh::stl`, shown on Home with its size, area, volume and open edges) are done. Still
+  to do for R8: Fluent `.cas.h5`/`.dat.h5` viewing and the updater (which waits for the Rust
+  releases).
 
 - **R7, started on 2026-11-18:** `vortia_post::gci` (the three-mesh index, checked against
   `benchmarks/common/gci.py`) and `rust/vortia-cli/tests/verification.rs`, which runs a Poiseuille

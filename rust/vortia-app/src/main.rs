@@ -11,6 +11,7 @@
     clippy::indexing_slicing
 )]
 
+use std::path::PathBuf;
 use vortia_app::app::{self, TabName, VortiaApp};
 
 fn main() -> eframe::Result {
@@ -36,7 +37,13 @@ fn main() -> eframe::Result {
             let flags = args;
             let has = |flag: &str| flags.iter().any(|a| a == flag);
             let mut app = VortiaApp::new(&cc.egui_ctx, case, has("--run"));
-            if has("--new-sketch") {
+            if let Some(at) = flags.iter().position(|a| a == "--stl")
+                && let Some(file) = flags.get(at + 1)
+            {
+                app.show_stl(&cc.egui_ctx, PathBuf::from(file));
+            } else if has("--report") {
+                app.show_report();
+            } else if has("--new-sketch") {
                 app.show_new_sketch();
             } else if let Some(at) = flags.iter().position(|a| a == "--field")
                 && let Some(field) = flags.get(at + 1)

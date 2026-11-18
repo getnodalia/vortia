@@ -27,6 +27,7 @@ pub mod fluent;
 pub mod geometry;
 pub mod gmsh;
 pub mod polymesh;
+pub mod stl;
 pub mod wall;
 
 pub use check::{MeshReport, check};
