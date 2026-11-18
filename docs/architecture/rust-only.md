@@ -75,13 +75,13 @@ STL, updater, issue-report or translation code exists there).
   of the peak and, with three meshes, observed order 1.96 and the extrapolated mid-plane speed
   within 0.01 % of the exact one; and the lid-driven cavity (a new case type, `vortia new cavity`,
   its mesh identical to OpenFOAM's) against both Ghia centre-line tables at Re = 100 within 0.9 %
-  of the lid speed. Still to do for R7: the turbulent flat plate with its recorded band,
-  the nozzle against OpenFOAM, and a three-mesh index for the cavity, all in `cargo test`.
+  of the lid speed. Still to do for R7: the nozzle against OpenFOAM, and a three-mesh index for the cavity, all in `cargo test`.
   Blasius is done (a new `vortia new plate` case, with a slip wall ahead of the plate, which
   needed `slip`/`symmetry` for vectors in the incompressible engine): mean and local friction
   coefficient within 1.5 % and the profile within 0.65 % of the stream speed, and OpenFOAM's
-  `simpleFoam` on the same case agrees on the wall stress to 0.1 %. The turbulent plate has a
-  recorded run (docs/VALIDATION.md, 2026-11-13) but is not yet a test.
+  `simpleFoam` on the same case agrees on the wall stress to 0.1 %. The turbulent plate is a test now too
+  (`vortia new plate-turbulent`, k-ω SST with wall functions, C_D within the 15 % band fixed
+  beforehand: −10.2 %, as OpenFOAM's).
 
 - **R4, started on 2026-11-18:** Setup has Fluid, Turbulence and Viscosity views that edit
   `constant/thermophysicalProperties`, `turbulenceProperties` and `transportProperties` in place,

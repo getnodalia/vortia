@@ -101,6 +101,41 @@ fn a_plate_is_meshed_with_a_slip_wall_ahead_and_runs() {
 }
 
 #[test]
+fn a_turbulent_plate_starts_at_the_leading_edge_with_the_fields_of_k_omega_sst() {
+    let dir = tempfile::tempdir().unwrap();
+    let plate = Plate {
+        cells_x: 20,
+        cells_y: 12,
+        ..Plate::turbulent()
+    };
+    let made = create(dir.path(), &Geometry::Plate(plate)).unwrap();
+    assert_eq!(made.cells, 20 * 12);
+    assert_eq!(made.application, "simpleFoam");
+    let boundary = std::fs::read_to_string(dir.path().join("constant/polyMesh/boundary")).unwrap();
+    for patch in ["inlet", "outlet", "plate", "freestream", "frontAndBack"] {
+        assert!(boundary.contains(patch), "no patch {patch}");
+    }
+    assert!(!boundary.contains("slip"));
+    for file in ["0/k", "0/omega", "0/nut"] {
+        assert!(dir.path().join(file).is_file(), "{file}");
+    }
+    let turbulence =
+        std::fs::read_to_string(dir.path().join("constant/turbulenceProperties")).unwrap();
+    assert!(turbulence.contains("kOmegaSST"));
+    let volume = MeshGeometry::compute(&PolyMesh::read_case(dir.path()).unwrap()).total_volume();
+    assert!((volume - 10.0 * 2.0 * 0.1).abs() < 1e-9, "{volume}");
+    end_at(dir.path(), 3);
+    let case = vortia_solvers::Case::open(dir.path()).unwrap();
+    vortia_solvers::run(&case, |_| {}).unwrap();
+    assert!(dir.path().join("3").is_dir());
+    // Numbers that cannot work are refused.
+    let mut bad = Plate::turbulent();
+    bad.intensity = 2.0;
+    let other = tempfile::tempdir().unwrap();
+    assert!(create(other.path(), &Geometry::Plate(bad)).is_err());
+}
+
+#[test]
 fn a_channel_is_meshed_and_runs() {
     let dir = tempfile::tempdir().unwrap();
     let made = create(dir.path(), &Geometry::Channel(Channel::default())).unwrap();

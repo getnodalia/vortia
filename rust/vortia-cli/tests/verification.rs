@@ -405,3 +405,43 @@ fn a_slip_wall_neither_rubs_nor_lets_anything_through() {
         assert!(u.get(1).copied().unwrap_or(f64::NAN).abs() < 1e-9, "{u:?}");
     }
 }
+
+/// The turbulent plate of `benchmarks/turbulent-flat-plate-sst`: k-ω SST with wall functions at
+/// Reynolds number 10⁷. The acceptance is the one fixed before the first run: the mean friction
+/// coefficient within 15 % of Prandtl–Schlichting's, C_D = 0.455 / (log₁₀ Re_L)^2.58. It is a
+/// plausibility check against an empirical correlation, not a validation.
+#[test]
+fn the_turbulent_plate_is_in_the_range_of_prandtl_schlichting() {
+    let dir = tempfile::tempdir().expect("a folder");
+    let plate = vortia_cases::Plate::turbulent();
+    vortia_cases::create(dir.path(), &Geometry::Plate(plate.clone()))
+        .expect("the plate is written");
+    let case = vortia_solvers::Case::open(dir.path()).expect("the solver opens it");
+    vortia_solvers::run(&case, |_| {}).expect("the run finishes");
+    let case = Case::open(dir.path()).expect("the results open");
+    let time = case.latest_time().expect("a time was written");
+
+    let reynolds = plate.speed * plate.length / plate.viscosity;
+    let correlation = 0.455 / reynolds.log10().powf(2.58);
+    let reference = vortia_post::ForceReference {
+        speed: plate.speed,
+        area: plate.length * plate.depth,
+        ..vortia_post::ForceReference::default()
+    };
+    let forces = case
+        .forces(&time, &["plate".to_owned()], &reference)
+        .expect("the forces are read");
+    let cd = forces
+        .metrics()
+        .into_iter()
+        .find(|m| m.key == "cd")
+        .map_or(f64::NAN, |m| m.value);
+    eprintln!(
+        "time {time}: C_D = {cd:.6}, Prandtl-Schlichting {correlation:.6} ({:+.1} %)",
+        100.0 * (cd / correlation - 1.0)
+    );
+    assert!(
+        (cd - correlation).abs() < 0.15 * correlation,
+        "C_D {cd} is not within 15 % of {correlation}"
+    );
+}
