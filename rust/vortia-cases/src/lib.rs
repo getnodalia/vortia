@@ -1,6 +1,6 @@
 //! Starting a case: what the Home page's "New" does.
 //!
-//! A case is chosen by its geometry (a box channel, a cavity, a planar nozzle or an
+//! A case is chosen by its geometry (a box channel, a cavity, a flat plate, a planar nozzle or an
 //! axisymmetric nozzle) and a handful of numbers. [`create`] writes the whole
 //! folder in OpenFOAM's layout: `system/blockMeshDict`, the mesh made from it
 //! by the engine's own `blockMesh`, the initial fields and the settings, so the
@@ -25,6 +25,7 @@ mod channel;
 mod error;
 mod files;
 mod nozzle;
+mod plate;
 
 use std::path::Path;
 
@@ -32,6 +33,7 @@ pub use cavity::Cavity;
 pub use channel::Channel;
 pub use error::{CaseError, Result};
 pub use nozzle::{Nozzle, NozzleKind};
+pub use plate::Plate;
 
 /// The most cells a new case may have: the same ceiling the Qt application
 /// puts on a block mesh.
@@ -46,6 +48,8 @@ pub enum Geometry {
     Nozzle(Nozzle),
     /// A lid-driven square cavity: laminar incompressible flow, closed on every side.
     Cavity(Cavity),
+    /// A flat plate in a uniform stream: a laminar boundary layer, steady and incompressible.
+    Plate(Plate),
 }
 
 impl Geometry {
@@ -55,6 +59,7 @@ impl Geometry {
             Geometry::Channel(_) => "Channel",
             Geometry::Nozzle(n) => n.kind.title(),
             Geometry::Cavity(_) => "Cavity",
+            Geometry::Plate(_) => "Flat plate",
         }
     }
 }
@@ -80,6 +85,7 @@ pub fn create(dir: &Path, geometry: &Geometry) -> Result<Created> {
         Geometry::Channel(c) => c.files()?,
         Geometry::Nozzle(n) => n.files()?,
         Geometry::Cavity(c) => c.files()?,
+        Geometry::Plate(p) => p.files()?,
     };
     files::write_all(dir, &set.files)?;
     let mesh = files::mesh(dir, &set.block_mesh_dict)?;

@@ -7,7 +7,7 @@ use std::path::Path;
 
 use vortia_cases::{Channel, Geometry};
 use vortia_core::Vec3;
-use vortia_post::{Case, gci};
+use vortia_post::{Case, FieldValues, gci};
 
 const LENGTH: f64 = 1.0;
 const HEIGHT: f64 = 0.1;
@@ -214,4 +214,171 @@ fn the_cavity_matches_ghia_at_reynolds_100() {
     println!("Cavity Re 100, {n}x{n}: u on x = 1/2 differs by {du:e}, v on y = 1/2 by {dv:e} of U");
     assert!(du < 0.05, "u differs from Ghia by {du:e} of the lid speed");
     assert!(dv < 0.05, "v differs from Ghia by {dv:e} of the lid speed");
+}
+
+/// The Blasius function `f'(η) = u/U` against `η = y √(U / ν x)`: the solution of
+/// `f''' + f f''/2 = 0` with `f(0) = f'(0) = 0` and `f'(∞) = 1`, integrated from the wall value
+/// `f''(0) = 0.332057` by fourth-order Runge-Kutta. Gives `f'` at each `η` asked for, which must
+/// be increasing.
+fn blasius(etas: &[f64]) -> Vec<f64> {
+    let step = 1.0e-3;
+    let rate = |s: [f64; 3]| [s[1], s[2], -0.5 * s[0] * s[2]];
+    let add =
+        |a: [f64; 3], b: [f64; 3], k: f64| [a[0] + k * b[0], a[1] + k * b[1], a[2] + k * b[2]];
+    let mut s = [0.0, 0.0, 0.332_057_336_215_196];
+    let mut eta = 0.0;
+    etas.iter()
+        .map(|&target| {
+            while eta + step <= target {
+                let k1 = rate(s);
+                let k2 = rate(add(s, k1, step / 2.0));
+                let k3 = rate(add(s, k2, step / 2.0));
+                let k4 = rate(add(s, k3, step));
+                for i in 0..3 {
+                    s[i] += step / 6.0 * (k1[i] + 2.0 * k2[i] + 2.0 * k3[i] + k4[i]);
+                }
+                eta += step;
+            }
+            // The rest of the way to the target, by the slope at the last point.
+            s[1] + (target - eta) * s[2]
+        })
+        .collect()
+}
+
+#[test]
+fn the_blasius_function_has_its_known_values() {
+    let f = blasius(&[1.0, 2.0, 3.0, 5.0]);
+    for (got, table) in f.iter().zip([0.32979, 0.62977, 0.84605, 0.99155]) {
+        assert!((got - table).abs() < 2e-5, "{got} vs {table}");
+    }
+}
+
+#[test]
+fn the_flat_plate_matches_blasius() {
+    let dir = tempfile::tempdir().expect("a folder");
+    // A mesh a quarter the size of the default, which keeps the test quick: the friction
+    // coefficient is within 2 % of Blasius's on it and about as far on the default mesh.
+    let plate = vortia_cases::Plate {
+        height: 0.3,
+        cells_x: 50,
+        cells_up: 10,
+        cells_y: 80,
+        grading: 200.0,
+        ..vortia_cases::Plate::default()
+    };
+    vortia_cases::create(dir.path(), &Geometry::Plate(plate.clone()))
+        .expect("the plate is written");
+    let case = vortia_solvers::Case::open(dir.path()).expect("the solver opens it");
+    vortia_solvers::run(&case, |_| {}).expect("the run finishes");
+    let case = Case::open(dir.path()).expect("the results open");
+    let time = case.latest_time().expect("a time was written");
+
+    // The friction coefficient from the stress the engine reports on the plate: local at the
+    // middle (Blasius gives 0.664 / √Re_x) and the mean over the plate (1.328 / √Re_L).
+    let wall = case.wall(&time, "plate").expect("the wall is read");
+    let q = plate.speed * plate.speed;
+    let mean = 2.0 * wall.viscous_force.x / (wall.area * q);
+    let exact_mean = 1.328 / (plate.speed * plate.length / plate.viscosity).sqrt();
+    eprintln!("mean cf = {mean:.5}, Blasius {exact_mean:.5}");
+    assert!(
+        (mean - exact_mean).abs() < 0.05 * exact_mean,
+        "the mean cf {mean} is not within 5 % of {exact_mean}"
+    );
+    // The faces of the plate run along it in cell order, so the middle one is half way.
+    let middle = wall
+        .shear
+        .get(plate.cells_x / 2)
+        .map_or(f64::NAN, |s| -2.0 * s.x / q);
+    let exact_middle = 0.664 / (plate.speed * 0.5 * plate.length / plate.viscosity).sqrt();
+    eprintln!("cf at x = L/2: {middle:.5}, Blasius {exact_middle:.5}");
+    assert!(
+        (middle - exact_middle).abs() < 0.05 * exact_middle,
+        "cf at x = L/2, {middle}, is not within 5 % of {exact_middle}"
+    );
+
+    // The profile half way along the plate, in every cell of the column up to η = 5: the
+    // largest difference from Blasius's, relative to the stream speed (the acceptance of
+    // `benchmarks/blasius-flat-plate`).
+    let centres = &case.geometry().cell_centres;
+    // The plate starts at x = 0 and the slip wall is at negative x.
+    let x_mid = 0.5 * plate.length;
+    let x = centres
+        .iter()
+        .map(|c| c.x)
+        .min_by(|a, b| (a - x_mid).abs().total_cmp(&(b - x_mid).abs()))
+        .expect("the mesh has cells");
+    let scale = (plate.speed / (plate.viscosity * x)).sqrt();
+    let mut column: Vec<(f64, f64)> = centres
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| (c.x - x).abs() < 1e-9 && c.y * scale <= 5.0)
+        .map(|(i, c)| (c.y * scale, i as f64))
+        .collect();
+    column.sort_by(|a, b| a.0.total_cmp(&b.0));
+    assert!(column.len() > 10, "{} cells in the layer", column.len());
+    let exact = blasius(&column.iter().map(|c| c.0).collect::<Vec<_>>());
+    let FieldValues::Vector(u) = case.field(&time, "U").expect("U is read") else {
+        panic!("U is a vector");
+    };
+    let mut worst = 0.0f64;
+    for ((eta, i), f) in column.iter().zip(exact) {
+        let speed = u.get(*i as usize).map_or(f64::NAN, |v| v.x) / plate.speed;
+        worst = worst.max((speed - f).abs());
+        eprintln!("eta {eta:.3}: {speed:.4} vs {f:.4}");
+    }
+    eprintln!("largest difference {worst:.4} of the stream speed");
+    assert!(worst < 0.05, "the profile is {worst} off Blasius's");
+}
+
+/// A stream that meets nothing but slip walls stays as it is: uniform, with no friction on the
+/// walls and no flow through them. (`slip` on a plane normal to an axis.)
+#[test]
+fn a_slip_wall_neither_rubs_nor_lets_anything_through() {
+    let dir = tempfile::tempdir().expect("a folder");
+    let plate = vortia_cases::Plate {
+        cells_x: 10,
+        cells_up: 4,
+        cells_y: 8,
+        grading: 4.0,
+        ..vortia_cases::Plate::default()
+    };
+    vortia_cases::create(dir.path(), &Geometry::Plate(plate)).expect("the plate is written");
+    let velocity = dir.path().join("0/U");
+    let text = std::fs::read_to_string(&velocity).expect("U is there");
+    assert!(text.contains("noSlip"));
+    std::fs::write(&velocity, text.replace("noSlip", "slip")).expect("U is written");
+    // A uniform stream is already the answer: a few iterations show it.
+    let control = dir.path().join("system/controlDict");
+    let text = std::fs::read_to_string(&control).expect("controlDict is there");
+    assert!(text.contains("endTime         3000;"));
+    let text = text
+        .replace("endTime         3000;", "endTime         20;")
+        .replace("writeInterval   100;", "writeInterval   20;");
+    std::fs::write(&control, text).expect("controlDict is written");
+    let case = vortia_solvers::Case::open(dir.path()).expect("the solver opens it");
+    vortia_solvers::run(&case, |_| {}).expect("the run finishes");
+    let case = Case::open(dir.path()).expect("the results open");
+    let time = case.latest_time().expect("a time was written");
+
+    let wall = case.wall(&time, "plate").expect("the wall is read");
+    assert!(
+        wall.viscous_force.norm() < 1e-12,
+        "{:?}",
+        wall.viscous_force
+    );
+    for patch in ["plate", "slip"] {
+        let flux = case.flux(&time, patch).expect("the flux is read");
+        assert!(flux.abs() < 1e-12, "{patch} lets {flux} through");
+    }
+    for y in [0.01, 0.1, 0.45] {
+        let u = case
+            .probe(&time, "U", Vec3::new(0.5, y, 0.005))
+            .expect("the point is inside")
+            .value;
+        assert!(
+            (u.first().copied().unwrap_or(f64::NAN) - 1.0).abs() < 1e-9,
+            "{u:?}"
+        );
+        assert!(u.get(1).copied().unwrap_or(f64::NAN).abs() < 1e-9, "{u:?}");
+    }
 }

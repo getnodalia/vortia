@@ -16,7 +16,7 @@
 
 use vortia_core::Vec3;
 use vortia_fields::{Data, VectorField};
-use vortia_mesh::{MeshGeometry, PatchKind, PolyMesh};
+use vortia_mesh::{MeshGeometry, Patch, PatchKind, PolyMesh};
 
 use crate::bc::check_solvable;
 use crate::error::{FvError, Result};
@@ -68,6 +68,37 @@ impl VectorBc {
     pub fn wedge_sn_grad(cell_t: &[[f64; 3]; 3], inside: Vec3, delta: f64) -> Vec3 {
         (transform(cell_t, inside) - inside) * (0.5 * delta)
     }
+}
+
+/// OpenFOAM's `slip`, `symmetry` and `symmetryPlane` on a plane that is normal to an axis: the
+/// normal component of the velocity is zero on the face and the others have no gradient, which
+/// is a `directionMixed` with the normal axis fixed at zero.
+fn slip_condition(areas: &[Vec3], patch: &Patch) -> Result<VectorBc> {
+    let mut mask = Vec::with_capacity(patch.size);
+    for f in patch.faces() {
+        let a = areas.get(f).copied().unwrap_or_default();
+        let len = a.norm();
+        if len <= 0.0 || !len.is_finite() {
+            return Err(FvError::Condition(format!(
+                "patch '{}' has a face with no area",
+                patch.name
+            )));
+        }
+        let n = a * (1.0 / len);
+        let axis = |c: f64| if c.abs() > 1.0 - 1.0e-6 { 1.0 } else { 0.0 };
+        let m = Vec3::new(axis(n.x), axis(n.y), axis(n.z));
+        if m.x + m.y + m.z != 1.0 {
+            return Err(FvError::Condition(format!(
+                "patch '{}': slip and symmetry are supported on planes normal to an axis, and a face of this one is not",
+                patch.name
+            )));
+        }
+        mask.push(m);
+    }
+    Ok(VectorBc::Mixed {
+        ref_value: vec![Vec3::default(); mask.len()],
+        mask,
+    })
 }
 
 /// One vector condition per mesh patch, in patch order.
@@ -133,6 +164,10 @@ impl VectorBoundary {
                         face_t,
                         cell_t: mat_mul(&face_t, &face_t),
                     }
+                }
+                "slip" | "symmetry" | "symmetryPlane" => {
+                    let areas = areas.get_or_insert_with(|| MeshGeometry::compute(mesh).face_areas);
+                    slip_condition(areas, patch)?
                 }
                 "pressureInletVelocity" if driven.contains(&"pressureInletVelocity") => {
                     VectorBc::FixedValue(given()?)

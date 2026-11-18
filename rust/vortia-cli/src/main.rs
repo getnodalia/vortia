@@ -36,7 +36,7 @@ mod new;
 mod post;
 mod section;
 
-const USAGE: &str = "usage: vortia new channel|cavity|nozzle|nozzle-wedge DIR [NAME=VALUE...]\n\
+const USAGE: &str = "usage: vortia new channel|cavity|plate|nozzle|nozzle-wedge DIR [NAME=VALUE...]\n\
     \x20      vortia check-mesh [CASE]\n\
     \x20      vortia fields [CASE [TIME]]\n\
     \x20      vortia solve [CASE]\n\

@@ -72,6 +72,35 @@ fn a_cavity_is_meshed_with_a_lid_and_runs() {
 }
 
 #[test]
+fn a_plate_is_meshed_with_a_slip_wall_ahead_and_runs() {
+    let dir = tempfile::tempdir().unwrap();
+    let plate = Plate {
+        cells_x: 10,
+        cells_up: 4,
+        cells_y: 8,
+        ..Plate::default()
+    };
+    let made = create(dir.path(), &Geometry::Plate(plate)).unwrap();
+    assert_eq!(made.cells, (10 + 4) * 8);
+    assert_eq!(made.application, "simpleFoam");
+    let boundary = std::fs::read_to_string(dir.path().join("constant/polyMesh/boundary")).unwrap();
+    for patch in ["inlet", "outlet", "slip", "plate", "top", "frontAndBack"] {
+        assert!(boundary.contains(patch), "no patch {patch}");
+    }
+    let mesh = PolyMesh::read_case(dir.path()).unwrap();
+    let volume = MeshGeometry::compute(&mesh).total_volume();
+    let expected = 1.2 * 0.5 * 0.01;
+    assert!(
+        (volume - expected).abs() < 1e-12,
+        "the box is 1.2 × 0.5 × 0.01: {volume}"
+    );
+    end_at(dir.path(), 5);
+    let case = vortia_solvers::Case::open(dir.path()).unwrap();
+    vortia_solvers::run(&case, |_| {}).unwrap();
+    assert!(dir.path().join("5").is_dir());
+}
+
+#[test]
 fn a_channel_is_meshed_and_runs() {
     let dir = tempfile::tempdir().unwrap();
     let made = create(dir.path(), &Geometry::Channel(Channel::default())).unwrap();
@@ -250,6 +279,36 @@ fn what_cannot_make_a_case_is_refused() {
     for c in bad_cavities {
         assert!(create(&target, &Geometry::Cavity(c)).is_err());
     }
+    let bad_plates = [
+        Plate {
+            length: 0.0,
+            ..Plate::default()
+        },
+        Plate {
+            upstream: -1.0,
+            ..Plate::default()
+        },
+        Plate {
+            cells_up: 0,
+            ..Plate::default()
+        },
+        Plate {
+            cells_x: 10_000,
+            cells_y: 10_000,
+            ..Plate::default()
+        },
+        Plate {
+            speed: f64::NAN,
+            ..Plate::default()
+        },
+        Plate {
+            viscosity: f64::INFINITY,
+            ..Plate::default()
+        },
+    ];
+    for p in bad_plates {
+        assert!(create(&target, &Geometry::Plate(p)).is_err());
+    }
     for kind in [NozzleKind::Planar, NozzleKind::Axisymmetric] {
         let base = nozzle(kind);
         let mut bad = vec![
@@ -329,6 +388,7 @@ fn openfoam_makes_the_same_meshes() {
     let geometries = [
         Geometry::Channel(Channel::default()),
         Geometry::Cavity(Cavity::default()),
+        Geometry::Plate(Plate::default()),
         Geometry::Nozzle(nozzle(NozzleKind::Planar)),
         Geometry::Nozzle(nozzle(NozzleKind::Axisymmetric)),
     ];
