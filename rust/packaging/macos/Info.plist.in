@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Template of the Rust Vortia: package.sh replaces @VERSION@ (X.Y.Z). The deployment target
+     must match MACOSX_DEPLOYMENT_TARGET in package.sh. -->
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key><string>Vortia</string>
+    <key>CFBundleDisplayName</key><string>Vortia</string>
+    <key>CFBundleIdentifier</key><string>dev.danielmiguelt.Vortia</string>
+    <key>CFBundleExecutable</key><string>vortia-app</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleIconFile</key><string>Vortia.icns</string>
+    <key>CFBundleVersion</key><string>@VERSION@</string>
+    <key>CFBundleShortVersionString</key><string>@VERSION@</string>
+    <key>CFBundleDevelopmentRegion</key><string>en</string>
+    <key>CFBundleLocalizations</key><array><string>en</string><string>es</string></array>
+    <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
+    <key>NSHighResolutionCapable</key><true/>
+    <key>NSSupportsAutomaticGraphicsSwitching</key><true/>
+    <key>LSMinimumSystemVersion</key><string>11.0</string>
+</dict>
+</plist>

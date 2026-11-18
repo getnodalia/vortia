@@ -110,8 +110,11 @@ Started on 2026-11-18: `rust/packaging/linux/package.sh` builds the Rust app and
 tool into a tarball and an AppImage (no OpenFOAM inside), and `.github/workflows/rust-packages.yml`
 runs it on Ubuntu 22.04 for changes under `rust/packaging/`, keeping the files as workflow
 artifacts. Nothing is attached to a release yet: the release flow keeps shipping the C++
-application, reading its version from `CMakeLists.txt`, until the cutover. Still to do: the macOS
-DMG with the designed window, the release workflow reading `rust/Cargo.toml`, the website, and
+application, reading its version from `CMakeLists.txt`, until the cutover. The macOS DMG
+(`rust/packaging/macos/package.sh`, built by the same workflow on `macos-15`) puts `Vortia.app`
+(the app and the `vortia` tool, signed ad hoc, not notarized) in the installer window of the
+existing app. It could only be written, not run, on the Linux machine that made it, so the
+workflow is its first test. Still to do: the release workflow reading `rust/Cargo.toml`, the website, and
 the in-app updater (`nodalia-update`), which stays off until the Rust app has releases of its own,
 or it would offer the C++ installers over the Rust app.
 
