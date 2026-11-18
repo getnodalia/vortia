@@ -1,8 +1,8 @@
-# Vortia in Rust (in progress)
+# Vortia in Rust
 
-Vortia is moving to Rust, together with a CFD engine of its own built from
-OpenFOAM's methods. The C++20/Qt 6 application in `src/` remains the one that
-ships until the Rust side can replace it. The plan, stages and principles are
+Vortia is written in Rust, together with a CFD engine of its own built from
+OpenFOAM's methods. Since 0.11.0 this is the application the releases ship; the
+C++20/Qt 6 application in `src/` is superseded and kept only until it is removed. The plan, stages and principles are
 in [`docs/architecture/rust-engine.md`](../docs/architecture/rust-engine.md).
 
 ## Crates

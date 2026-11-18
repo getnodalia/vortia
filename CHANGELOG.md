@@ -7,6 +7,8 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-11-19
+
 ### Añadido
 - **Ver un caso de Fluent (R8):** «Abrir una geometría» acepta también un `.cas.h5` o `.msh.h5`:
   se lee con el lector HDF5 propio, se convierte con el mismo código que un `.msh` y se muestra

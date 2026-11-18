@@ -123,6 +123,10 @@ R10 and R11 last. R9 can move earlier if a Rust-only release is wanted sooner.
 
 ## Packaging (R9)
 
+Done on 2026-11-19: `release-auto.yml` reads the version from `rust/Cargo.toml` and
+`release-rust.yml` builds, checks and attaches the AppImage, the tarball and the DMG with their
+SHA-256 sums; 0.11.0 is the first Rust release. The text below is how it was built up.
+
 Started on 2026-11-18: `rust/packaging/linux/package.sh` builds the Rust app and the `vortia`
 tool into a tarball and an AppImage (no OpenFOAM inside), and `.github/workflows/rust-packages.yml`
 runs it on Ubuntu 22.04 for changes under `rust/packaging/`, keeping the files as workflow

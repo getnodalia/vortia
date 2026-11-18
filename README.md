@@ -5,14 +5,13 @@
   <br><br>
   <img src="https://raw.githubusercontent.com/danielmigueltejedor/vortia/main/resources/icons/vortia.png" width="192" alt="Vortia">
   <h1>Vortia</h1>
-  <p><strong>A free desktop application for CFD simulation with OpenFOAM, from geometry to 3D post-processing.</strong></p>
+  <p><strong>A free desktop application for CFD simulation, from geometry to post-processing, written in Rust with its own engine.</strong></p>
 
   <p>
-    <img src="https://img.shields.io/badge/version-0.10.0-3D9BFF" alt="Version 0.10.0">
+    <img src="https://img.shields.io/badge/version-0.11.0-3D9BFF" alt="Version 0.11.0">
     <img src="https://img.shields.io/badge/status-experimental-orange" alt="Experimental">
     <img src="https://img.shields.io/badge/platform-macOS%20arm64%20%7C%20Linux%20x86__64-5E81AC" alt="macOS arm64 and Linux x86_64">
-    <img src="https://img.shields.io/badge/Qt-6-41CD52?logo=qt&logoColor=white" alt="Qt 6">
-    <img src="https://img.shields.io/badge/C%2B%2B-20-00599C?logo=cplusplus&logoColor=white" alt="C++20">
+    <img src="https://img.shields.io/badge/Rust-2024-DEA584?logo=rust&logoColor=white" alt="Rust">
     <a href="./LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-2ea44f" alt="GPL-3.0-or-later"></a>
   </p>
 
@@ -37,22 +36,18 @@
 
 ## Overview
 
-**Vortia** is a native C++/Qt application that drives OpenFOAM through one
-workflow: geometry → mesh → physics → supervised run → interactive 3D
-post-processing, without touching the terminal. The published installers are
-self-contained: OpenFOAM, MPI and the mesher ship inside them.
+**Vortia** is a desktop application written entirely in Rust, with a
+finite-volume CFD engine of its own derived from OpenFOAM's methods, that takes
+one workflow from geometry to results: sketch or box → mesh → physics →
+supervised run → results, without touching the terminal. It needs no OpenFOAM,
+MPI, Python or Gmsh: the engine, the 2D mesher and the interface are Rust.
 
-On macOS there is a second edition, **Vortia Native**, written in SwiftUI: it
-is a client of `vortia-engine`, the same case pipeline without an interface
-([`docs/architecture/native-engine.md`](docs/architecture/native-engine.md)),
-with the stages of a case in a sidebar, live residuals, the result as a slice or
-a 3D surface, the compressible flow of a nozzle contour, and the section
-analysis and engineering report.
+Since 0.11.0 this is the application the releases ship. The earlier C++/Qt
+application and the macOS edition Vortia Native (SwiftUI), which drove OpenFOAM,
+are superseded; their source stays in the repository until it is removed
+([`docs/architecture/rust-only.md`](docs/architecture/rust-only.md)).
 
-Vortia is a Nodalia app maintained by one person. Today it computes with
-OpenFOAM; the direction is an application written entirely in Rust and a fluid
-dynamics engine of its own, built from OpenFOAM ([`docs/ROADMAP.md`](docs/ROADMAP.md)).
-It does not have parity with commercial CFD suites, and it says so: every
+Vortia is a Nodalia app maintained by one person. It does not have parity with commercial CFD suites, and it says so: every
 capability is listed with the evidence behind it in
 [`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md).
 
@@ -78,107 +73,67 @@ captures, not validation: see [`docs/VALIDATION.md`](docs/VALIDATION.md).
 
 ## What it does
 
-| Area | Vortia 0.7.1 | Evidence |
+| Area | Vortia 0.11.0 | Evidence |
 |---|---|---|
-| Geometry | Rectangular domains, 2D sketches with dimensions, lines and arcs, axisymmetric wedges, STL import for viewing | Software tests |
-| Meshing | Structured `blockMesh` with grading; Gmsh 2D and axisymmetric meshes from sketches; ASCII Fluent `.msh` import | Native runs |
-| Incompressible laminar | Transient `icoFoam` and steady `simpleFoam` from the interface | Native: Poiseuille, Ghia cavity |
-| RANS turbulence | Steady k-ω SST with wall functions | Native: flat plate against a correlation |
-| Compressible | Experimental in-house solver for axisymmetric nozzles | No physical validation |
-| Parallel | Local MPI, 1 to 8 processes, in the experimental compressible flow | Native self-test |
-| Post-processing | Contours and profiles in the VTK viewer, section analysis, HTML/CSV/JSON reports | Software tests |
-| Verification | Three-mesh GCI, flow-rate balance, profile comparison | Native and software |
+| Geometry | Rectangular domains, planar and axisymmetric nozzles, a region drawn on a canvas (lines, arcs, dimensions, saved sketch), STL and Fluent `.cas.h5` viewing | Software tests |
+| Meshing | Structured block meshes with grading, checked against `blockMesh`; its own 2D mesher for a drawn region; Fluent `.msh` and `.cas.h5` import | Compared with OpenFOAM v1912 |
+| Incompressible laminar | Transient `icoFoam` and steady `simpleFoam` | Poiseuille, Ghia cavity |
+| RANS turbulence | Steady k-ω SST with wall functions | Flat plate against a correlation, `simpleFoam` agreement |
+| Compressible | `rhoSimpleFoam` for nozzles and jets, natural convection of a Boussinesq fluid | Compared with OpenFOAM v1912 on the same meshes; de Vahl Davis cavity |
+| Post-processing | Fields, slices, streamlines, probes, lines, wall quantities, section analysis with HTML/CSV/JSON report, comparison between runs, CSV and VTK export | Software tests |
+| Verification | Three-mesh GCI, flow-rate balance, run diagnostics | Software tests |
 
-Not available: LES/DES, radiation and conjugate heat transfer (natural convection of a Boussinesq fluid exists in the Rust engine, without a screen in the app yet), multiphase, combustion, moving meshes,
-general 3D geometry with automatic volume meshing, remote or HPC runs. The
+Not available: LES/DES, radiation and conjugate heat transfer, multiphase, combustion,
+moving meshes, general 3D geometry with automatic volume meshing, remote or HPC runs,
+the results of Fluent `.dat.h5` files, and parallel runs. The
 full table, with what "evidence" means, is in the capability matrix.
 
 ## Installation
 
-Installers are published on the [Releases page](https://github.com/danielmigueltejedor/vortia/releases).
+Packages are published on the [Releases page](https://github.com/danielmigueltejedor/vortia/releases).
 
 | System | File | Requirements |
 |---|---|---|
-| macOS | `Vortia-<version>-macos-arm64.dmg` | Apple Silicon, macOS 14 or later. Ad-hoc signed and not notarised: the first time, right-click → Open |
-| macOS (Vortia Native) | `Vortia-<version>-native-macos-arm64.dmg` | The SwiftUI edition, same requirements; Liquid Glass on macOS 26. Ad-hoc signed and not notarised |
-| Linux | `Vortia-<version>-linux-x86_64.AppImage` | x86_64, glibc 2.31 or later (Ubuntu 20.04+, Debian 11+, Fedora, Arch…). Give it execute permission and open it |
+| macOS | `Vortia-<version>-macos-arm64.dmg` | Apple Silicon. Ad-hoc signed and not notarised: the first time, right-click → Open |
+| Linux | `Vortia-<version>-linux-x86_64.AppImage` | x86_64, glibc 2.35 or later. Give it execute permission and open it |
+| Linux | `Vortia-<version>-linux-x86_64.tar.gz` | The app and the `vortia` command-line tool, without an AppImage |
 
-You do not need to install OpenFOAM, MPI, Python or Gmsh: they are bundled.
+Each file has its SHA-256 sum in a `.sha256` file. The AppImage needs FUSE
+(`fusermount`); without it, run it with `--appimage-extract-and-run`. The app
+checks for updates once a day and from its menu.
 
-On Linux the AppImage needs FUSE (`fusermount`), which common desktops
-include; without it, run it with `--appimage-extract-and-run`. The
-experimental compressible flow is not available in the Linux AppImage in
-0.3.0, and on macOS it needs the Xcode Command Line Tools because its solver
-is compiled on first use.
+## Command line
+
+`vortia` makes, runs and inspects cases without the interface: `vortia new`,
+`vortia solve`, `vortia probe`, `vortia sample`, `vortia patch`, `vortia flux`,
+`vortia wall`, `vortia streamline`, `vortia export`. `vortia help` lists them.
 
 ## Verification
 
-Check an installation with the bundled engine:
-
-```sh
-vortia --verify-engine   # runs a real case in serial and with 2 processes
-vortia --verify-mesher   # checks the bundled mesher
-```
-
-Registered native results for 0.3.0 are in [`docs/VALIDATION.md`](docs/VALIDATION.md):
-Poiseuille 0.075 % (L2), Ghia cavity 0.35 %, and turbulent flat plate −10.2 %
-against the correlation, inside the 15 % band fixed before the run. A case
-that finishes is not a verified case: only those compared against their
-reference within a tolerance set beforehand count.
+The verification cases (Poiseuille, Ghia cavity, Blasius, turbulent flat plate,
+three-mesh GCI) run in `cargo test`; their tolerances are in
+[`docs/VALIDATION.md`](docs/VALIDATION.md). A case that finishes is not a
+verified case: only those compared against their reference within a tolerance
+set beforehand count.
 
 ## Building from source
 
-**Stack:** C++20 · Qt 6 · VTK · OpenFOAM (external engine, through processes) · CMake · GoogleTest
-
-| Tool | Minimum version | Notes |
-|---|---|---|
-| CMake | 3.24 | |
-| C++20 compiler | Clang 15 / GCC 12 / MSVC 2022 | |
-| Qt | 6.5 | Widgets, OpenGLWidgets |
-| VTK | 9.2 | With the `GUISupportQt` module (Qt 6 build) |
-| OpenFOAM | ESI v2412+ or Foundation 11+ | Only when building from source; the installers include it |
-
-### macOS (Homebrew)
+**Stack:** Rust (stable, edition 2024) · egui · `nodalia-theme`
 
 ```sh
-brew install cmake ninja qt vtk nlohmann-json hdf5 googletest
-# Engine: OpenFOAM.app (gerlero/openfoam-app) or the one bundled in the published DMG.
+cargo build --release --manifest-path rust/Cargo.toml -p vortia-app -p vortia-cli
+cargo test --manifest-path rust/Cargo.toml
+./rust/target/release/vortia-app
 ```
 
-### Ubuntu 24.04
-
-```sh
-sudo apt install cmake ninja-build qt6-base-dev libgl1-mesa-dev
-# VTK 9 with Qt 6: apt (libvtk9-qt-dev) or your own build if the packaged one lacks GUISupportQt
-# OpenFOAM ESI: https://develop.openfoam.com/Development/openfoam/-/wikis/precompiled
-```
-
-### Build and test
-
-```sh
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build
-ctest --test-dir build --output-on-failure
-./build/bin/vortia
-```
-
-### macOS application bundle
-
-```sh
-cmake --build build-macos --target vortia_macos_bundle
-open build-macos/Vortia.app
-```
-
-The development executable `build-macos/bin/vortia` remains available. For a
-distributable package, `packaging/macos/deploy_bundle.py` bundles Qt and VTK
-and applies an ad-hoc signature; the published DMG is built by the
-`Release packages` workflow.
+`rust/packaging/linux/package.sh` and `rust/packaging/macos/package.sh` make the
+AppImage, the tarball and the DMG the releases carry. The earlier C++/Qt source
+(`src/`, `CMakeLists.txt`) is kept until it is removed and is not part of a release.
 
 ### Application icon
 
-`resources/icons/vortia.png` (512 px) is embedded through the Qt resource
-system (`:/vortia/app-icon.png`), so the window and the Dock use the same
-design. It sits on the Nodalix app grid, like the Colloid icons around it: a
+`resources/icons/vortia.png` (512 px) is the application icon, so the window and the
+Dock use the same design. It sits on the Nodalix app grid, like the Colloid icons around it: a
 tile of 224/256 with a 16 px margin, a 51.5 px radius and a soft shadow, made
 by `tools/nodalia-app-icon.py` in nodalix-icon-theme. `resources/icons/vortia-macos.png` is the same artwork at full bleed
 for the macOS bundle, where the system applies its own icon mask.
@@ -186,33 +141,6 @@ for the macOS bundle, where the system applies its own icon mask.
 The icon is a black-and-white portrait of Daniel Bernoulli over blue, part of
 the Nodalia icon family. The source is an 18th-century engraving in the public
 domain (Wikimedia Commons, `Daniel Bernoulli 001.jpg`).
-
-## Parallel compressible runs
-
-In Flow setup → Initialisation and calculation, **CPU processes** selects 1
-to 8 processes (1 is serial). Changing it keeps the mesh and the saved
-fields. Older projects stay on one process until the option is edited and
-saved; new projects start from a value adapted to the machine, up to 8.
-
-- The run uses MPI with Scotch inside `parallel-runs` and reconstructs only
-  the last complete state when it finishes or is cancelled. Intermediate
-  per-partition writes and logs stay in that folder for recovery, so include
-  it in backups. If reconstruction fails, the last state of the main case is
-  left intact.
-- The solver revision bundled with the app is prepared in
-  `solver-backends/<hash>`, with its own executable in `bin/<hash>`. The first
-  run of a revision may compile it.
-- Speed-up depends on the machine and the mesh; more processes can add
-  communication cost. Courant steps were not increased and tolerances were
-  not relaxed to obtain it.
-- On the desktop, Open MPI processes yield the CPU while waiting for
-  messages. An explicit `OMPI_MCA_mpi_yield_when_idle` in the captured
-  environment is respected. Avoid running several calculations that together
-  request more processes than the available cores.
-
-The compressible flow remains experimental: check convergence, mass balance,
-mesh dependence and sensitivity to the partition, especially in the
-turbulent fields.
 
 ## Project status
 
