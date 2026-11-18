@@ -13,6 +13,7 @@ use nodalia_theme::office::{self, Entry, Nav};
 use nodalia_theme::{Mode, Palette, for_egui, space, window_controls};
 
 use super::conditions_tab;
+use super::newcase;
 use super::{
     CaseView, Dialog, Screen, Tab, Tone, VortiaApp, convergence_card, file_tab, grouped, mesh_tab,
     muted, own_controls, palette, results_tab, scientific, settings_tab, status_label, tone_colors,
@@ -24,6 +25,7 @@ use crate::viewer::Source;
 /// Something the user asked for, from the File menu, the ribbon or the command search.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Cmd {
+    New,
     Open,
     Run,
     Stop,
@@ -37,6 +39,7 @@ pub(super) enum Cmd {
 const COMMANDS: &[(&str, Cmd)] = &[
     ("Run the case", Cmd::Run),
     ("Stop the run", Cmd::Stop),
+    ("New case", Cmd::New),
     ("Open a case", Cmd::Open),
     ("Close the case", Cmd::CloseCase),
     ("Go to the run", Cmd::Go(Tab::Run)),
@@ -145,8 +148,14 @@ impl VortiaApp {
     /// Does what was asked for.
     pub(super) fn perform(&mut self, ctx: &Context, command: Cmd) {
         match command {
+            Cmd::New => {
+                self.home = true;
+                self.notice = None;
+                self.new_case = Some(newcase::NewCase::new(&newcase::NewCase::default_base()));
+            }
             Cmd::Open => {
                 self.home = true;
+                self.new_case = None;
                 self.focus_open = true;
             }
             Cmd::Run => {
@@ -297,6 +306,7 @@ impl VortiaApp {
                         ui.close();
                     }
                 };
+                item(ui, "New case", true, Cmd::New);
                 item(ui, "Open a case", true, Cmd::Open);
                 item(ui, "Run", case_open && !running, Cmd::Run);
                 item(ui, "Stop", running, Cmd::Stop);
@@ -383,10 +393,15 @@ impl VortiaApp {
             back: if has_case { "Back to the case" } else { "" },
             top: vec![
                 Entry::item("home", "Home", "home"),
+                Entry::item("new", "New", "plus"),
                 Entry::item("open", "Open", "folder"),
             ],
             bottom: vec![Entry::item("preferences", "Preferences", "settings")],
-            selected: Some("home"),
+            selected: Some(if self.new_case.is_some() {
+                "new"
+            } else {
+                "home"
+            }),
         };
         let icon = self.icon(ctx).id();
         let version = format!("Version {}", env!("CARGO_PKG_VERSION"));
@@ -409,8 +424,18 @@ impl VortiaApp {
             .collect();
         let mut open = false;
         let mut picked = None;
+        let mut create = false;
+        let new_case = &mut self.new_case;
         let nav_pick = office::file_view(ui, &home, &nav, |ui| {
             eng::home_header(ui, look, Some(icon), "Vortia", &version);
+            if let Some(form) = new_case {
+                create = matches!(form.ui(ui, look, p), newcase::Ask::Create);
+                if let Some(notice) = &self.notice {
+                    ui.add_space(space::SM);
+                    ui.colored_label(for_egui::color(p.status_danger_fg), notice);
+                }
+                return;
+            }
             office::section(ui, &home, "Open a case", |ui| {
                 ui.horizontal(|ui| {
                     let width = (ui.available_width() - 120.0).clamp(160.0, 420.0);
@@ -451,9 +476,26 @@ impl VortiaApp {
         });
         match nav_pick.as_deref() {
             Some(office::BACK) => self.home = false,
-            Some("open") => self.focus_open = true,
+            Some("home") => self.new_case = None,
+            Some("new") if self.new_case.is_none() => {
+                self.notice = None;
+                self.new_case = Some(newcase::NewCase::new(&newcase::NewCase::default_base()));
+            }
+            Some("open") => {
+                self.new_case = None;
+                self.focus_open = true;
+            }
             Some("preferences") => self.dialog = Some(Dialog::Preferences),
             _ => {}
+        }
+        if create && let Some(form) = &self.new_case {
+            match form.create() {
+                Ok(dir) => match self.open_case(&dir) {
+                    Ok(()) => self.new_case = None,
+                    Err(message) => self.notice = Some(message),
+                },
+                Err(message) => self.notice = Some(message),
+            }
         }
         if open {
             let dir = std::path::PathBuf::from(self.path_input.trim());
@@ -1274,6 +1316,10 @@ mod tests {
             frame(&mut app, &ctx);
             app.home = true;
             frame(&mut app, &ctx);
+            app.perform(&ctx, Cmd::New);
+            assert!(app.new_case.is_some());
+            frame(&mut app, &ctx);
+            app.new_case = None;
             app.search = Some("run".into());
             frame(&mut app, &ctx);
             assert!(app.search.is_some());

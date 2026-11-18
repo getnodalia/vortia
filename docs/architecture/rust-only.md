@@ -40,6 +40,19 @@ STL, updater, issue-report or translation code exists there).
 | R10 | The macOS edition | Vortia Native (SwiftUI) and the C++ `vortia-engine` | None | Retired together with the rest; the Rust app's macOS DMG replaces it |
 | R11 | Remove | `src/`, `platforms/apple`, `CMakeLists.txt`, `cmake/`, `tests/` (C++), C++ workflows, README and website text, old releases marked as superseded | | Only after R1 to R10 |
 
+## Progress
+
+- **R1, done on 2026-11-18** (all but one clause): Home "New" and `vortia new` make a 2D channel
+  (`simpleFoam`) or a planar or axisymmetric nozzle (`rhoSimpleFoam`, k-ω SST) with the case,
+  its block mesh and its fields written by Rust (`rust/vortia-cases`). The three meshes have the
+  same cells, points and faces, and "Mesh OK", as OpenFOAM v1912's `blockMesh` and `checkMesh`
+  on the same `blockMeshDict` (a test that runs when OpenFOAM is installed). Not done:
+  `examples/nozzle-practice-2026` is a nozzle that discharges into an open atmosphere region,
+  which the new nozzle cases do not have; making that case from the app belongs with R4 (physics
+  setup), where the boundaries are chosen. The planar nozzle is the whole slot, not the Qt
+  application's half section: the compressible solver has no symmetry condition for T, k and
+  omega yet (an engine task for R4).
+
 ## Order
 
 R1, then R4 and R5 (a case can be made and run entirely in the Rust app), then
