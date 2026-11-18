@@ -7,6 +7,9 @@ use vortia_cases::{Cavity, Channel, Geometry, Nozzle, NozzleKind, Plate};
 
 /// `vortia new KIND DIR [NAME=VALUE...]`.
 pub fn run(args: &[&str]) -> ExitCode {
+    if let ["sketch", dir, file, settings @ ..] = args {
+        return from_sketch(dir, file, settings);
+    }
     let [kind, dir, settings @ ..] = args else {
         eprintln!(
             "vortia: new needs a kind (channel, cavity, plate, nozzle or nozzle-wedge) and a folder"
@@ -70,4 +73,64 @@ fn geometry(kind: &str, settings: &[&str]) -> Result<Geometry, String> {
         .map_err(|e| e.to_string())?;
     }
     Ok(geometry)
+}
+
+/// `vortia new sketch DIR FILE [planar|axisymmetric] [segments=N] [NAME=VALUE...]`: a case whose
+/// wall is the profile of a sketch file.
+fn from_sketch(dir: &str, file: &str, settings: &[&str]) -> ExitCode {
+    let build = || -> Result<Nozzle, String> {
+        let mut sketch = vortia_sketch::Sketch::open(Path::new(file)).map_err(|e| e.to_string())?;
+        sketch.solve().map_err(|e| e.to_string())?;
+        let mut kind = NozzleKind::Planar;
+        let mut segments = 60;
+        let mut rest = Vec::new();
+        for setting in settings {
+            match *setting {
+                "planar" => kind = NozzleKind::Planar,
+                "axisymmetric" => kind = NozzleKind::Axisymmetric,
+                other => match other.strip_prefix("segments=") {
+                    Some(n) => {
+                        segments = n
+                            .parse()
+                            .map_err(|_| format!("'{n}' in '{other}' is not a whole number"))?;
+                    }
+                    None => rest.push(other),
+                },
+            }
+        }
+        let mut nozzle = Nozzle::from_sketch(kind, &sketch, segments).map_err(|e| e.to_string())?;
+        for setting in rest {
+            let (name, value) = setting
+                .split_once('=')
+                .ok_or_else(|| format!("'{setting}' is not NAME=VALUE"))?;
+            let number: f64 = value
+                .parse()
+                .map_err(|_| format!("'{value}' in '{setting}' is not a number"))?;
+            nozzle.set(name, number).map_err(|e| e.to_string())?;
+        }
+        Ok(nozzle)
+    };
+    let nozzle = match build() {
+        Ok(n) => n,
+        Err(message) => {
+            eprintln!("vortia: {message}");
+            return ExitCode::from(2);
+        }
+    };
+    match vortia_cases::create(Path::new(dir), &Geometry::Nozzle(nozzle)) {
+        Ok(made) => {
+            let _ = std::io::Write::write_fmt(
+                &mut std::io::stdout(),
+                format_args!(
+                    "Wrote the sketched duct ({} cells, {} points) to {dir}; run it with `vortia solve {dir}` ({})\n",
+                    made.cells, made.points, made.application
+                ),
+            );
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("vortia: {e}");
+            ExitCode::FAILURE
+        }
+    }
 }

@@ -28,6 +28,7 @@ pub mod prefs;
 pub mod residuals;
 pub mod section;
 pub mod session;
+pub mod sketch_editor;
 pub mod summary;
 pub mod surface;
 pub mod viewer;

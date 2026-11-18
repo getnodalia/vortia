@@ -8,6 +8,8 @@ use nodalia_theme::office;
 use nodalia_theme::{Palette, space};
 use vortia_cases::{Cavity, Channel, Geometry, Nozzle, NozzleKind, Plate};
 
+use crate::sketch_editor::{Outline, SketchEditor, Template};
+
 /// Which of the cases Home offers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Kind {
@@ -16,15 +18,17 @@ pub(super) enum Kind {
     Plate,
     PlanarNozzle,
     AxisymmetricNozzle,
+    Sketch,
 }
 
 impl Kind {
-    const ALL: [Kind; 5] = [
+    const ALL: [Kind; 6] = [
         Kind::Channel,
         Kind::Cavity,
         Kind::Plate,
         Kind::PlanarNozzle,
         Kind::AxisymmetricNozzle,
+        Kind::Sketch,
     ];
 
     fn title(self) -> &'static str {
@@ -34,6 +38,7 @@ impl Kind {
             Kind::Plate => "Flat plate",
             Kind::PlanarNozzle => "Planar nozzle",
             Kind::AxisymmetricNozzle => "Axisymmetric nozzle",
+            Kind::Sketch => "From sketch",
         }
     }
 
@@ -54,6 +59,9 @@ impl Kind {
             Kind::AxisymmetricNozzle => {
                 "A converging-diverging nozzle as a 5° wedge of its body of revolution: compressible air, k-ω SST, steady (rhoSimpleFoam)."
             }
+            Kind::Sketch => {
+                "A duct whose wall you dimension in a sketch: lines and arcs held by lengths, heights and radii, meshed by Vortia itself and run as a nozzle (rhoSimpleFoam). The sketch is kept in the case."
+            }
         }
     }
 }
@@ -68,6 +76,11 @@ pub(super) struct NewCase {
     plate: Plate,
     planar: Nozzle,
     wedge: Nozzle,
+    sketch: SketchEditor,
+    /// The flow and mesh settings of the sketched duct; its walls come from the sketch.
+    sketched: Nozzle,
+    sketch_axisymmetric: bool,
+    segments: usize,
 }
 
 /// What the form asks for.
@@ -87,6 +100,10 @@ impl NewCase {
             plate: Plate::default(),
             planar: Nozzle::new(NozzleKind::Planar),
             wedge: Nozzle::new(NozzleKind::Axisymmetric),
+            sketch: SketchEditor::default(),
+            sketched: Nozzle::new(NozzleKind::Axisymmetric),
+            sketch_axisymmetric: true,
+            segments: 60,
         };
         form.propose(base);
         form
@@ -107,6 +124,7 @@ impl NewCase {
             Kind::Plate => "plate",
             Kind::PlanarNozzle => "planar-nozzle",
             Kind::AxisymmetricNozzle => "nozzle",
+            Kind::Sketch => "sketch",
         };
         let free = (1..1000)
             .map(|n| {
@@ -122,14 +140,36 @@ impl NewCase {
         self.folder = free.display().to_string();
     }
 
-    pub(super) fn geometry(&self) -> Geometry {
-        match self.kind {
+    pub(super) fn choose_sketch(&mut self) {
+        self.kind = Kind::Sketch;
+        self.propose(&Self::default_base());
+    }
+
+    pub(super) fn geometry(&self) -> Result<Geometry, String> {
+        Ok(match self.kind {
             Kind::Channel => Geometry::Channel(self.channel.clone()),
             Kind::Cavity => Geometry::Cavity(self.cavity.clone()),
             Kind::Plate => Geometry::Plate(self.plate.clone()),
             Kind::PlanarNozzle => Geometry::Nozzle(self.planar.clone()),
             Kind::AxisymmetricNozzle => Geometry::Nozzle(self.wedge.clone()),
-        }
+            Kind::Sketch => Geometry::Nozzle(self.sketched_nozzle()?),
+        })
+    }
+
+    /// The nozzle the sketch makes, with the flow and mesh settings of the form.
+    fn sketched_nozzle(&self) -> Result<Nozzle, String> {
+        let kind = if self.sketch_axisymmetric {
+            NozzleKind::Axisymmetric
+        } else {
+            NozzleKind::Planar
+        };
+        let mut nozzle = Nozzle::from_sketch(kind, self.sketch.sketch(), self.segments)
+            .map_err(|e| e.to_string())?;
+        nozzle.inlet_speed = self.sketched.inlet_speed;
+        nozzle.inlet_temperature = self.sketched.inlet_temperature;
+        nozzle.outlet_pressure = self.sketched.outlet_pressure;
+        nozzle.radial_cells = self.sketched.radial_cells;
+        Ok(nozzle)
     }
 
     /// Writes the case; the folder it made, or why not.
@@ -138,9 +178,14 @@ impl NewCase {
         if self.folder.trim().is_empty() {
             return Err("Say which folder the case goes in.".into());
         }
-        vortia_cases::create(&dir, &self.geometry())
-            .map(|_| dir)
-            .map_err(|e| e.to_string())
+        vortia_cases::create(&dir, &self.geometry()?).map_err(|e| e.to_string())?;
+        if self.kind == Kind::Sketch {
+            // The drawing stays with the case it was meshed into.
+            self.sketch
+                .save(&dir.join("sketch.vortia-sketch"))
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(dir)
     }
 
     pub(super) fn ui(&mut self, ui: &mut Ui, look: &Look, p: &Palette) -> Ask {
@@ -171,6 +216,7 @@ impl NewCase {
                 Kind::Plate => plate_fields(ui, &mut self.plate),
                 Kind::PlanarNozzle => nozzle_fields(ui, &mut self.planar),
                 Kind::AxisymmetricNozzle => nozzle_fields(ui, &mut self.wedge),
+                Kind::Sketch => self.sketch_fields(ui),
             }
             ui.add_space(space::SM);
             ui.horizontal(|ui| {
@@ -186,6 +232,117 @@ impl NewCase {
             });
         });
         ask
+    }
+}
+
+impl NewCase {
+    fn sketch_fields(&mut self, ui: &mut Ui) {
+        ui.horizontal(|ui| {
+            ui.label("Start from");
+            for template in Template::ALL {
+                if ui
+                    .selectable_label(self.sketch.template == template, template.title())
+                    .clicked()
+                    && self.sketch.template != template
+                {
+                    self.sketch.restart(template);
+                }
+            }
+        });
+        ui.horizontal(|ui| {
+            ui.label("Body");
+            ui.selectable_value(&mut self.sketch_axisymmetric, true, "Revolved (5° wedge)");
+            ui.selectable_value(&mut self.sketch_axisymmetric, false, "Planar slot");
+        });
+        ui.add_space(space::SM);
+        draw(ui, &self.sketch.outline());
+        if let Some(problem) = &self.sketch.problem {
+            ui.colored_label(ui.visuals().error_fg_color, problem);
+        }
+        ui.add_space(space::SM);
+        let mut edit = None;
+        egui::Grid::new("new_sketch_dimensions")
+            .num_columns(2)
+            .spacing([space::MD, space::SM])
+            .show(ui, |ui| {
+                for mut d in self.sketch.dimensions() {
+                    let speed = 0.01 * d.value.abs().max(1.0);
+                    row(ui, &d.label, |ui| {
+                        if ui
+                            .add(
+                                DragValue::new(&mut d.value)
+                                    .speed(speed)
+                                    .suffix(format!(" {}", d.unit))
+                                    .max_decimals(4),
+                            )
+                            .changed()
+                        {
+                            edit = Some((d.index, d.value));
+                        }
+                    });
+                }
+                row(ui, "Blocks along the wall", |ui| {
+                    ui.add(DragValue::new(&mut self.segments).speed(0.5).range(2..=400));
+                });
+                row(ui, "Cells across", |ui| {
+                    count(ui, &mut self.sketched.radial_cells)
+                });
+                row(ui, "Inlet speed", |ui| {
+                    value(ui, &mut self.sketched.inlet_speed, "m/s")
+                });
+                row(ui, "Inlet temperature", |ui| {
+                    value(ui, &mut self.sketched.inlet_temperature, "K")
+                });
+                row(ui, "Outlet pressure", |ui| {
+                    value(ui, &mut self.sketched.outlet_pressure, "Pa")
+                });
+            });
+        if let Some((index, v)) = edit {
+            // A refused edit keeps the sketch as it was and says why above the dimensions.
+            let _ = self.sketch.set_dimension(index, v);
+        }
+    }
+}
+
+/// The wall of the sketch and its points, mirrored about the axis, in a box that fits the form.
+fn draw(ui: &mut Ui, outline: &Outline) {
+    let width = ui.available_width().clamp(200.0, 640.0);
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(width, 200.0), egui::Sense::hover());
+    let painter = ui.painter_at(rect);
+    let visuals = ui.visuals();
+    painter.rect_filled(rect, 6.0, visuals.extreme_bg_color);
+    let Some((x0, x1, h)) = outline.bounds() else {
+        return;
+    };
+    let margin = 16.0;
+    let inner = rect.shrink(margin);
+    let scale = (inner.width() as f64 / (x1 - x0).max(1.0e-9))
+        .min(inner.height() as f64 / (2.0 * h).max(1.0e-9));
+    let at = |x: f64, y: f64| {
+        egui::pos2(
+            inner.left() + ((x - x0) * scale) as f32,
+            inner.center().y - (y * scale) as f32,
+        )
+    };
+    let axis = egui::Stroke::new(1.0, visuals.weak_text_color());
+    painter.line_segment([at(x0, 0.0), at(x1, 0.0)], axis);
+    let wall = egui::Stroke::new(2.0, visuals.text_color());
+    let ghost = egui::Stroke::new(1.0, visuals.weak_text_color());
+    let top: Vec<_> = outline.wall.iter().map(|&(x, y)| at(x, y)).collect();
+    let bottom: Vec<_> = outline.wall.iter().map(|&(x, y)| at(x, -y)).collect();
+    painter.add(egui::Shape::line(top, wall));
+    painter.add(egui::Shape::line(bottom, ghost));
+    for &(x, y, fixed) in &outline.points {
+        let c = at(x, y);
+        if fixed {
+            painter.rect_filled(
+                egui::Rect::from_center_size(c, egui::vec2(7.0, 7.0)),
+                1.0,
+                visuals.selection.stroke.color,
+            );
+        } else {
+            painter.circle_filled(c, 3.5, visuals.selection.stroke.color);
+        }
     }
 }
 
@@ -298,6 +455,36 @@ mod tests {
             assert!(dir.join("system/controlDict").is_file(), "{kind:?}");
             assert!(dir.join("constant/polyMesh/points").is_file(), "{kind:?}");
         }
+    }
+
+    #[test]
+    fn a_sketched_case_keeps_its_sketch_and_follows_its_dimensions() {
+        let base = tempfile::tempdir().unwrap();
+        let mut form = NewCase::new(base.path());
+        form.kind = Kind::Sketch;
+        form.propose(base.path());
+        let height = form
+            .sketch
+            .dimensions()
+            .into_iter()
+            .find(|d| d.label.starts_with("Height") && d.value > 55.0)
+            .unwrap();
+        form.sketch.set_dimension(height.index, 80.0).unwrap();
+        let dir = form.create().unwrap();
+        let kept = dir.join("sketch.vortia-sketch");
+        assert!(kept.is_file());
+        assert_eq!(
+            &vortia_sketch::Sketch::open(&kept).unwrap(),
+            form.sketch.sketch()
+        );
+        // A wall the mesher cannot read stops the case before anything is written.
+        let mut broken = NewCase::new(base.path());
+        broken.kind = Kind::Sketch;
+        broken.propose(base.path());
+        broken.segments = 1;
+        let folder = broken.folder.clone();
+        assert!(broken.create().is_err());
+        assert!(!Path::new(&folder).exists());
     }
 
     #[test]

@@ -22,14 +22,23 @@ fn main() -> eframe::Result {
         "Vortia",
         options,
         Box::new(|cc| {
-            // `vortia-app CASE [--run] [--mesh] [--field NAME] [--results] [--conditions] [--numerics] [--schemes] [--settings] [--fluid] [--turbulence] [--viscosity]`: open a case,
+            // `vortia-app CASE [--run] [--mesh] [--field NAME] [--results] [--conditions] [--numerics] [--schemes] [--settings] [--fluid] [--turbulence] [--viscosity] [--new-sketch]`: open a case,
             // start it at once, or show its mesh (coloured with a field), conditions or settings.
-            let mut args = std::env::args_os().skip(1);
-            let case = args.next();
-            let flags: Vec<_> = args.collect();
+            let mut args: Vec<_> = std::env::args_os().skip(1).collect();
+            let case = if args
+                .first()
+                .is_some_and(|a| !a.to_string_lossy().starts_with("--"))
+            {
+                Some(args.remove(0))
+            } else {
+                None
+            };
+            let flags = args;
             let has = |flag: &str| flags.iter().any(|a| a == flag);
             let mut app = VortiaApp::new(&cc.egui_ctx, case, has("--run"));
-            if let Some(at) = flags.iter().position(|a| a == "--field")
+            if has("--new-sketch") {
+                app.show_new_sketch();
+            } else if let Some(at) = flags.iter().position(|a| a == "--field")
                 && let Some(field) = flags.get(at + 1)
             {
                 app.show_mesh_field(&field.to_string_lossy());

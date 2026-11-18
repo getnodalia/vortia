@@ -20,6 +20,7 @@ vortia-fields = { path = "../vortia-fields" }
 vortia-foamfile = { path = "../vortia-foamfile" }
 vortia-mesh = { path = "../vortia-mesh" }
 vortia-post = { path = "../vortia-post" }
+vortia-sketch = { path = "../vortia-sketch" }
 vortia-solvers = { path = "../vortia-solvers" }
 serde_json = "1"
 image = { version = "0.25", default-features = false, features = ["png"] }
