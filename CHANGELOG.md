@@ -8,6 +8,11 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 ## [Unreleased]
 
 ### Añadido
+- **Tipo de condición de contorno como lista:** en Condiciones, el tipo de cada parche que no
+  decide la malla se elige de una lista de lo que el motor sabe hacer (`fixedValue`, `noSlip`,
+  `zeroGradient`, y `slip` y `symmetry` en `icoFoam` y `simpleFoam`; `fixedValue`, `zeroGradient` y
+  `fixedGradient` en escalares). Al guardar, el bloque del parche se escribe de nuevo con lo que
+  pide el tipo nuevo (`value`, `gradient`) y el resto del archivo no cambia.
 - **Pausar y reanudar una ejecución:** un botón «Pause/Resume» en la cinta, en los menús Archivo y
   Caso y en el buscador de comandos detiene el motor al inicio de su siguiente paso, sin dejar
   ningún paso a medias, y lo deja seguir cuando se reanuda. Detener funciona también con la

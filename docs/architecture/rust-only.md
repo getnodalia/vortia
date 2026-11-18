@@ -87,9 +87,11 @@ STL, updater, issue-report or translation code exists there).
   `constant/thermophysicalProperties`, `turbulenceProperties` and `transportProperties` in place,
   beside the boundary conditions, run settings, numerics and schemes that were already there.
   The turbulence model, simulation type and energy variable are pick-lists of what the engine
-  has. Still to do for R4: a pick-list for boundary types (a type change has to add or remove the
-  entries it needs, such as `value`), a symmetry condition in the compressible engine, and a
-  jet-into-atmosphere nozzle case.
+  has. The boundary type of each patch the mesh does not decide is a pick-list too (fixedValue,
+  noSlip, zeroGradient, and slip and symmetry for `icoFoam` and `simpleFoam`; fixedValue,
+  zeroGradient and fixedGradient for scalars): choosing one writes the patch block again with the
+  entries the new type needs, such as `value` or `gradient`. Still to do for R4: a symmetry
+  condition in the compressible engine and a jet-into-atmosphere nozzle case.
 
 ## Order
 
