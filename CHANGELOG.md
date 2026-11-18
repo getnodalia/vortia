@@ -25,6 +25,9 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
   cada contorno, a partir del flujo `phi` que escribe el solver: media y peor caso en porcentaje
   sobre los últimos 10 tiempos escritos, y el neto del último (el mismo control que hace el
   Qt con sus toberas). En la línea de comandos, `vortia balance CASO [VENTANA]`.
+- **Residuos de la corrida en la aplicación Rust:** la pestaña Run dibuja, en escala logarítmica,
+  el residuo inicial de cada ecuación (Ux, Uy, p, T, k, omega…) paso a paso, leído del registro del
+  solver mientras corre. La pestaña pasa a desplazarse entera para que el registro siga a mano.
 - **Física del caso en la aplicación Rust:** en Setup, «Fluid», «Turbulence» y «Viscosity» editan
   `thermophysicalProperties`, `turbulenceProperties` y `transportProperties` de `constant/`
   (modelo de turbulencia, propiedades del gas, viscosidad) sin tocar el resto del archivo; cada

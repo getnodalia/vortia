@@ -54,8 +54,9 @@ STL, updater, issue-report or translation code exists there).
   omega yet (an engine task for R4).
 - **R5, started on 2026-11-18:** the mass balance (`Case::mass_balance` and
   `mass_balance_history` in `rust/vortia-post`, `vortia balance`, a card in the Run tab) reads
-  the written `phi`, as the Qt `nozzleMassBalance` does. Still to do for R5: the residual plot,
-  the run monitor's early-stop and divergence checks and the pause/resume of a job.
+  the written `phi`, as the Qt `nozzleMassBalance` does. The residual plot of the Run tab
+  (initial residuals by field from the solver log, logarithmic) is done. Still to do for R5: the
+  run monitor's divergence check and the pause/resume of a job.
 
 - **R4, started on 2026-11-18:** Setup has Fluid, Turbulence and Viscosity views that edit
   `constant/thermophysicalProperties`, `turbulenceProperties` and `transportProperties` in place,
