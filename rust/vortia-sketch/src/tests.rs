@@ -302,3 +302,146 @@ fn an_outline_with_an_open_end_a_stray_hole_or_a_bad_name_is_refused() {
     named.name(99, "x");
     assert!(named.validate().is_err());
 }
+
+mod editing {
+    use crate::{Constraint, Measure, Sketch, templates};
+
+    fn square() -> Sketch {
+        let mut s = Sketch::default();
+        for (a, b) in [
+            ((0.0, 0.0), (100.0, 0.0)),
+            ((100.0, 0.0), (100.0, 100.0)),
+            ((100.0, 100.0), (0.0, 100.0)),
+            ((0.0, 100.0), (0.0, 0.0)),
+        ] {
+            s.draw_line(a, b, 1.0).unwrap();
+        }
+        s
+    }
+
+    #[test]
+    fn lines_drawn_end_to_end_share_their_points_and_close_into_a_region() {
+        let s = square();
+        assert_eq!((s.points.len(), s.entities.len()), (4, 4));
+        let loops = s.loops(5.0).unwrap();
+        assert_eq!(loops.len(), 1);
+        assert_eq!(loops[0].len(), 4);
+    }
+
+    #[test]
+    fn a_refused_edit_leaves_the_sketch_as_it_was() {
+        let mut s = square();
+        let before = s.clone();
+        assert!(
+            s.draw_line((0.0, 0.0), (0.2, 0.2), 1.0).is_err(),
+            "one point twice"
+        );
+        assert!(s.draw_line((f64::NAN, 0.0), (1.0, 1.0), 1.0).is_err());
+        assert!(s.move_point(99, 0.0, 0.0).is_err());
+        assert!(s.remove_edge(99).is_err());
+        assert!(s.dimension_points(0, 0, Measure::Distance).is_err());
+        assert_eq!(s, before);
+    }
+
+    #[test]
+    fn an_arc_ends_on_its_circle_towards_the_pointer() {
+        let mut s = Sketch::default();
+        let arc = s
+            .draw_arc((0.0, 0.0), (10.0, 0.0), (0.0, 50.0), 0.5)
+            .unwrap();
+        let crate::Entity::Arc { end, .. } = s.entities[arc] else {
+            panic!("not an arc");
+        };
+        let e = s.points[end];
+        assert!((e.x).abs() < 1e-9 && (e.y - 10.0).abs() < 1e-9, "{e:?}");
+        assert!(
+            s.draw_arc((0.0, 0.0), (10.0, 0.0), (0.0, 0.0), 0.5)
+                .is_err()
+        );
+        assert!(s.draw_arc((0.0, 0.0), (0.0, 0.0), (5.0, 5.0), 0.5).is_err());
+    }
+
+    #[test]
+    fn a_dragged_point_goes_where_it_is_taken_unless_a_dimension_holds_it() {
+        let mut s = square();
+        // Free: it follows the pointer (the corner at (100, 100)).
+        let corner = s.point_near(100.0, 100.0, 1.0).unwrap();
+        assert_eq!(s.move_point(corner, 120.0, 90.0).unwrap(), (120.0, 90.0));
+        // Held at a height of 90 above the corner at (0, 0), which stays put, it comes back to it.
+        let origin = s.point_near(0.0, 0.0, 1.0).unwrap();
+        s.points[origin].fixed = true;
+        s.dimension_points(origin, corner, Measure::Height).unwrap();
+        let (x, y) = s.move_point(corner, 130.0, 40.0).unwrap();
+        assert!((y - 90.0).abs() < 1e-6 && x > 100.0, "({x}, {y})");
+        // A fixed point does not move at all.
+        assert!(s.move_point(origin, 5.0, 5.0).is_err());
+    }
+
+    #[test]
+    fn deleting_an_edge_renumbers_names_and_dimensions_and_drops_orphans() {
+        let mut s = templates::channel_with_block(400.0, 100.0, 30.0, 120.0, 35.0);
+        let before = s.entities.len();
+        // The block's four edges are the last ones, all called `block`.
+        let last = s.entities.len() - 1;
+        s.remove_edge(0).unwrap();
+        assert_eq!(s.entities.len(), before - 1);
+        assert_eq!(s.names.get(&(last - 1)).map(String::as_str), Some("block"));
+        assert!(!s.names.contains_key(&last));
+        assert!(s.validate().is_ok());
+        // Remove the rest of the block: its points and dimensions go with it.
+        for _ in 0..4 {
+            let i = s.entities.len() - 1;
+            s.remove_edge(i).unwrap();
+        }
+        assert!(s.points.iter().all(|p| p.x <= 400.0));
+        assert!(s.constraints.iter().all(|c| match *c {
+            Constraint::Horizontal { a, b }
+            | Constraint::Vertical { a, b }
+            | Constraint::Distance { a, b, .. }
+            | Constraint::DeltaX { a, b, .. }
+            | Constraint::DeltaY { a, b, .. }
+            | Constraint::Angle { a, b, .. } => a < s.points.len() && b < s.points.len(),
+            Constraint::Radius { arc, .. } => arc < s.entities.len(),
+        }));
+    }
+
+    #[test]
+    fn the_edge_under_the_pointer_is_found_and_a_dimension_takes_the_measure_it_has() {
+        let mut s = square();
+        assert_eq!(s.entity_near(50.0, 1.5, 3.0), Some(0));
+        assert_eq!(s.entity_near(50.0, 50.0, 3.0), None);
+        let (a, b) = (
+            s.point_near(0.0, 0.0, 1.0).unwrap(),
+            s.point_near(100.0, 0.0, 1.0).unwrap(),
+        );
+        let i = s.dimension_points(a, b, Measure::Distance).unwrap();
+        let Constraint::Distance { value, .. } = s.constraints[i] else {
+            panic!("not a distance");
+        };
+        assert!((value - 100.0).abs() < 1e-9);
+        let arc = {
+            let mut t = Sketch::default();
+            let e = t
+                .draw_arc((0.0, 0.0), (10.0, 0.0), (0.0, 10.0), 0.5)
+                .unwrap();
+            assert_eq!(t.entity_near(7.07, 7.07, 1.0), Some(e));
+            t
+        };
+        assert_eq!(arc.entities.len(), 1);
+    }
+
+    #[test]
+    fn an_unfinished_outline_can_still_be_drawn() {
+        let mut s = Sketch::default();
+        s.draw_line((0.0, 0.0), (10.0, 0.0), 1.0).unwrap();
+        s.draw_arc((10.0, 5.0), (10.0, 0.0), (15.0, 5.0), 0.5)
+            .unwrap();
+        s.name(0, "inlet");
+        let edges = s.edges(10.0).unwrap();
+        assert_eq!(edges.len(), 2);
+        assert_eq!(edges[0].patch, "inlet");
+        assert_eq!(edges[1].patch, "wall");
+        assert!(edges[1].points.len() > 2, "the arc is cut in steps");
+        assert!(s.loops(5.0).is_err(), "but it is not a region yet");
+    }
+}

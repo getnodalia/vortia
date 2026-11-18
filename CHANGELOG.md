@@ -8,6 +8,11 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 ## [Unreleased]
 
 ### Añadido
+- **Dibujar la región sobre el lienzo (R2):** «Región dibujada» tiene ahora un lienzo con
+  herramientas para mover puntos, trazar líneas y arcos, añadir cotas y borrar bordes, con
+  rejilla y imán a los puntos. Se puede empezar desde un lienzo en blanco; el contorno se
+  cierra al volver al primer punto y cada cambio se resuelve de nuevo o se rechaza dejando el
+  croquis como estaba.
 - **Comparar informes en la app (R6):** la pestaña Resultados tiene una tarjeta «Comparar» que
   lista los informes guardados en el caso (Sección y Fuerzas) o añadidos desde un archivo, deja
   elegir la referencia y el número, muestra el cambio frente a ella, avisa cuando las definiciones

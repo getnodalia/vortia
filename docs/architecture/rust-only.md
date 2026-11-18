@@ -142,13 +142,15 @@ follow the boundary's and grow with the distance from it) and then prisms, plana
 with the axis collapsed. The nozzle and the sketched duct use it with `cell-size` (and Home's
 "Triangles (unstructured)"); OpenFOAM v1912 accepts its meshes (`checkMesh`) and `rhoSimpleFoam`
 gives the same flow on them as the Rust engine (outlet flux to 1e-5 on the half nozzle, to six
-digits on the wedge). Still to do: drawing new lines and arcs and dragging points on the canvas,
-snapping, adding dimensions and opening a saved sketch. Closed sketches with several loops and
+digits on the wedge). The Drawn region canvas now has move, line, arc, dimension and delete tools with
+grid and point snapping (`RegionEditor`, `Sketch::draw_line`, `draw_arc`, `move_point`,
+`remove_edge`, `dimension_points`). Still to do: opening a saved sketch and more kinds of
+dimension. Closed sketches with several loops and
 named edges now exist (`Sketch::loops`, `Sketch::name`, the `channel-with-block` template) and
 `vortia_cases::Drawn` meshes and runs them (`vortia new region DIR FILE`; the same case run by
 OpenFOAM v1912 gives the same fields to eight digits). Home's "Drawn region" starts from a channel
-with a block, edits its dimensions and names its edges (`RegionEditor`). Still to do: drawing new
-lines and arcs of a closed outline on the canvas.
+with a block or from a blank canvas, where lines and arcs are drawn, points dragged and dimensions
+added (`RegionEditor`); the case needs an `inlet` and an `outlet` edge.
 
 ## What this changes in the public text
 
