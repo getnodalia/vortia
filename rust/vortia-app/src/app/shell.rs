@@ -47,6 +47,9 @@ const COMMANDS: &[(&str, Cmd)] = &[
     ("Go to the mesh", Cmd::Go(Tab::Mesh)),
     ("Go to the results", Cmd::Go(Tab::Results)),
     ("Go to the boundary conditions", Cmd::Go(Tab::Conditions)),
+    ("Go to the fluid", Cmd::Go(Tab::Fluid)),
+    ("Go to the turbulence model", Cmd::Go(Tab::Turbulence)),
+    ("Go to the viscosity", Cmd::Go(Tab::Transport)),
     ("Go to the run settings", Cmd::Go(Tab::Settings)),
     ("Go to the solver numbers", Cmd::Go(Tab::Numerics)),
     ("Go to the schemes", Cmd::Go(Tab::Schemes)),
@@ -91,7 +94,13 @@ impl Step {
             Tab::Run => Step::Case,
             Tab::Mesh => Step::Mesh,
             Tab::Results => Step::Results,
-            Tab::Conditions | Tab::Numerics | Tab::Schemes | Tab::Settings => Step::Setup,
+            Tab::Conditions
+            | Tab::Fluid
+            | Tab::Turbulence
+            | Tab::Transport
+            | Tab::Numerics
+            | Tab::Schemes
+            | Tab::Settings => Step::Setup,
         }
     }
 }
@@ -114,6 +123,9 @@ fn view_title(tab: Tab) -> &'static str {
         Tab::Numerics => "Solver numbers",
         Tab::Schemes => "Schemes",
         Tab::Settings => "Run settings",
+        Tab::Fluid => "Fluid",
+        Tab::Turbulence => "Turbulence",
+        Tab::Transport => "Viscosity",
     }
 }
 
@@ -653,6 +665,12 @@ fn ribbon(ui: &mut egui::Ui, look: &Look, case: &mut CaseView) -> Option<Cmd> {
                     if tool(ui, "boundary", "Conditions", tab == Tab::Conditions, true) {
                         go = Some(Tab::Conditions);
                     }
+                    for (icon, text, target, file) in PHYSICS {
+                        let present = has_constant(case, file);
+                        if tool(ui, icon, text, tab == target, present) {
+                            go = Some(target);
+                        }
+                    }
                 });
                 eng::ribbon_group(ui, look, "Solver", |ui| {
                     for (icon, text, target) in [
@@ -700,6 +718,20 @@ struct Row {
     selected: bool,
     muted: bool,
     pick: Pick,
+}
+
+/// The dictionaries of `constant` that describe the physics, with the view that edits each.
+const PHYSICS: [(&str, &str, Tab, File); 3] = [
+    ("material", "Fluid", Tab::Fluid, File::Fluid),
+    ("waveform", "Turbulence", Tab::Turbulence, File::Turbulence),
+    ("droplet", "Viscosity", Tab::Transport, File::Transport),
+];
+
+/// Whether the case has the physics dictionary (it is read in with the rest of the folder).
+fn has_constant(case: &CaseView, file: File) -> bool {
+    case.summary
+        .as_ref()
+        .is_some_and(|s| s.constant.iter().any(|n| n == file.name()))
 }
 
 /// The rows of the case's tree: the case, its mesh and patches, the physics and its fields, the
@@ -755,6 +787,19 @@ fn tree(case: &CaseView) -> Vec<Row> {
         pick: Pick::View(Tab::Conditions),
     });
     if open("physics") {
+        for (icon, label, tab, file) in PHYSICS {
+            if has_constant(case, file) {
+                rows.push(Row {
+                    group: None,
+                    depth: 2,
+                    icon,
+                    label: label.into(),
+                    selected: view(tab),
+                    muted: false,
+                    pick: Pick::View(tab),
+                });
+            }
+        }
         for field in summary.map(|s| s.fields.as_slice()).unwrap_or_default() {
             rows.push(Row {
                 group: None,
@@ -995,6 +1040,9 @@ fn case_view(ui: &mut egui::Ui, ctx: &Context, look: &Look, p: &Palette, case: &
         Tab::Conditions => conditions_tab(ui, p, case),
         Tab::Numerics => file_tab(ui, p, case, File::Solution),
         Tab::Schemes => file_tab(ui, p, case, File::Schemes),
+        Tab::Fluid => file_tab(ui, p, case, File::Fluid),
+        Tab::Turbulence => file_tab(ui, p, case, File::Turbulence),
+        Tab::Transport => file_tab(ui, p, case, File::Transport),
         Tab::Settings => settings_tab(ui, p, case),
         Tab::Mesh => {
             let summary = case.summary.as_ref();
@@ -1238,6 +1286,9 @@ mod tests {
             Tab::Numerics,
             Tab::Schemes,
             Tab::Settings,
+            Tab::Fluid,
+            Tab::Turbulence,
+            Tab::Transport,
         ] {
             assert_eq!(Step::of(Step::of(tab).first()), Step::of(tab));
         }
@@ -1363,6 +1414,9 @@ mod tests {
                 Tab::Numerics,
                 Tab::Schemes,
                 Tab::Settings,
+                Tab::Fluid,
+                Tab::Turbulence,
+                Tab::Transport,
             ] {
                 view(&mut app).go(tab);
                 frame(&mut app, &ctx);

@@ -43,6 +43,8 @@ pub struct Summary {
     pub times: Vec<String>,
     /// The field files of the latest time (the `0` directory when nothing was written).
     pub fields: Vec<String>,
+    /// The dictionaries of `constant` (`thermophysicalProperties`, `turbulenceProperties`…).
+    pub constant: Vec<String>,
     /// What entered against what left over the last times written, when the run wrote the
     /// flux `phi`.
     pub balance: Option<BalanceHistory>,
@@ -72,6 +74,7 @@ pub fn read(dir: &Path) -> Summary {
         .map(|(_, name)| name.as_str())
         .unwrap_or("0");
     summary.fields = files_in(&dir.join(latest));
+    summary.constant = files_in(&dir.join("constant"));
     if dir.join("constant").join("polyMesh").is_dir() {
         summary.mesh = Some(read_mesh(dir));
     }

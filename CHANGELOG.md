@@ -25,6 +25,11 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
   cada contorno, a partir del flujo `phi` que escribe el solver: media y peor caso en porcentaje
   sobre los últimos 10 tiempos escritos, y el neto del último (el mismo control que hace el
   Qt con sus toberas). En la línea de comandos, `vortia balance CASO [VENTANA]`.
+- **Física del caso en la aplicación Rust:** en Setup, «Fluid», «Turbulence» y «Viscosity» editan
+  `thermophysicalProperties`, `turbulenceProperties` y `transportProperties` de `constant/`
+  (modelo de turbulencia, propiedades del gas, viscosidad) sin tocar el resto del archivo; cada
+  vista aparece solo si el caso tiene ese archivo. Se abren también con `--fluid`,
+  `--turbulence` y `--viscosity`.
 
 ## [0.10.0] — 2026-11-15
 

@@ -98,6 +98,10 @@ struct CaseView {
     /// tab is first looked at), and how the last save went.
     numerics: FileEdit,
     schemes: FileEdit,
+    /// The physics of `constant`, the same way.
+    fluid: FileEdit,
+    turbulence: FileEdit,
+    transport: FileEdit,
     /// What the Results tab has read and calculated; it reads the case when first looked at.
     results: Results,
     /// A field to colour the mesh with as soon as it is read, asked for on the command line.
@@ -122,6 +126,9 @@ pub enum TabName {
     Numerics,
     Schemes,
     Settings,
+    Fluid,
+    Turbulence,
+    Transport,
 }
 
 /// What the main part of the case screen shows.
@@ -134,6 +141,9 @@ enum Tab {
     Numerics,
     Schemes,
     Settings,
+    Fluid,
+    Turbulence,
+    Transport,
 }
 
 impl CaseView {
@@ -160,6 +170,9 @@ impl CaseView {
             conditions_message: None,
             numerics: FileEdit::default(),
             schemes: FileEdit::default(),
+            fluid: FileEdit::default(),
+            turbulence: FileEdit::default(),
+            transport: FileEdit::default(),
             results: Results::default(),
             first_field: None,
             viewer: None,
@@ -420,6 +433,9 @@ impl VortiaApp {
                 TabName::Numerics => Tab::Numerics,
                 TabName::Schemes => Tab::Schemes,
                 TabName::Settings => Tab::Settings,
+                TabName::Fluid => Tab::Fluid,
+                TabName::Turbulence => Tab::Turbulence,
+                TabName::Transport => Tab::Transport,
             };
         }
     }
@@ -790,6 +806,9 @@ fn file_tab(ui: &mut egui::Ui, p: &Palette, case: &mut CaseView, file: File) {
     let edit = match file {
         File::Solution => &mut case.numerics,
         File::Schemes => &mut case.schemes,
+        File::Fluid => &mut case.fluid,
+        File::Turbulence => &mut case.turbulence,
+        File::Transport => &mut case.transport,
     };
     let read = edit
         .groups
@@ -834,9 +853,9 @@ fn file_tab(ui: &mut egui::Ui, p: &Palette, case: &mut CaseView, file: File) {
                     ))
                     .color(muted(p)),
                 );
-            } else if file == File::Schemes {
+            } else if file != File::Solution {
                 ui.label(
-                    RichText::new("The engine checks the schemes when a run starts.")
+                    RichText::new("The engine checks these entries when a run starts.")
                         .size(font_size::SMALL)
                         .color(muted(p)),
                 );
@@ -856,7 +875,7 @@ fn file_tab(ui: &mut egui::Ui, p: &Palette, case: &mut CaseView, file: File) {
         edit.message = None;
     } else if save && let Some(Ok(groups)) = &edit.groups {
         edit.message = Some(match numerics::save(&case.dir, file, groups) {
-            Ok(()) => (true, format!("Saved to system/{}.", file.name())),
+            Ok(()) => (true, format!("Saved to {}/{}.", file.folder(), file.name())),
             Err(message) => (false, message),
         });
         if matches!(edit.message, Some((true, _))) {
@@ -1371,6 +1390,44 @@ mod tests {
             text.contains("relTol 0.1;") && text.contains("solver PCG;"),
             "{text}"
         );
+    }
+
+    #[test]
+    fn the_physics_of_a_case_is_shown_and_saved_in_constant() {
+        let case = case_dir();
+        std::fs::create_dir_all(case.path().join("constant")).unwrap();
+        std::fs::write(
+            case.path().join("constant/turbulenceProperties"),
+            "simulationType RAS;\nRAS\n{\n    model           kOmegaSST;\n    turbulence      on;\n}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            case.path().join("constant/thermophysicalProperties"),
+            "mixture\n{\n    transport\n    {\n        mu              1.8e-05;\n        Pr              0.71;\n    }\n}\n",
+        )
+        .unwrap();
+        let ctx = Context::default();
+        let mut app = VortiaApp::with_prefs(Prefs::default(), None);
+        app.open_case(case.path()).unwrap();
+        app.show_tab(TabName::Turbulence);
+        frame(&mut app, &ctx);
+        app.show_tab(TabName::Fluid);
+        frame(&mut app, &ctx);
+        let Screen::Case(view) = &mut app.screen else {
+            panic!("the case closed");
+        };
+        let groups = view.turbulence.groups.as_mut().unwrap().as_mut().unwrap();
+        assert_eq!(groups[1].title(), "RAS");
+        groups[1].items[0].text = "kEpsilon".into();
+        numerics::save(&view.dir, File::Turbulence, groups).unwrap();
+        let groups = view.fluid.groups.as_mut().unwrap().as_mut().unwrap();
+        assert_eq!(groups[0].title(), "mixture / transport");
+        groups[0].items[0].text = "2e-05".into();
+        numerics::save(&view.dir, File::Fluid, groups).unwrap();
+        let read = |name| std::fs::read_to_string(case.path().join("constant").join(name)).unwrap();
+        assert!(read("turbulenceProperties").contains("model           kEpsilon;"));
+        assert!(read("thermophysicalProperties").contains("mu              2e-05;"));
+        assert!(!read("thermophysicalProperties").contains("1.8e-05"));
     }
 
     #[test]

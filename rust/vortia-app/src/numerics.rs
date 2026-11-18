@@ -11,11 +11,15 @@ use vortia_foamfile::write;
 
 use crate::conditions::{Item, checked, set_at};
 
-/// The two dictionaries of `system` that are edited here.
+/// The dictionaries of the case that are edited here: two of `system`, and the physics of
+/// `constant` (the fluid, the turbulence model, the viscosity of an incompressible case).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum File {
     Solution,
     Schemes,
+    Fluid,
+    Turbulence,
+    Transport,
 }
 
 impl File {
@@ -23,7 +27,24 @@ impl File {
         match self {
             File::Solution => "fvSolution",
             File::Schemes => "fvSchemes",
+            File::Fluid => "thermophysicalProperties",
+            File::Turbulence => "turbulenceProperties",
+            File::Transport => "transportProperties",
         }
+    }
+
+    /// The folder of the case the file is in.
+    pub fn folder(self) -> &'static str {
+        match self {
+            File::Solution | File::Schemes => "system",
+            File::Fluid | File::Turbulence | File::Transport => "constant",
+        }
+    }
+
+    /// Whether an entry is edited as the words it is written with (a scheme, a model name, a
+    /// property) rather than as one number.
+    fn by_words(self) -> bool {
+        self != File::Solution
     }
 }
 
@@ -65,7 +86,7 @@ fn collect(
             *count += 1;
             if *count <= MAX_ITEMS {
                 let mut item = Item::new(key, vs);
-                if file == File::Schemes {
+                if file.by_words() {
                     item.editable = scheme_words(key, vs);
                 }
                 items.push(item);
@@ -93,7 +114,7 @@ fn collect(
 }
 
 pub fn read(case: &Path, file: File) -> Result<Vec<Group>, String> {
-    let (_, dict) = FoamFile::open(case.join("system").join(file.name()))
+    let (_, dict) = FoamFile::open(case.join(file.folder()).join(file.name()))
         .and_then(|f| f.dictionary())
         .map_err(|e| e.to_string())?;
     let mut groups = Vec::new();
@@ -123,7 +144,7 @@ pub fn apply(text: &str, groups: &[Group], file: File) -> Result<String, String>
         for item in group.items.iter().filter(|i| i.editable && i.changed()) {
             let value = match file {
                 File::Solution => checked(item)?,
-                File::Schemes => checked_scheme(item)?,
+                _ => checked_scheme(item)?,
             };
             text = set_at(&text, &path, &item.key, &value)?;
         }
@@ -133,7 +154,7 @@ pub fn apply(text: &str, groups: &[Group], file: File) -> Result<String, String>
 
 /// Writes the edits into the case's file, atomically.
 pub fn save(case: &Path, file: File, groups: &[Group]) -> Result<(), String> {
-    let path = case.join("system").join(file.name());
+    let path = case.join(file.folder()).join(file.name());
     let text = std::fs::read_to_string(&path)
         .map_err(|e| format!("Could not read {}: {e}", path.display()))?;
     let edited = apply(&text, groups, file)?;

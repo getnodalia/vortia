@@ -57,6 +57,12 @@ STL, updater, issue-report or translation code exists there).
   the written `phi`, as the Qt `nozzleMassBalance` does. Still to do for R5: the residual plot,
   the run monitor's early-stop and divergence checks and the pause/resume of a job.
 
+- **R4, started on 2026-11-18:** Setup has Fluid, Turbulence and Viscosity views that edit
+  `constant/thermophysicalProperties`, `turbulenceProperties` and `transportProperties` in place,
+  beside the boundary conditions, run settings, numerics and schemes that were already there.
+  Still to do for R4: pick-lists for the known models and boundary types instead of free text,
+  a symmetry condition in the compressible engine, and a jet-into-atmosphere nozzle case.
+
 ## Order
 
 R1, then R4 and R5 (a case can be made and run entirely in the Rust app), then
