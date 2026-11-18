@@ -28,23 +28,23 @@ fn invalid<T>(message: impl Into<String>) -> Result<T> {
 
 /// What the file holds, as OpenFOAM's reader gathers it.
 #[derive(Default)]
-struct Fluent {
-    dimension: i64,
-    points: Vec<Vec3>,
-    faces: Vec<Vec<usize>>,
+pub(crate) struct Fluent {
+    pub(crate) dimension: i64,
+    pub(crate) points: Vec<Vec3>,
+    pub(crate) faces: Vec<Vec<usize>>,
     /// Fluent's second cell of a face, minus one (`-1` for a boundary face):
     /// OpenFOAM's `owner`.
-    owner: Vec<i64>,
+    pub(crate) owner: Vec<i64>,
     /// Fluent's first cell of a face, minus one: OpenFOAM's `neighbour`.
-    neighbour: Vec<i64>,
+    pub(crate) neighbour: Vec<i64>,
     /// Fluent's model number of each cell.
-    model: Vec<i64>,
+    pub(crate) model: Vec<i64>,
     /// Zone, first and last face (counted from one) of each group of faces.
-    face_groups: Vec<(i64, i64, i64)>,
+    pub(crate) face_groups: Vec<(i64, i64, i64)>,
     /// Zone, first and last cell (counted from one) of each group of cells.
-    cell_groups: Vec<(i64, i64, i64)>,
-    zone_type: HashMap<i64, String>,
-    zone_name: HashMap<i64, String>,
+    pub(crate) cell_groups: Vec<(i64, i64, i64)>,
+    pub(crate) zone_type: HashMap<i64, String>,
+    pub(crate) zone_name: HashMap<i64, String>,
 }
 
 /// A position in the text.
@@ -160,7 +160,7 @@ fn scalar(token: &str) -> Result<f64> {
 }
 
 /// The word of a zone's type or name: what OpenFOAM's `word` keeps.
-fn validate(name: &str) -> String {
+pub(crate) fn validate(name: &str) -> String {
     name.chars()
         .filter(|c| !c.is_whitespace() && !matches!(c, '"' | '\'' | '/' | ';' | '{' | '}'))
         .collect()
@@ -646,7 +646,11 @@ fn kind_of(zone_type: &str) -> Result<Kind> {
 
 /// A Fluent `.msh` file (ASCII) as the mesh `fluentMeshToFoam` makes of it.
 pub fn fluent_to_foam(text: &str, options: Options) -> Result<RawPolyMesh> {
-    let mut f = read(text)?;
+    convert(read(text)?, options)
+}
+
+/// The mesh of what a file holds, however it was read.
+pub(crate) fn convert(mut f: Fluent, options: Options) -> Result<RawPolyMesh> {
     if f.points.is_empty() || f.model.is_empty() || f.faces.is_empty() {
         return invalid("the file has no points, faces or cells: is it a Fluent mesh?");
     }

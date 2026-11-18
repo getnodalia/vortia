@@ -506,7 +506,7 @@ impl VortiaApp {
                     let width = (ui.available_width() - 120.0).clamp(160.0, 420.0);
                     let field = ui.add(
                         egui::TextEdit::singleline(stl_input)
-                            .hint_text(tr("An STL file"))
+                            .hint_text(tr("An STL file or a Fluent case (.cas.h5)"))
                             .desired_width(width),
                     );
                     let enter = field.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
@@ -1501,8 +1501,12 @@ fn stl_page(ui: &mut egui::Ui, look: &Look, view: &mut crate::stlview::StlView) 
         ui.colored_label(for_egui::color(p.status_danger_fg), message);
         return close;
     }
-    if let Some((summary, viewer, source)) = view.loaded() {
-        for line in stl_lines(summary) {
+    if let Some((about, viewer, source)) = view.loaded() {
+        let lines = match about {
+            crate::stlview::About::Stl(summary) => stl_lines(summary),
+            crate::stlview::About::Case(lines) => lines.clone(),
+        };
+        for line in lines {
             ui.label(line);
         }
         ui.add_space(space::SM);

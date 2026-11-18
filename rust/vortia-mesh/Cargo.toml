@@ -9,3 +9,4 @@ description = "Polyhedral finite-volume mesh of the Vortia engine: topology, geo
 thiserror = "2"
 vortia-core = { path = "../vortia-core" }
 vortia-foamfile = { path = "../vortia-foamfile" }
+vortia-h5 = { path = "../vortia-h5" }
