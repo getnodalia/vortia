@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Vortia
+Comment=Open computational fluid dynamics: set up, run and read a case
+Exec=vortia-app %f
+Icon=dev.danielmiguelt.Vortia
+Categories=Science;Engineering;
+Terminal=false
+StartupNotify=true
+StartupWMClass=Vortia

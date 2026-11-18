@@ -1,0 +1,47 @@
+name: Rust packages
+
+# Builds the Linux AppImage and tarball of the Rust app (R9 of docs/architecture/rust-only.md) on
+# an old distro so they run on newer ones, checks what is inside and keeps them as workflow
+# artifacts. It does not attach anything to a release: the release flow still ships the C++
+# application until the Rust app replaces it.
+
+on:
+  pull_request:
+    paths: ["rust/packaging/**", ".github/workflows/rust-packages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-packages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: AppImage and tarball (ubuntu-22.04)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Check the desktop file
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends desktop-file-utils
+      - name: Package
+        run: rust/packaging/linux/package.sh --out "$RUNNER_TEMP/dist"
+      - name: The tarball holds a working command-line tool
+        run: |
+          mkdir "$RUNNER_TEMP/check"
+          tar -xzf "$RUNNER_TEMP"/dist/Vortia-*-linux-x86_64.tar.gz -C "$RUNNER_TEMP/check"
+          "$RUNNER_TEMP"/check/Vortia-*-linux-x86_64/bin/vortia help
+      - name: The AppImage is there and is not empty
+        run: test -s "$(ls "$RUNNER_TEMP"/dist/Vortia-*-linux-x86_64.AppImage)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vortia-rust-linux
+          path: ${{ runner.temp }}/dist/*
+          if-no-files-found: error
