@@ -94,7 +94,7 @@ impl Sketch {
     }
 
     /// The points of one entity from its first end to its second.
-    fn sample(&self, e: &Entity, step_degrees: f64) -> Result<Profile> {
+    pub(crate) fn sample(&self, e: &Entity, step_degrees: f64) -> Result<Profile> {
         let at = |id: PointId| -> Result<(f64, f64)> {
             self.points
                 .get(id)
@@ -137,7 +137,7 @@ impl Sketch {
     }
 }
 
-fn ends(e: &Entity) -> (PointId, PointId) {
+pub(crate) fn ends(e: &Entity) -> (PointId, PointId) {
     match *e {
         Entity::Line { a, b } => (a, b),
         Entity::Arc { start, end, .. } => (start, end),

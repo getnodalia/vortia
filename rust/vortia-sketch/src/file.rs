@@ -26,11 +26,18 @@ impl Sketch {
         let entities: Vec<Value> = self
             .entities
             .iter()
-            .map(|e| match *e {
-                Entity::Line { a, b } => json!({"type": "line", "a": a, "b": b}),
-                Entity::Arc { start, end, center } => {
-                    json!({"type": "arc", "start": start, "end": end, "center": center})
+            .enumerate()
+            .map(|(i, e)| {
+                let mut v = match *e {
+                    Entity::Line { a, b } => json!({"type": "line", "a": a, "b": b}),
+                    Entity::Arc { start, end, center } => {
+                        json!({"type": "arc", "start": start, "end": end, "center": center})
+                    }
+                };
+                if let (Some(name), Some(map)) = (self.names.get(&i), v.as_object_mut()) {
+                    map.insert("name".to_owned(), json!(name));
                 }
+                v
             })
             .collect();
         let constraints: Vec<Value> = self
@@ -110,7 +117,10 @@ impl Sketch {
                 fixed: p.get("fixed").and_then(Value::as_bool).unwrap_or(false),
             });
         }
-        for e in entities {
+        for (i, e) in entities.iter().enumerate() {
+            if let Some(name) = e.get("name").and_then(Value::as_str) {
+                s.names.insert(i, name.to_owned());
+            }
             s.entities
                 .push(match e.get("type").and_then(Value::as_str) {
                     Some("line") => Entity::Line {
