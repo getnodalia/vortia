@@ -59,6 +59,7 @@ pub fn run(args: &[&str]) -> Option<ExitCode> {
         ["flux", case, patch, time @ ..] if time.len() <= 1 => {
             finish(flux(case, patch, time.first().copied()))
         }
+        ["section", rest @ ..] => crate::section::run(rest),
         ["balance", case, rest @ ..] if rest.len() <= 1 => {
             let window = match rest.first() {
                 None => Ok(DEFAULT_WINDOW),
