@@ -6,7 +6,7 @@ license.workspace = true
 description = "A dimensioned 2D sketch of a flow profile: points, lines and arcs, constraints, and the wall profile a mesh is made from"
 
 [dependencies]
-serde_json = "1"
+serde_json = { version = "1", features = ["float_roundtrip"] }
 thiserror = "2"
 vortia-foamfile = { path = "../vortia-foamfile" }
 

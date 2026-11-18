@@ -218,3 +218,25 @@ fn an_angle_and_a_distance_are_dimensions_too() {
     assert!(near(p.x, 10.0 * 30f64.to_radians().cos(), 1e-6));
     assert!(near(p.y, 5.0 + 5.0, 1e-6));
 }
+
+/// A solved sketch is a list of awkward floats, and the file has to give back the very same
+/// bits: without serde_json's `float_roundtrip`, its parser is off by one in the last place for
+/// some digits (found on macOS, where the nozzle template did not read back equal).
+#[test]
+fn a_saved_sketch_reads_back_bit_for_bit() {
+    let mut s = Sketch::default();
+    let awkward = [
+        27.378058810633842,
+        149.01198116639372,
+        166.98801883357694,
+        0.1 + 0.2,
+    ];
+    for (i, x) in awkward.into_iter().enumerate() {
+        s.point(x, awkward[(i + 1) % awkward.len()]);
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("awkward.vortia-sketch");
+    s.save(&path).unwrap();
+    let back = Sketch::open(&path).unwrap();
+    assert_eq!(back, s);
+}
