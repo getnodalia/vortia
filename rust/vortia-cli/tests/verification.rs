@@ -216,6 +216,51 @@ fn the_cavity_matches_ghia_at_reynolds_100() {
     assert!(dv < 0.05, "v differs from Ghia by {dv:e} of the lid speed");
 }
 
+/// Three meshes of the cavity, each twice as fine as the last: the horizontal speed at the centre
+/// (the mean of the four cells around it) converges, the index says how well it is known, and the
+/// extrapolated value is within 2 % of the 0.20581 that Ghia, Ghia and Shin give at the middle of
+/// the vertical line (their table is read on a 129 × 129 grid; the extrapolation, 0.2092, is the
+/// mesh-independent value of this scheme, 1.6 % from it).
+#[test]
+fn the_cavity_converges_with_the_mesh() {
+    let centre = |n: usize| {
+        let dir = tempfile::tempdir().expect("a folder");
+        vortia_cases::create(
+            dir.path(),
+            &Geometry::Cavity(vortia_cases::Cavity {
+                cells: n,
+                ..Default::default()
+            }),
+        )
+        .expect("the cavity is written");
+        let run = vortia_solvers::Case::open(dir.path()).expect("the solver opens it");
+        vortia_solvers::run(&run, |_| {}).expect("the run finishes");
+        let case = Case::open(dir.path()).expect("the results open");
+        let u = grid(&case, n, 0);
+        let (a, b) = (n / 2 - 1, n / 2);
+        0.25 * (u[a][a] + u[a][b] + u[b][a] + u[b][b])
+    };
+    let (f3, f2, f1) = (centre(16), centre(32), centre(64));
+    let g = gci(f1, f2, f3, 2.0, 2.0, 1.25).expect("the values converge monotonically");
+    println!("Cavity centre u on 16, 32, 64 cells: {f3}, {f2}, {f1}; {g:?}");
+    assert!(
+        (1.5..2.5).contains(&g.observed_order),
+        "order {}",
+        g.observed_order
+    );
+    assert!(
+        (g.asymptotic_ratio - 1.0).abs() < 0.1,
+        "ratio {}",
+        g.asymptotic_ratio
+    );
+    assert!(g.fine < 0.02, "the fine-mesh index is {:e}", g.fine);
+    assert!(
+        (g.extrapolated + 0.20581).abs() < 0.02 * 0.20581,
+        "extrapolated {}",
+        g.extrapolated
+    );
+}
+
 /// The Blasius function `f'(η) = u/U` against `η = y √(U / ν x)`: the solution of
 /// `f''' + f f''/2 = 0` with `f(0) = f'(0) = 0` and `f'(∞) = 1`, integrated from the wall value
 /// `f''(0) = 0.332057` by fourth-order Runge-Kutta. Gives `f'` at each `η` asked for, which must

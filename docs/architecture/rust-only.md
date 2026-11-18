@@ -83,7 +83,7 @@ STL, updater, issue-report or translation code exists there).
   of the peak and, with three meshes, observed order 1.96 and the extrapolated mid-plane speed
   within 0.01 % of the exact one; and the lid-driven cavity (a new case type, `vortia new cavity`,
   its mesh identical to OpenFOAM's) against both Ghia centre-line tables at Re = 100 within 0.9 %
-  of the lid speed. The compressible engine was also run against OpenFOAM v1912 `rhoSimpleFoam` on the same meshes (jet into the atmosphere to about six digits; half planar nozzle and axisymmetric wedge nozzle, outlet flux 1.17435e-3 vs 1.17435e-3 and 2.57758e-3 vs 2.57758e-3, volume-average velocity to about six digits); the meshes of the jet and the half nozzle are checked against `blockMesh` in `cargo test`. Still to do for R7: a three-mesh index for the cavity, all in `cargo test`.
+  of the lid speed. The compressible engine was also run against OpenFOAM v1912 `rhoSimpleFoam` on the same meshes (jet into the atmosphere to about six digits; half planar nozzle and axisymmetric wedge nozzle, outlet flux 1.17435e-3 vs 1.17435e-3 and 2.57758e-3 vs 2.57758e-3, volume-average velocity to about six digits); the meshes of the jet and the half nozzle are checked against `blockMesh` in `cargo test`. The cavity has its three-mesh index too (16, 32 and 64 cells: observed order 2.03, asymptotic ratio 1.015, the centre speed extrapolates to -0.2092 against Ghia's -0.2058).
   Blasius is done (a new `vortia new plate` case, with a slip wall ahead of the plate, which
   needed `slip`/`symmetry` for vectors in the incompressible engine): mean and local friction
   coefficient within 1.5 % and the profile within 0.65 % of the stream speed, and OpenFOAM's
