@@ -626,3 +626,31 @@ fn an_unstructured_nozzle_carries_the_same_flow_as_the_blocks() {
         }
     }
 }
+
+/// A channel with a block in it, drawn as a closed sketch with named edges and meshed with triangles,
+/// carries the flow it is given: what enters at the inlet (speed × height × depth) leaves at the
+/// outlet, and the wall of the block lets nothing through.
+#[test]
+fn a_drawn_channel_with_a_block_conserves_the_flow_that_enters_it() {
+    let dir = tempfile::tempdir().expect("a folder");
+    let drawn = vortia_cases::Drawn {
+        sketch: vortia_sketch::templates::channel_with_block(200.0, 50.0, 10.0, 60.0, 20.0),
+        cell_size: 4.0,
+        ..vortia_cases::Drawn::default()
+    };
+    vortia_cases::create(dir.path(), &Geometry::Drawn(drawn)).expect("the region is written");
+    let case = vortia_solvers::Case::open(dir.path()).expect("the solver opens it");
+    vortia_solvers::run(&case, |_| {}).expect("the run finishes");
+    let results = Case::open(dir.path()).expect("the results open");
+    let time = results.latest_time().expect("a time was written");
+    let flux = |patch: &str| results.flux(&time, patch).expect("the flux is read");
+    // 1 m/s through 0.05 m × 0.01 m.
+    let (inlet, outlet) = (flux("inlet"), flux("outlet"));
+    assert!((inlet + 5e-4).abs() < 1e-6, "{inlet} enters");
+    assert!((outlet - 5e-4).abs() < 1e-6, "{outlet} leaves");
+    assert!(
+        flux("block").abs() < 1e-12,
+        "{} through the block",
+        flux("block")
+    );
+}

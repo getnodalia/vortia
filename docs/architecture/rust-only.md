@@ -140,8 +140,11 @@ with the axis collapsed. The nozzle and the sketched duct use it with `cell-size
 "Triangles (unstructured)"); OpenFOAM v1912 accepts its meshes (`checkMesh`) and `rhoSimpleFoam`
 gives the same flow on them as the Rust engine (outlet flux to 1e-5 on the half nozzle, to six
 digits on the wedge). Still to do: drawing new lines and arcs and dragging points on the canvas,
-snapping, adding dimensions, opening a saved sketch, closed sketches with several loops and named
-edges (the mesher takes them; the sketch does not yet make them), and meshing them from the app.
+snapping, adding dimensions and opening a saved sketch. Closed sketches with several loops and
+named edges now exist (`Sketch::loops`, `Sketch::name`, the `channel-with-block` template) and
+`vortia_cases::Drawn` meshes and runs them (`vortia new region DIR FILE`; the same case run by
+OpenFOAM v1912 gives the same fields to eight digits). Still to do: drawing and naming a closed
+outline on the canvas and a "Drawn region" entry in Home.
 
 ## What this changes in the public text
 

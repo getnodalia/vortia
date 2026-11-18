@@ -80,46 +80,12 @@ impl Channel {
             header("dictionary", "", "blockMeshDict"),
         );
 
-        let files = vec![
-            File {
-                path: "system/blockMeshDict",
-                text: block_mesh_dict.clone(),
-            },
-            File {
-                path: "system/controlDict",
-                text: format!(
-                    "{}application     simpleFoam;\nstartFrom       startTime;\nstartTime       0;\nstopAt          endTime;\nendTime         2000;\ndeltaT          1;\nwriteControl    timeStep;\nwriteInterval   100;\npurgeWrite      0;\nwriteFormat     ascii;\nwritePrecision  8;\ntimeFormat      general;\ntimePrecision   6;\nrunTimeModifiable true;\n",
-                    header("dictionary", "system", "controlDict")
-                ),
-            },
-            File {
-                path: "system/fvSchemes",
-                text: format!(
-                    "{}ddtSchemes\n{{\n    default         steadyState;\n}}\n\ngradSchemes\n{{\n    default         Gauss linear;\n}}\n\ndivSchemes\n{{\n    default         none;\n    div(phi,U)      bounded Gauss linearUpwind grad(U);\n    div((nuEff*dev2(T(grad(U))))) Gauss linear;\n}}\n\nlaplacianSchemes\n{{\n    default         Gauss linear corrected;\n}}\n\ninterpolationSchemes\n{{\n    default         linear;\n}}\n\nsnGradSchemes\n{{\n    default         corrected;\n}}\n",
-                    header("dictionary", "system", "fvSchemes")
-                ),
-            },
-            File {
-                path: "system/fvSolution",
-                text: format!(
-                    "{}solvers\n{{\n    p\n    {{\n        solver          PCG;\n        preconditioner  DIC;\n        tolerance       1e-07;\n        relTol          0.05;\n    }}\n\n    U\n    {{\n        solver          smoothSolver;\n        smoother        symGaussSeidel;\n        tolerance       1e-08;\n        relTol          0.1;\n    }}\n}}\n\nSIMPLE\n{{\n    nNonOrthogonalCorrectors 0;\n    residualControl\n    {{\n        p               1e-05;\n        U               1e-06;\n    }}\n}}\n\nrelaxationFactors\n{{\n    fields\n    {{\n        p               0.3;\n    }}\n    equations\n    {{\n        U               0.7;\n    }}\n}}\n",
-                    header("dictionary", "system", "fvSolution")
-                ),
-            },
-            File {
-                path: "constant/transportProperties",
-                text: format!(
-                    "{}transportModel Newtonian;\n\nnu              {nu};\n",
-                    header("dictionary", "constant", "transportProperties")
-                ),
-            },
-            File {
-                path: "constant/turbulenceProperties",
-                text: format!(
-                    "{}simulationType laminar;\n",
-                    header("dictionary", "constant", "turbulenceProperties")
-                ),
-            },
+        let mut files = vec![File {
+            path: "system/blockMeshDict",
+            text: block_mesh_dict.clone(),
+        }];
+        files.extend(laminar_settings(nu));
+        files.extend(vec![
             File {
                 path: "0/U",
                 text: format!(
@@ -134,7 +100,7 @@ impl Channel {
                     header("volScalarField", "", "p")
                 ),
             },
-        ];
+        ]);
         Ok(FileSet {
             files,
             block_mesh_dict,
@@ -142,4 +108,46 @@ impl Channel {
             application: "simpleFoam",
         })
     }
+}
+
+/// The settings of a laminar incompressible steady case (`simpleFoam`): the control dictionary,
+/// the schemes, the solvers and the viscosity.
+pub(crate) fn laminar_settings(nu: f64) -> Vec<File> {
+    vec![
+        File {
+            path: "system/controlDict",
+            text: format!(
+                "{}application     simpleFoam;\nstartFrom       startTime;\nstartTime       0;\nstopAt          endTime;\nendTime         2000;\ndeltaT          1;\nwriteControl    timeStep;\nwriteInterval   100;\npurgeWrite      0;\nwriteFormat     ascii;\nwritePrecision  8;\ntimeFormat      general;\ntimePrecision   6;\nrunTimeModifiable true;\n",
+                header("dictionary", "system", "controlDict")
+            ),
+        },
+        File {
+            path: "system/fvSchemes",
+            text: format!(
+                "{}ddtSchemes\n{{\n    default         steadyState;\n}}\n\ngradSchemes\n{{\n    default         Gauss linear;\n}}\n\ndivSchemes\n{{\n    default         none;\n    div(phi,U)      bounded Gauss linearUpwind grad(U);\n    div((nuEff*dev2(T(grad(U))))) Gauss linear;\n}}\n\nlaplacianSchemes\n{{\n    default         Gauss linear corrected;\n}}\n\ninterpolationSchemes\n{{\n    default         linear;\n}}\n\nsnGradSchemes\n{{\n    default         corrected;\n}}\n",
+                header("dictionary", "system", "fvSchemes")
+            ),
+        },
+        File {
+            path: "system/fvSolution",
+            text: format!(
+                "{}solvers\n{{\n    p\n    {{\n        solver          PCG;\n        preconditioner  DIC;\n        tolerance       1e-07;\n        relTol          0.05;\n    }}\n\n    U\n    {{\n        solver          smoothSolver;\n        smoother        symGaussSeidel;\n        tolerance       1e-08;\n        relTol          0.1;\n    }}\n}}\n\nSIMPLE\n{{\n    nNonOrthogonalCorrectors 0;\n    residualControl\n    {{\n        p               1e-05;\n        U               1e-06;\n    }}\n}}\n\nrelaxationFactors\n{{\n    fields\n    {{\n        p               0.3;\n    }}\n    equations\n    {{\n        U               0.7;\n    }}\n}}\n",
+                header("dictionary", "system", "fvSolution")
+            ),
+        },
+        File {
+            path: "constant/transportProperties",
+            text: format!(
+                "{}transportModel Newtonian;\n\nnu              {nu};\n",
+                header("dictionary", "constant", "transportProperties")
+            ),
+        },
+        File {
+            path: "constant/turbulenceProperties",
+            text: format!(
+                "{}simulationType laminar;\n",
+                header("dictionary", "constant", "turbulenceProperties")
+            ),
+        },
+    ]
 }

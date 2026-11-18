@@ -8,6 +8,17 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 ## [Unreleased]
 
 ### Añadido
+- **Regiones cerradas dibujadas, con bordes con nombre (R2/R3):** un boceto puede ser un contorno
+  cerrado (más contornos interiores como huecos) cuyos bordes llevan nombre de parche
+  (`Sketch::name`, guardado en el archivo del boceto). `vortia_cases::Drawn` lo malla con
+  triángulos y lo corre como flujo laminar incompresible (`simpleFoam`): `inlet` entra con la
+  velocidad del caso perpendicular al borde, `outlet` va a presión cero, `symmetry` es plano de
+  simetría y cualquier otro nombre es pared, un parche por nombre. `vortia sketch template
+  channel-with-block FILE` y `vortia new region DIR FILE` lo prueban. Comparado con OpenFOAM
+  v1912 sobre el mismo caso (canal con bloque): `checkMesh` da «Mesh OK», ambos convergen en 110
+  iteraciones y la presión y la velocidad coinciden a 8 cifras; un test comprueba que el caudal
+  que entra es el que sale y que la pared del bloque no deja pasar nada. Aún sin pantalla en la
+  app: falta dibujar contornos y poner nombres en el lienzo.
 - **Mallador 2D propio, no estructurado (R3):** `vortia_mesh::tri2d` convierte una región (lazos
   cerrados de segmentos con nombre de parche y, si quieren, tamaño propio) en triángulos de
   Delaunay con refinamiento de Ruppert (ángulo mínimo de 20°, tamaño que crece con la distancia a

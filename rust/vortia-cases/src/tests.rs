@@ -756,3 +756,102 @@ fn an_unstructured_nozzle_is_written_with_its_patches_and_a_mesh_openfoam_accept
     }
     assert!(!target.exists());
 }
+
+/// A duct 200 × 50 mm with a square block in it, drawn as named edges. The outline runs
+/// counter-clockwise, or clockwise when `reversed`.
+fn drawn_duct(reversed: bool) -> vortia_sketch::Sketch {
+    let mut s = vortia_sketch::Sketch::default();
+    let corners = [(0.0, 0.0), (200.0, 0.0), (200.0, 50.0), (0.0, 50.0)];
+    let names = ["floor", "outlet", "ceiling", "inlet"];
+    let ids: Vec<usize> = corners.iter().map(|&(x, y)| s.point(x, y)).collect();
+    let mut edges: Vec<(usize, usize, &str)> = (0..4)
+        .map(|i| (ids[i], ids[(i + 1) % 4], names[i]))
+        .collect();
+    if reversed {
+        edges = edges.into_iter().rev().map(|(a, b, n)| (b, a, n)).collect();
+    }
+    for (a, b, name) in edges {
+        let e = s.line(a, b);
+        s.name(e, name);
+    }
+    let block = [(60.0, 20.0), (70.0, 20.0), (70.0, 30.0), (60.0, 30.0)];
+    let ids: Vec<usize> = block.iter().map(|&(x, y)| s.point(x, y)).collect();
+    for i in 0..4 {
+        let e = s.line(ids[i], ids[(i + 1) % 4]);
+        s.name(e, "block");
+    }
+    s
+}
+
+#[test]
+fn a_region_drawn_with_named_edges_is_meshed_and_runs_with_the_flow_entering_at_the_inlet() {
+    for reversed in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let drawn = Drawn {
+            sketch: drawn_duct(reversed),
+            cell_size: 5.0,
+            ..Drawn::default()
+        };
+        let made = create(dir.path(), &Geometry::Drawn(drawn)).unwrap();
+        assert_eq!(made.application, "simpleFoam");
+        let mesh = PolyMesh::read_case(dir.path()).unwrap();
+        let geo = MeshGeometry::compute(&mesh);
+        assert!(check(&mesh, &geo).is_ok());
+        // The duct less the block, 10 mm deep, in metres.
+        let volume = (0.2 * 0.05 - 0.01 * 0.01) * 0.01;
+        assert!((geo.total_volume() - volume).abs() < 1e-12);
+        for name in [
+            "floor",
+            "outlet",
+            "ceiling",
+            "inlet",
+            "block",
+            "frontAndBack",
+        ] {
+            assert!(mesh.patch(name).is_some(), "no '{name}'");
+        }
+        assert_eq!(mesh.patch("block").unwrap().kind.name(), "wall");
+        // The fluid enters going right, whichever way the outline was drawn.
+        let u = read(dir.path(), "0/U");
+        assert!(u.contains("uniform (1 0 0)"), "{u}");
+        assert!(u.contains("noSlip"));
+
+        end_at(dir.path(), 30);
+        let case = vortia_solvers::Case::open(dir.path()).unwrap();
+        vortia_solvers::run(&case, |_| {}).unwrap();
+        assert!(dir.path().join("30/U").is_file());
+    }
+}
+
+#[test]
+fn a_drawn_region_without_an_inlet_and_an_outlet_or_with_an_open_outline_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut s = drawn_duct(false);
+    s.names.insert(3, "wall".to_owned());
+    let err = create(
+        dir.path(),
+        &Geometry::Drawn(Drawn {
+            sketch: s,
+            ..Drawn::default()
+        }),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(err.contains("'inlet'"), "{err}");
+    // Not a closed outline.
+    let mut open = vortia_sketch::Sketch::default();
+    let (a, b) = (open.point(0.0, 0.0), open.point(1.0, 0.0));
+    open.line(a, b);
+    assert!(
+        create(
+            dir.path(),
+            &Geometry::Drawn(Drawn {
+                sketch: open,
+                ..Drawn::default()
+            })
+        )
+        .is_err()
+    );
+    let mut d = Drawn::default();
+    assert!(d.set("cell-size", 2.0).is_ok() && d.set("nope", 1.0).is_err());
+}

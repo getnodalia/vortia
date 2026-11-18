@@ -114,3 +114,79 @@ pub fn rounded_nozzle(
     });
     s
 }
+
+/// A channel with a square block in it, as a closed region with named edges: `inlet` on the left,
+/// `outlet` on the right, `floor` and `ceiling`, and the block's four edges named `block`. The
+/// channel's lower left corner is fixed at the origin; the block sits `block_x` from the inlet and
+/// `block_y` above the floor.
+pub fn channel_with_block(
+    length: f64,
+    height: f64,
+    block: f64,
+    block_x: f64,
+    block_y: f64,
+) -> Sketch {
+    let mut s = Sketch::default();
+    let p0 = s.fixed_point(0.0, 0.0);
+    let p1 = s.point(length, 0.0);
+    let p2 = s.point(length, height);
+    let p3 = s.point(0.0, height);
+    let edges = [
+        (p0, p1, "floor"),
+        (p1, p2, "outlet"),
+        (p2, p3, "ceiling"),
+        (p3, p0, "inlet"),
+    ];
+    for (a, b, name) in edges {
+        let e = s.line(a, b);
+        s.name(e, name);
+    }
+    s.constrain(Constraint::Horizontal { a: p0, b: p1 });
+    s.constrain(Constraint::Horizontal { a: p3, b: p2 });
+    s.constrain(Constraint::Vertical { a: p0, b: p3 });
+    s.constrain(Constraint::Vertical { a: p1, b: p2 });
+    s.constrain(Constraint::DeltaX {
+        a: p0,
+        b: p1,
+        value: length,
+    });
+    s.constrain(Constraint::DeltaY {
+        a: p0,
+        b: p3,
+        value: height,
+    });
+
+    let q0 = s.point(block_x, block_y);
+    let q1 = s.point(block_x + block, block_y);
+    let q2 = s.point(block_x + block, block_y + block);
+    let q3 = s.point(block_x, block_y + block);
+    for (a, b) in [(q0, q1), (q1, q2), (q2, q3), (q3, q0)] {
+        let e = s.line(a, b);
+        s.name(e, "block");
+    }
+    s.constrain(Constraint::Horizontal { a: q0, b: q1 });
+    s.constrain(Constraint::Horizontal { a: q3, b: q2 });
+    s.constrain(Constraint::Vertical { a: q0, b: q3 });
+    s.constrain(Constraint::Vertical { a: q1, b: q2 });
+    s.constrain(Constraint::DeltaX {
+        a: q0,
+        b: q1,
+        value: block,
+    });
+    s.constrain(Constraint::DeltaY {
+        a: q0,
+        b: q3,
+        value: block,
+    });
+    s.constrain(Constraint::DeltaX {
+        a: p0,
+        b: q0,
+        value: block_x,
+    });
+    s.constrain(Constraint::DeltaY {
+        a: p0,
+        b: q0,
+        value: block_y,
+    });
+    s
+}

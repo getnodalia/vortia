@@ -22,6 +22,7 @@
 
 mod cavity;
 mod channel;
+mod drawn;
 mod error;
 mod files;
 mod jet;
@@ -32,6 +33,7 @@ use std::path::Path;
 
 pub use cavity::Cavity;
 pub use channel::Channel;
+pub use drawn::Drawn;
 pub use error::{CaseError, Result};
 pub use jet::Jet;
 pub use nozzle::{Nozzle, NozzleKind};
@@ -54,6 +56,8 @@ pub enum Geometry {
     Plate(Plate),
     /// A jet from an orifice into the open atmosphere: compressible flow, k-ω SST.
     Jet(Jet),
+    /// A region drawn as a closed sketch with named edges: laminar incompressible flow.
+    Drawn(Drawn),
 }
 
 impl Geometry {
@@ -65,6 +69,7 @@ impl Geometry {
             Geometry::Cavity(_) => "Cavity",
             Geometry::Plate(_) => "Flat plate",
             Geometry::Jet(_) => "Jet into the atmosphere",
+            Geometry::Drawn(_) => "Drawn region",
         }
     }
 }
@@ -92,6 +97,7 @@ pub fn create(dir: &Path, geometry: &Geometry) -> Result<Created> {
         Geometry::Cavity(c) => c.files()?,
         Geometry::Plate(p) => p.files()?,
         Geometry::Jet(j) => j.files()?,
+        Geometry::Drawn(d) => d.files()?,
     };
     files::write_all(dir, &set.files)?;
     let mesh = match &set.raw_mesh {
