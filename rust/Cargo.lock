@@ -2681,6 +2681,7 @@ dependencies = [
  "nodalia-theme",
  "serde_json",
  "tempfile",
+ "vortia-cases",
  "vortia-core",
  "vortia-fields",
  "vortia-foamfile",
@@ -2691,9 +2692,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "vortia-cases"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+ "vortia-core",
+ "vortia-foamfile",
+ "vortia-mesh",
+ "vortia-solvers",
+]
+
+[[package]]
 name = "vortia-cli"
 version = "0.1.0"
 dependencies = [
+ "vortia-cases",
  "vortia-core",
  "vortia-fields",
  "vortia-foamfile",

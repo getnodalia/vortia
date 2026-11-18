@@ -10,6 +10,7 @@ name = "vortia"
 path = "src/main.rs"
 
 [dependencies]
+vortia-cases = { path = "../vortia-cases" }
 vortia-core = { path = "../vortia-core" }
 vortia-fields = { path = "../vortia-fields" }
 vortia-foamfile = { path = "../vortia-foamfile" }

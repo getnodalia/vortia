@@ -7,6 +7,21 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 
 ## [Unreleased]
 
+### Añadido
+- **Crear casos en la aplicación Rust:** en Home, «New» (o `File › New case`) crea un caso nuevo
+  sin salir de la aplicación: un canal 2D laminar (`simpleFoam`), una tobera plana (rendija entre
+  dos paredes) o una tobera axisimétrica (cuña de 5°), ambas compresibles con k-ω SST
+  (`rhoSimpleFoam`). Se eligen las medidas y las condiciones y se escribe la carpeta completa:
+  `blockMeshDict`, la malla hecha por el `blockMesh` del motor propio, los campos iniciales y los
+  ajustes. En la línea de comandos, `vortia new channel|nozzle|nozzle-wedge CARPETA [NOMBRE=VALOR...]`.
+  Las mallas de bloques de las toberas son las del Qt (perfil de suavizado entre entrada, garganta
+  y salida) hechas en Rust, y salen idénticas a las de `blockMesh` y `checkMesh` de OpenFOAM v1912
+  (mismas celdas, puntos y caras, «Mesh OK») para los tres casos. La tobera plana es la rendija
+  entera y no la mitad con plano de simetría porque el motor compresible aún no tiene condición de
+  simetría para la temperatura y la turbulencia. Las toberas entran con velocidad fija (20 m/s por
+  defecto): con presión total de entrada y el fluido en reposo, tanto el motor como `rhoSimpleFoam`
+  de OpenFOAM divergen en las primeras iteraciones (temperatura negativa).
+
 ## [0.10.0] — 2026-11-15
 
 ### Cambiado

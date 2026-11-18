@@ -1,0 +1,15 @@
+[package]
+name = "vortia-cases"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Starts a Vortia case: a box channel or a nozzle, with its mesh, fields and settings"
+
+[dependencies]
+vortia-core = { path = "../vortia-core" }
+vortia-foamfile = { path = "../vortia-foamfile" }
+vortia-mesh = { path = "../vortia-mesh" }
+
+[dev-dependencies]
+tempfile = "3"
+vortia-solvers = { path = "../vortia-solvers" }

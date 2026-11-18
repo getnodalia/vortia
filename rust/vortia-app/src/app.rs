@@ -26,6 +26,7 @@ use crate::summary::{self, Summary};
 use crate::surface;
 use crate::viewer::{Source, Viewer};
 
+mod newcase;
 mod results;
 mod shell;
 use results::{Results, results_tab};
@@ -289,6 +290,8 @@ pub struct VortiaApp {
     home: bool,
     /// The Open field of Home takes the keyboard on the next frame.
     focus_open: bool,
+    /// Home is showing the form that starts a case.
+    new_case: Option<newcase::NewCase>,
     /// The command search, with what was typed, while it is open.
     search: Option<String>,
     icon: Option<egui::TextureHandle>,
@@ -363,6 +366,7 @@ impl VortiaApp {
             dialog: None,
             home: false,
             focus_open: false,
+            new_case: None,
             search: None,
             icon: None,
             #[cfg(target_os = "linux")]
