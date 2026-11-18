@@ -6,21 +6,23 @@ use eframe::egui::{self, DragValue, Ui};
 use nodalia_theme::engineering::Look;
 use nodalia_theme::office;
 use nodalia_theme::{Palette, space};
-use vortia_cases::{Cavity, Channel, Geometry, Nozzle, NozzleKind};
+use vortia_cases::{Cavity, Channel, Geometry, Nozzle, NozzleKind, Plate};
 
 /// Which of the cases Home offers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Kind {
     Channel,
     Cavity,
+    Plate,
     PlanarNozzle,
     AxisymmetricNozzle,
 }
 
 impl Kind {
-    const ALL: [Kind; 4] = [
+    const ALL: [Kind; 5] = [
         Kind::Channel,
         Kind::Cavity,
+        Kind::Plate,
         Kind::PlanarNozzle,
         Kind::AxisymmetricNozzle,
     ];
@@ -29,6 +31,7 @@ impl Kind {
         match self {
             Kind::Channel => "Channel",
             Kind::Cavity => "Cavity",
+            Kind::Plate => "Flat plate",
             Kind::PlanarNozzle => "Planar nozzle",
             Kind::AxisymmetricNozzle => "Axisymmetric nozzle",
         }
@@ -41,6 +44,9 @@ impl Kind {
             }
             Kind::Cavity => {
                 "A square box closed on every side whose top wall slides: laminar, incompressible, steady (simpleFoam). Reynolds number 100 by default, the case of Ghia et al. (1982)."
+            }
+            Kind::Plate => {
+                "A flat plate in a uniform stream with a slip wall ahead of it: laminar, incompressible, steady (simpleFoam). Reynolds number 10⁵ on the plate by default, the boundary layer Blasius solved."
             }
             Kind::PlanarNozzle => {
                 "A converging-diverging slot between two walls: compressible air, k-ω SST, steady (rhoSimpleFoam)."
@@ -59,6 +65,7 @@ pub(super) struct NewCase {
     folder: String,
     channel: Channel,
     cavity: Cavity,
+    plate: Plate,
     planar: Nozzle,
     wedge: Nozzle,
 }
@@ -77,6 +84,7 @@ impl NewCase {
             folder: String::new(),
             channel: Channel::default(),
             cavity: Cavity::default(),
+            plate: Plate::default(),
             planar: Nozzle::new(NozzleKind::Planar),
             wedge: Nozzle::new(NozzleKind::Axisymmetric),
         };
@@ -96,6 +104,7 @@ impl NewCase {
         let stem = match self.kind {
             Kind::Channel => "channel",
             Kind::Cavity => "cavity",
+            Kind::Plate => "plate",
             Kind::PlanarNozzle => "planar-nozzle",
             Kind::AxisymmetricNozzle => "nozzle",
         };
@@ -117,6 +126,7 @@ impl NewCase {
         match self.kind {
             Kind::Channel => Geometry::Channel(self.channel.clone()),
             Kind::Cavity => Geometry::Cavity(self.cavity.clone()),
+            Kind::Plate => Geometry::Plate(self.plate.clone()),
             Kind::PlanarNozzle => Geometry::Nozzle(self.planar.clone()),
             Kind::AxisymmetricNozzle => Geometry::Nozzle(self.wedge.clone()),
         }
@@ -158,6 +168,7 @@ impl NewCase {
             match self.kind {
                 Kind::Channel => channel_fields(ui, &mut self.channel),
                 Kind::Cavity => cavity_fields(ui, &mut self.cavity),
+                Kind::Plate => plate_fields(ui, &mut self.plate),
                 Kind::PlanarNozzle => nozzle_fields(ui, &mut self.planar),
                 Kind::AxisymmetricNozzle => nozzle_fields(ui, &mut self.wedge),
             }
@@ -221,6 +232,22 @@ fn cavity_fields(ui: &mut Ui, c: &mut Cavity) {
             row(ui, "Cells along a side", |ui| count(ui, &mut c.cells));
             row(ui, "Lid speed", |ui| value(ui, &mut c.lid_speed, "m/s"));
             row(ui, "Viscosity", |ui| value(ui, &mut c.viscosity, "m²/s"));
+        });
+}
+
+fn plate_fields(ui: &mut Ui, p: &mut Plate) {
+    egui::Grid::new("new_plate")
+        .num_columns(2)
+        .spacing([space::MD, space::SM])
+        .show(ui, |ui| {
+            row(ui, "Plate length", |ui| value(ui, &mut p.length, "m"));
+            row(ui, "Slip wall ahead", |ui| value(ui, &mut p.upstream, "m"));
+            row(ui, "Height", |ui| value(ui, &mut p.height, "m"));
+            row(ui, "Cells along the plate", |ui| count(ui, &mut p.cells_x));
+            row(ui, "Cells ahead", |ui| count(ui, &mut p.cells_up));
+            row(ui, "Cells across", |ui| count(ui, &mut p.cells_y));
+            row(ui, "Stream speed", |ui| value(ui, &mut p.speed, "m/s"));
+            row(ui, "Viscosity", |ui| value(ui, &mut p.viscosity, "m²/s"));
         });
 }
 

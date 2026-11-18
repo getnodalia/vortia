@@ -8,6 +8,15 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 ## [Unreleased]
 
 ### Añadido
+- **Placa plana como caso nuevo y condición `slip`:** `vortia new plate DIR [length= upstream=
+  height= cells-x= cells-up= cells-y= grading= speed= viscosity=]` y, en Home, «New › Flat plate»
+  escriben la placa plana laminar (Re = 10⁵ sobre la placa por defecto) con un tramo de pared
+  deslizante delante, para que el borde de ataque quede dentro de la corriente. El motor
+  incompresible acepta `slip`, `symmetry` y `symmetryPlane` sobre planos normales a un eje
+  (`directionMixed` con la normal fija en cero). Frente a Blasius, en `cargo test -p vortia-cli
+  --test verification`: coeficiente de fricción medio +1,4 %, local −1 %, y perfil de velocidad
+  a 0,65 % de la corriente (límite 5 %); con `simpleFoam` de OpenFOAM v1912, el esfuerzo medio
+  de la pared coincide al 0,1 %.
 - **Cavidad con tapa móvil como caso nuevo:** `vortia new cavity DIR [side= cells= lid-speed=
   viscosity=]` y, en Home, «New › Cavity» escriben la cavidad cuadrada cerrada con la tapa
   deslizante (Re = 100 por defecto, el caso de Ghia et al., `simpleFoam`). La malla de bloques sale
