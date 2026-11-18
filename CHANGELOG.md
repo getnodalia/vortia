@@ -8,6 +8,9 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 ## [Unreleased]
 
 ### Añadido
+- **DMG de macOS de la app Rust (R9):** `rust/packaging/macos/package.sh` monta `Vortia.app` (la app
+  y la herramienta `vortia`, firmada ad hoc y sin notarizar) en la ventana de instalación de
+  siempre, y `rust-packages.yml` la construye en `macos-15` y la guarda como artefacto.
 - **Interfaz en español e inglés (R8):** la app Rust habla el idioma del sistema y Preferencias
   tiene un selector (sistema, English, Español) que cambia los textos al momento. Los textos están
   en `vortia-app/src/i18n.rs` (el inglés es la clave y lo que falta se queda en inglés); un test
