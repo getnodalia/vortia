@@ -196,6 +196,7 @@ impl Plate {
         Ok(FileSet {
             files,
             block_mesh_dict,
+            raw_mesh: None,
             application: "simpleFoam",
         })
     }
@@ -382,6 +383,7 @@ impl Plate {
         Ok(FileSet {
             files,
             block_mesh_dict,
+            raw_mesh: None,
             application: "simpleFoam",
         })
     }

@@ -240,3 +240,65 @@ fn a_saved_sketch_reads_back_bit_for_bit() {
     let back = Sketch::open(&path).unwrap();
     assert_eq!(back, s);
 }
+
+fn square(s: &mut Sketch, x: f64, y: f64, side: f64) -> [usize; 4] {
+    let p: Vec<usize> = [(x, y), (x + side, y), (x + side, y + side), (x, y + side)]
+        .iter()
+        .map(|&(a, b)| s.point(a, b))
+        .collect();
+    [
+        s.line(p[0], p[1]),
+        s.line(p[1], p[2]),
+        s.line(p[2], p[3]),
+        s.line(p[3], p[0]),
+    ]
+}
+
+#[test]
+fn a_closed_sketch_reads_as_loops_with_the_names_of_its_edges() {
+    let mut s = Sketch::default();
+    let outer = square(&mut s, 0.0, 0.0, 10.0);
+    let hole = square(&mut s, 4.0, 4.0, 2.0);
+    s.name(outer[0], "bottom");
+    s.name(outer[3], "inlet");
+    s.name(hole[0], "cylinder");
+    let loops = s.loops(5.0).unwrap();
+    assert_eq!(loops.len(), 2);
+    assert_eq!(loops[0].len(), 4);
+    assert_eq!(loops[1].len(), 4);
+    let names: Vec<&str> = loops[0].iter().map(|e| e.patch.as_str()).collect();
+    assert_eq!(names, ["bottom", "wall", "wall", "inlet"]);
+    // Each edge starts where the one before it ended.
+    for l in &loops {
+        for (i, e) in l.iter().enumerate() {
+            let before = &l[(i + l.len() - 1) % l.len()];
+            assert_eq!(before.points.last(), e.points.first());
+        }
+    }
+    // A name survives the file.
+    let back = Sketch::from_json(&s.to_json()).unwrap();
+    assert_eq!(back.names, s.names);
+}
+
+#[test]
+fn an_outline_with_an_open_end_a_stray_hole_or_a_bad_name_is_refused() {
+    let mut open = Sketch::default();
+    let a = open.point(0.0, 0.0);
+    let b = open.point(1.0, 0.0);
+    open.line(a, b);
+    assert!(matches!(open.loops(5.0), Err(SketchError::Profile(_))));
+
+    let mut apart = Sketch::default();
+    square(&mut apart, 0.0, 0.0, 1.0);
+    square(&mut apart, 5.0, 5.0, 1.0);
+    let err = apart.loops(5.0).unwrap_err().to_string();
+    assert!(err.contains("outside"), "{err}");
+
+    let mut named = Sketch::default();
+    let e = square(&mut named, 0.0, 0.0, 1.0);
+    named.name(e[0], "has space");
+    assert!(named.loops(5.0).is_err());
+    named.names.clear();
+    named.name(99, "x");
+    assert!(named.validate().is_err());
+}

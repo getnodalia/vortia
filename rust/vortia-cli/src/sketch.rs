@@ -101,9 +101,22 @@ fn template(name: &str, file: &str, settings: &[&str]) -> Result<String, String>
                 get(&given, "throat-arc-radius", 30.0),
             )
         }
+        "channel-with-block" => {
+            let given = numbers(
+                settings,
+                &["length", "height", "block", "block-x", "block-y"],
+            )?;
+            templates::channel_with_block(
+                get(&given, "length", 200.0),
+                get(&given, "height", 50.0),
+                get(&given, "block", 10.0),
+                get(&given, "block-x", 60.0),
+                get(&given, "block-y", 20.0),
+            )
+        }
         other => {
             return Err(format!(
-                "'{other}' is not a template: duct, nozzle or rounded-nozzle"
+                "'{other}' is not a template: duct, nozzle, rounded-nozzle or channel-with-block"
             ));
         }
     };

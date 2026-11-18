@@ -3,6 +3,8 @@
 //! Lengths are in millimetres. `x` runs along the flow and `y` is the distance from the axis, so a
 //! sketch is the half of the flow's section above the axis.
 
+use std::collections::BTreeMap;
+
 use crate::error::{Result, SketchError};
 
 /// The most points, entities and constraints a sketch may have, so a file cannot ask for more
@@ -65,6 +67,9 @@ pub struct Sketch {
     pub points: Vec<Point>,
     pub entities: Vec<Entity>,
     pub constraints: Vec<Constraint>,
+    /// The patch an entity's edge belongs to when the sketch is a closed region, by entity index.
+    /// An entity without a name is in the patch `wall`.
+    pub names: BTreeMap<usize, String>,
 }
 
 fn finite(name: &str, v: f64, limit: f64) -> Result<()> {
@@ -96,6 +101,11 @@ impl Sketch {
     pub fn arc(&mut self, start: PointId, end: PointId, center: PointId) -> usize {
         self.entities.push(Entity::Arc { start, end, center });
         self.entities.len() - 1
+    }
+
+    /// Names the patch the edge of `entity` belongs to.
+    pub fn name(&mut self, entity: usize, patch: &str) {
+        self.names.insert(entity, patch.to_owned());
     }
 
     pub fn constrain(&mut self, c: Constraint) {
@@ -145,6 +155,21 @@ impl Sketch {
                         ));
                     }
                 }
+            }
+        }
+        for (entity, name) in &self.names {
+            if *entity >= self.entities.len() {
+                return Err(SketchError::Invalid(format!(
+                    "entity {entity} is not in the sketch, so it cannot be named"
+                )));
+            }
+            if name.is_empty()
+                || name.len() > 64
+                || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+            {
+                return Err(SketchError::Invalid(format!(
+                    "a patch name is letters, digits and underscores, up to 64: '{name}'"
+                )));
             }
         }
         for c in &self.constraints {

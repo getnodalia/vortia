@@ -6,6 +6,7 @@
 //! - [`MeshGeometry`]: face centres and area vectors, cell centres and volumes.
 //! - [`check`]: the quality report `checkMesh` gives, from that geometry.
 //! - [`blocks`]: structured hexahedral boxes, the start of the engine's mesher.
+//! - [`tri2d`]: the unstructured 2D mesher, triangles made into prisms.
 
 #![forbid(unsafe_code)]
 #![deny(
@@ -28,6 +29,7 @@ pub mod geometry;
 pub mod gmsh;
 pub mod polymesh;
 pub mod stl;
+pub mod tri2d;
 pub mod wall;
 
 pub use check::{MeshReport, check};

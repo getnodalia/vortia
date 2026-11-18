@@ -29,6 +29,8 @@ pub(crate) struct File {
 pub(crate) struct FileSet {
     pub files: Vec<File>,
     pub block_mesh_dict: String,
+    /// A mesh made without a `blockMeshDict` (the unstructured mesher's), written as it is.
+    pub raw_mesh: Option<vortia_foamfile::RawPolyMesh>,
     pub application: &'static str,
 }
 
@@ -62,6 +64,16 @@ pub(crate) fn mesh(dir: &Path, text: &str) -> Result<MeshSize> {
         .map_err(|e| CaseError::Mesh(e.to_string()))?;
     let raw =
         vortia_mesh::blockmesh::block_mesh(&dict).map_err(|e| CaseError::Mesh(e.to_string()))?;
+    raw.write_case(dir)
+        .map_err(|e| CaseError::Io(e.to_string()))?;
+    Ok(MeshSize {
+        cells: raw.owner.iter().max().map_or(0, |m| m + 1),
+        points: raw.points.len(),
+    })
+}
+
+/// Writes a mesh made in memory into `constant/polyMesh`.
+pub(crate) fn write_raw(dir: &Path, raw: &vortia_foamfile::RawPolyMesh) -> Result<MeshSize> {
     raw.write_case(dir)
         .map_err(|e| CaseError::Io(e.to_string()))?;
     Ok(MeshSize {

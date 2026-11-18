@@ -83,7 +83,7 @@ STL, updater, issue-report or translation code exists there).
   of the peak and, with three meshes, observed order 1.96 and the extrapolated mid-plane speed
   within 0.01 % of the exact one; and the lid-driven cavity (a new case type, `vortia new cavity`,
   its mesh identical to OpenFOAM's) against both Ghia centre-line tables at Re = 100 within 0.9 %
-  of the lid speed. The compressible engine was also run against OpenFOAM v1912 `rhoSimpleFoam` on the same meshes (jet into the atmosphere to about six digits; half planar nozzle and axisymmetric wedge nozzle, outlet flux 1.17435e-3 vs 1.17435e-3 and 2.57758e-3 vs 2.57758e-3, volume-average velocity to about six digits); the meshes of the jet and the half nozzle are checked against `blockMesh` in `cargo test`. Still to do for R7: a three-mesh index for the cavity, all in `cargo test`.
+  of the lid speed. The compressible engine was also run against OpenFOAM v1912 `rhoSimpleFoam` on the same meshes (jet into the atmosphere to about six digits; half planar nozzle and axisymmetric wedge nozzle, outlet flux 1.17435e-3 vs 1.17435e-3 and 2.57758e-3 vs 2.57758e-3, volume-average velocity to about six digits); the meshes of the jet and the half nozzle are checked against `blockMesh` in `cargo test`. The cavity has its three-mesh index too (16, 32 and 64 cells: observed order 2.03, asymptotic ratio 1.015, the centre speed extrapolates to -0.2092 against Ghia's -0.2058).
   Blasius is done (a new `vortia new plate` case, with a slip wall ahead of the plate, which
   needed `slip`/`symmetry` for vectors in the incompressible engine): mean and local friction
   coefficient within 1.5 % and the profile within 0.65 % of the stream speed, and OpenFOAM's
@@ -133,8 +133,18 @@ format. A sketched wall becomes a structured block mesh through `Nozzle::from_sk
 CLI reaches it with `vortia sketch template|info` and `vortia new sketch`. Home's "New > From
 sketch" in the app starts from a template, edits its dimensions (an edit that cannot be solved is
 refused and the sketch stays as it was), draws the wall and keeps `sketch.vortia-sketch` in the
-case. Still to do: drawing new lines and arcs and dragging points on the canvas, snapping, adding
-dimensions, opening a saved sketch, and a general mesher for shapes that are not a profile of revolution or extrusion.
+case. The mesher itself, `vortia_mesh::tri2d` (done on 2026-11-18): a region of named segments
+becomes Delaunay triangles refined as Ruppert's algorithm does (no angle under 20°, sizes that
+follow the boundary's and grow with the distance from it) and then prisms, planar or in a 5° wedge
+with the axis collapsed. The nozzle and the sketched duct use it with `cell-size` (and Home's
+"Triangles (unstructured)"); OpenFOAM v1912 accepts its meshes (`checkMesh`) and `rhoSimpleFoam`
+gives the same flow on them as the Rust engine (outlet flux to 1e-5 on the half nozzle, to six
+digits on the wedge). Still to do: drawing new lines and arcs and dragging points on the canvas,
+snapping, adding dimensions and opening a saved sketch. Closed sketches with several loops and
+named edges now exist (`Sketch::loops`, `Sketch::name`, the `channel-with-block` template) and
+`vortia_cases::Drawn` meshes and runs them (`vortia new region DIR FILE`; the same case run by
+OpenFOAM v1912 gives the same fields to eight digits). Still to do: drawing and naming a closed
+outline on the canvas and a "Drawn region" entry in Home.
 
 ## What this changes in the public text
 

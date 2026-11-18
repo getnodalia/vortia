@@ -10,6 +10,9 @@ pub fn run(args: &[&str]) -> ExitCode {
     if let ["sketch", dir, file, settings @ ..] = args {
         return from_sketch(dir, file, settings);
     }
+    if let ["region", dir, file, settings @ ..] = args {
+        return from_region(dir, file, settings);
+    }
     let [kind, dir, settings @ ..] = args else {
         eprintln!(
             "vortia: new needs a kind (channel, cavity, plate, plate-turbulent, nozzle, nozzle-wedge or jet) and a folder"
@@ -72,6 +75,7 @@ fn geometry(kind: &str, settings: &[&str]) -> Result<Geometry, String> {
             Geometry::Plate(p) => p.set(name, number),
             Geometry::Nozzle(n) => n.set(name, number),
             Geometry::Jet(j) => j.set(name, number),
+            Geometry::Drawn(d) => d.set(name, number),
         }
         .map_err(|e| e.to_string())?;
     }
@@ -126,6 +130,52 @@ fn from_sketch(dir: &str, file: &str, settings: &[&str]) -> ExitCode {
                 &mut std::io::stdout(),
                 format_args!(
                     "Wrote the sketched duct ({} cells, {} points) to {dir}; run it with `vortia solve {dir}` ({})\n",
+                    made.cells, made.points, made.application
+                ),
+            );
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("vortia: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// `vortia new region DIR FILE [NAME=VALUE...]`: a case whose region is the closed outline of a
+/// sketch file, its edges named `inlet`, `outlet`, `symmetry` or anything else for a wall.
+fn from_region(dir: &str, file: &str, settings: &[&str]) -> ExitCode {
+    let build = || -> Result<vortia_cases::Drawn, String> {
+        let mut sketch = vortia_sketch::Sketch::open(Path::new(file)).map_err(|e| e.to_string())?;
+        sketch.solve().map_err(|e| e.to_string())?;
+        let mut drawn = vortia_cases::Drawn {
+            sketch,
+            ..vortia_cases::Drawn::default()
+        };
+        for setting in settings {
+            let (name, value) = setting
+                .split_once('=')
+                .ok_or_else(|| format!("'{setting}' is not NAME=VALUE"))?;
+            let number: f64 = value
+                .parse()
+                .map_err(|_| format!("'{value}' in '{setting}' is not a number"))?;
+            drawn.set(name, number).map_err(|e| e.to_string())?;
+        }
+        Ok(drawn)
+    };
+    let drawn = match build() {
+        Ok(d) => d,
+        Err(message) => {
+            eprintln!("vortia: {message}");
+            return ExitCode::from(2);
+        }
+    };
+    match vortia_cases::create(Path::new(dir), &Geometry::Drawn(drawn)) {
+        Ok(made) => {
+            let _ = std::io::Write::write_fmt(
+                &mut std::io::stdout(),
+                format_args!(
+                    "Wrote the drawn region ({} cells, {} points) to {dir}; run it with `vortia solve {dir}` ({})\n",
                     made.cells, made.points, made.application
                 ),
             );

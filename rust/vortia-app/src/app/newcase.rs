@@ -180,6 +180,7 @@ impl NewCase {
         nozzle.inlet_temperature = self.sketched.inlet_temperature;
         nozzle.outlet_pressure = self.sketched.outlet_pressure;
         nozzle.radial_cells = self.sketched.radial_cells;
+        nozzle.cell_size = self.sketched.cell_size;
         Ok(nozzle)
     }
 
@@ -303,6 +304,7 @@ impl NewCase {
                 row(ui, tr("Cells across"), |ui| {
                     count(ui, &mut self.sketched.radial_cells)
                 });
+                mesh_rows(ui, &mut self.sketched);
                 row(ui, tr("Inlet speed"), |ui| {
                     value(ui, &mut self.sketched.inlet_speed, "m/s")
                 });
@@ -493,6 +495,22 @@ fn jet_fields(ui: &mut Ui, j: &mut Jet) {
         });
 }
 
+/// The choice of mesh: blocks, or triangles made by the engine's own mesher at a cell size.
+fn mesh_rows(ui: &mut Ui, n: &mut Nozzle) {
+    row(ui, tr("Mesh"), |ui| {
+        let mut triangles = n.cell_size.is_some();
+        if ui
+            .checkbox(&mut triangles, tr("Triangles (unstructured)"))
+            .changed()
+        {
+            n.cell_size = triangles.then(|| (n.throat_diameter / 10.0).max(0.5));
+        }
+    });
+    if let Some(size) = n.cell_size.as_mut() {
+        row(ui, tr("Cell size"), |ui| value(ui, size, "mm"));
+    }
+}
+
 fn nozzle_fields(ui: &mut Ui, n: &mut Nozzle) {
     egui::Grid::new("new_nozzle")
         .num_columns(2)
@@ -523,6 +541,7 @@ fn nozzle_fields(ui: &mut Ui, n: &mut Nozzle) {
                 value(ui, &mut n.outlet_pressure, "Pa")
             });
             row(ui, tr("Cells across"), |ui| count(ui, &mut n.radial_cells));
+            mesh_rows(ui, n);
             if n.kind == vortia_cases::NozzleKind::Planar {
                 row(ui, tr("Half section"), |ui| {
                     ui.checkbox(&mut n.half, tr("Symmetry plane on the axis"));
@@ -606,5 +625,22 @@ mod tests {
         let err = form.create().unwrap_err();
         assert!(err.contains("length"), "{err}");
         assert!(!Path::new(form.folder.trim()).exists());
+    }
+
+    #[test]
+    fn triangles_can_be_chosen_for_a_nozzle_and_for_a_sketch() {
+        for kind in [Kind::PlanarNozzle, Kind::AxisymmetricNozzle, Kind::Sketch] {
+            let base = tempfile::tempdir().unwrap();
+            let mut form = NewCase::new(base.path());
+            form.kind = kind;
+            form.planar.cell_size = Some(8.0);
+            form.wedge.cell_size = Some(8.0);
+            form.sketched.cell_size = Some(8.0);
+            form.propose(base.path());
+            let dir = form.create().unwrap();
+            // The mesh came from the unstructured mesher, not from a blockMeshDict.
+            assert!(!dir.join("system/blockMeshDict").exists(), "{kind:?}");
+            assert!(dir.join("constant/polyMesh/points").exists(), "{kind:?}");
+        }
     }
 }

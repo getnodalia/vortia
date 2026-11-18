@@ -17,6 +17,7 @@ mod error;
 mod file;
 mod model;
 mod profile;
+mod region;
 mod solve;
 pub mod templates;
 
@@ -26,6 +27,7 @@ pub use model::{
     Constraint, Entity, MAX_CONSTRAINTS, MAX_ENTITIES, MAX_POINTS, MAX_SIZE, Point, PointId, Sketch,
 };
 pub use profile::{Profile, stations};
+pub use region::{DEFAULT_PATCH, Edge, Loops};
 pub use solve::Solution;
 
 #[cfg(test)]

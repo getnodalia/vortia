@@ -8,6 +8,29 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 ## [Unreleased]
 
 ### Añadido
+- **Regiones cerradas dibujadas, con bordes con nombre (R2/R3):** un boceto puede ser un contorno
+  cerrado (más contornos interiores como huecos) cuyos bordes llevan nombre de parche
+  (`Sketch::name`, guardado en el archivo del boceto). `vortia_cases::Drawn` lo malla con
+  triángulos y lo corre como flujo laminar incompresible (`simpleFoam`): `inlet` entra con la
+  velocidad del caso perpendicular al borde, `outlet` va a presión cero, `symmetry` es plano de
+  simetría y cualquier otro nombre es pared, un parche por nombre. `vortia sketch template
+  channel-with-block FILE` y `vortia new region DIR FILE` lo prueban. Comparado con OpenFOAM
+  v1912 sobre el mismo caso (canal con bloque): `checkMesh` da «Mesh OK», ambos convergen en 110
+  iteraciones y la presión y la velocidad coinciden a 8 cifras; un test comprueba que el caudal
+  que entra es el que sale y que la pared del bloque no deja pasar nada. Aún sin pantalla en la
+  app: falta dibujar contornos y poner nombres en el lienzo.
+- **Mallador 2D propio, no estructurado (R3):** `vortia_mesh::tri2d` convierte una región (lazos
+  cerrados de segmentos con nombre de parche y, si quieren, tamaño propio) en triángulos de
+  Delaunay con refinamiento de Ruppert (ángulo mínimo de 20°, tamaño que crece con la distancia a
+  la frontera) y los extruye a prismas de una celda de grosor, planos (`frontAndBack` vacío) o en
+  cuña de 5° con el eje colapsado (`wedgeFront` y `wedgeBack`); rechaza fronteras que se cruzan,
+  lazos abiertos, números que no lo son y tamaños que darían demasiadas celdas. La tobera lo usa
+  con `cell-size=MM` (`vortia new nozzle DIR cell-size=5`, también con `half=1`, `nozzle-wedge` y
+  `new sketch`) y Home lo ofrece como «Triángulos (no estructurada)» con su tamaño de celda, para
+  las toberas y para el boceto. Comparado con OpenFOAM v1912 (`checkMesh` da «Mesh OK» y
+  `rhoSimpleFoam` sobre la misma malla da el mismo caudal de salida a 1e-5 en la media tobera y a
+  6 cifras en la cuña); un test compara el caudal con la malla de bloques (0,2 % en la media
+  sección, 1 % en la cuña).
 - **Chorro a la atmósfera (R4):** `vortia_cases::Jet`, «Jet into the atmosphere» en Home y
   `vortia new jet DIR` escriben el caso de `examples/nozzle-practice-2026` a partir de sus números
   (orificio de 0,1 mm en una pared, cuña de 5°, atmósfera abierta con presión ambiente; `rhoSimpleFoam`,

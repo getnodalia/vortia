@@ -216,6 +216,51 @@ fn the_cavity_matches_ghia_at_reynolds_100() {
     assert!(dv < 0.05, "v differs from Ghia by {dv:e} of the lid speed");
 }
 
+/// Three meshes of the cavity, each twice as fine as the last: the horizontal speed at the centre
+/// (the mean of the four cells around it) converges, the index says how well it is known, and the
+/// extrapolated value is within 2 % of the 0.20581 that Ghia, Ghia and Shin give at the middle of
+/// the vertical line (their table is read on a 129 × 129 grid; the extrapolation, 0.2092, is the
+/// mesh-independent value of this scheme, 1.6 % from it).
+#[test]
+fn the_cavity_converges_with_the_mesh() {
+    let centre = |n: usize| {
+        let dir = tempfile::tempdir().expect("a folder");
+        vortia_cases::create(
+            dir.path(),
+            &Geometry::Cavity(vortia_cases::Cavity {
+                cells: n,
+                ..Default::default()
+            }),
+        )
+        .expect("the cavity is written");
+        let run = vortia_solvers::Case::open(dir.path()).expect("the solver opens it");
+        vortia_solvers::run(&run, |_| {}).expect("the run finishes");
+        let case = Case::open(dir.path()).expect("the results open");
+        let u = grid(&case, n, 0);
+        let (a, b) = (n / 2 - 1, n / 2);
+        0.25 * (u[a][a] + u[a][b] + u[b][a] + u[b][b])
+    };
+    let (f3, f2, f1) = (centre(16), centre(32), centre(64));
+    let g = gci(f1, f2, f3, 2.0, 2.0, 1.25).expect("the values converge monotonically");
+    println!("Cavity centre u on 16, 32, 64 cells: {f3}, {f2}, {f1}; {g:?}");
+    assert!(
+        (1.5..2.5).contains(&g.observed_order),
+        "order {}",
+        g.observed_order
+    );
+    assert!(
+        (g.asymptotic_ratio - 1.0).abs() < 0.1,
+        "ratio {}",
+        g.asymptotic_ratio
+    );
+    assert!(g.fine < 0.02, "the fine-mesh index is {:e}", g.fine);
+    assert!(
+        (g.extrapolated + 0.20581).abs() < 0.02 * 0.20581,
+        "extrapolated {}",
+        g.extrapolated
+    );
+}
+
 /// The Blasius function `f'(η) = u/U` against `η = y √(U / ν x)`: the solution of
 /// `f''' + f f''/2 = 0` with `f(0) = f'(0) = 0` and `f'(∞) = 1`, integrated from the wall value
 /// `f''(0) = 0.332057` by fourth-order Runge-Kutta. Gives `f'` at each `η` asked for, which must
@@ -553,5 +598,104 @@ fn a_jet_into_the_atmosphere_leaves_at_the_isentropic_speed() {
             .expect("the flux is read")
             .abs()
             < 1e-18
+    );
+}
+
+/// The same nozzle meshed by the engine's own unstructured mesher (triangles made into prisms)
+/// and by blocks: the flow through it and the state at a point agree, though not a single cell
+/// does. The half slot is checked against the blocks within 0.2 %, and the axisymmetric wedge
+/// (a coarser mesh, with cells on the collapsed axis) within 1 %.
+#[test]
+fn an_unstructured_nozzle_carries_the_same_flow_as_the_blocks() {
+    use vortia_cases::NozzleKind;
+    for (kind, size, flux_tolerance) in [
+        (NozzleKind::Planar, 5.0, 2e-3),
+        (NozzleKind::Axisymmetric, 6.0, 1e-2),
+    ] {
+        let run = |cell_size: Option<f64>| {
+            let dir = tempfile::tempdir().expect("a folder");
+            let nozzle = vortia_cases::Nozzle {
+                converging_segments: 6,
+                diverging_segments: 10,
+                axial_cells_per_segment: 2,
+                radial_cells: 20,
+                radial_grading: 1.5,
+                half: kind == NozzleKind::Planar,
+                cell_size,
+                ..vortia_cases::Nozzle::new(kind)
+            };
+            vortia_cases::create(dir.path(), &Geometry::Nozzle(nozzle))
+                .expect("the nozzle is written");
+            let case = vortia_solvers::Case::open(dir.path()).expect("the solver opens it");
+            vortia_solvers::run(&case, |_| {}).expect("the run finishes");
+            let results = Case::open(dir.path()).expect("the results open");
+            let time = results.latest_time().expect("a time was written");
+            (dir, results, time)
+        };
+        let (_blocks_dir, blocks, blocks_time) = run(None);
+        let (_tri_dir, tri, tri_time) = run(Some(size));
+
+        let out = |case: &Case, time: &str| case.flux(time, "outlet").expect("the flux is read");
+        let (a, b) = (out(&tri, &tri_time), out(&blocks, &blocks_time));
+        assert!(
+            (a - b).abs() < flux_tolerance * b.abs(),
+            "{kind:?}: the outlet flux {a} on triangles against {b} on blocks"
+        );
+        let inlet = tri.flux(&tri_time, "inlet").expect("the flux is read");
+        assert!(
+            (inlet + a).abs() < 1e-3 * a.abs(),
+            "{kind:?}: {inlet} enters and {a} leaves"
+        );
+        if kind == NozzleKind::Planar {
+            let across = tri.flux(&tri_time, "symmetry").expect("the flux is read");
+            assert!(
+                across.abs() < 1e-9 * a.abs(),
+                "the symmetry plane lets {across} through"
+            );
+        }
+        let point = Vec3::new(0.2, 0.02, 0.0005);
+        let first = |v: &[f64]| v.first().copied().unwrap_or(f64::NAN);
+        for (field, tolerance) in [("U", 0.03), ("T", 0.01), ("p", 0.01)] {
+            let value = |case: &Case, time: &str| {
+                case.probe(time, field, point)
+                    .map(|p| first(&p.value))
+                    .unwrap_or(f64::NAN)
+            };
+            let (x, y) = (value(&tri, &tri_time), value(&blocks, &blocks_time));
+            if kind == NozzleKind::Planar {
+                assert!(
+                    (x - y).abs() < tolerance * y.abs(),
+                    "{field}: {x} on triangles, {y} on blocks"
+                );
+            }
+        }
+    }
+}
+
+/// A channel with a block in it, drawn as a closed sketch with named edges and meshed with triangles,
+/// carries the flow it is given: what enters at the inlet (speed × height × depth) leaves at the
+/// outlet, and the wall of the block lets nothing through.
+#[test]
+fn a_drawn_channel_with_a_block_conserves_the_flow_that_enters_it() {
+    let dir = tempfile::tempdir().expect("a folder");
+    let drawn = vortia_cases::Drawn {
+        sketch: vortia_sketch::templates::channel_with_block(200.0, 50.0, 10.0, 60.0, 20.0),
+        cell_size: 4.0,
+        ..vortia_cases::Drawn::default()
+    };
+    vortia_cases::create(dir.path(), &Geometry::Drawn(drawn)).expect("the region is written");
+    let case = vortia_solvers::Case::open(dir.path()).expect("the solver opens it");
+    vortia_solvers::run(&case, |_| {}).expect("the run finishes");
+    let results = Case::open(dir.path()).expect("the results open");
+    let time = results.latest_time().expect("a time was written");
+    let flux = |patch: &str| results.flux(&time, patch).expect("the flux is read");
+    // 1 m/s through 0.05 m × 0.01 m.
+    let (inlet, outlet) = (flux("inlet"), flux("outlet"));
+    assert!((inlet + 5e-4).abs() < 1e-6, "{inlet} enters");
+    assert!((outlet - 5e-4).abs() < 1e-6, "{outlet} leaves");
+    assert!(
+        flux("block").abs() < 1e-12,
+        "{} through the block",
+        flux("block")
     );
 }
