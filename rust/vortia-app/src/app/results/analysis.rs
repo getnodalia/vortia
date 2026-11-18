@@ -108,7 +108,7 @@ impl SectionForm {
     }
 }
 
-fn field(ui: &mut egui::Ui, p: &Palette, name: &str, unit: &str, text: &mut String) {
+pub(super) fn field(ui: &mut egui::Ui, p: &Palette, name: &str, unit: &str, text: &mut String) {
     ui.label(RichText::new(name).color(muted(p)));
     ui.add(egui::TextEdit::singleline(text).desired_width(90.0));
     ui.label(RichText::new(unit).size(font_size::SMALL).color(muted(p)));
@@ -266,13 +266,22 @@ pub(super) fn save_report(dir: &Path, report: &SectionReport, format: &str) -> (
             );
         }
     };
-    if report.time.contains(['/', '\\']) || report.time == ".." || report.time.is_empty() {
+    write_report(dir, "section", &report.time, name, &body)
+}
+
+/// Writes `body` to `postProcessing/<kind>/<time>/<name>` in the case. A time that is not a
+/// folder name is refused, so a report cannot be written outside the case.
+pub(super) fn write_report(
+    dir: &Path,
+    kind: &str,
+    time: &str,
+    name: &str,
+    body: &str,
+) -> (bool, String) {
+    if time.contains(['/', '\\']) || time == ".." || time.is_empty() {
         return (false, "The time is not a folder name.".into());
     }
-    let relative = Path::new("postProcessing")
-        .join("section")
-        .join(&report.time)
-        .join(name);
+    let relative = Path::new("postProcessing").join(kind).join(time).join(name);
     match vortia_foamfile::write::atomic(&dir.join(&relative), body.as_bytes()) {
         Ok(()) => (true, format!("Saved to {}.", relative.display())),
         Err(e) => (false, e.to_string()),

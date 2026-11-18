@@ -284,6 +284,29 @@ fn the_flat_plate_matches_blasius() {
         (mean - exact_mean).abs() < 0.05 * exact_mean,
         "the mean cf {mean} is not within 5 % of {exact_mean}"
     );
+    // The drag coefficient of the plate, from the forces report, is the same number: the plate
+    // has no pressure drag, and its area is its length times the one cell's depth.
+    let reference = vortia_post::ForceReference {
+        speed: plate.speed,
+        area: plate.length * plate.depth,
+        ..vortia_post::ForceReference::default()
+    };
+    let forces = case
+        .forces(&time, &["plate".to_owned()], &reference)
+        .expect("the forces are read");
+    let metric = |key: &str| {
+        forces
+            .metrics()
+            .into_iter()
+            .find(|m| m.key == key)
+            .map_or(f64::NAN, |m| m.value)
+    };
+    assert!(
+        (metric("cd") - mean).abs() < 1e-9 * mean.abs(),
+        "cd {} and the mean cf {mean} differ",
+        metric("cd")
+    );
+    assert!(metric("pressureDrag").abs() < 1e-12 * metric("viscousDrag"));
     // The faces of the plate run along it in cell order, so the middle one is half way.
     let middle = wall
         .shear

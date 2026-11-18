@@ -337,6 +337,7 @@ fn global_menus() -> Vec<Menu> {
             title: "Case".into(),
             entries: vec![
                 Entry::action("Run", "run"),
+                Entry::action("Pause or resume", "pause"),
                 Entry::action("Stop", "stop"),
                 Entry::Separator,
                 Entry::action("Close case", "close"),
@@ -493,6 +494,16 @@ impl VortiaApp {
         }
     }
 
+    /// Holds a run at the start of its next step, or lets it go on.
+    fn toggle_pause(&mut self) {
+        if let Screen::Case(case) = &mut self.screen
+            && let Some(session) = &case.session
+            && !case.stopping
+        {
+            session.set_paused(!session.is_paused());
+        }
+    }
+
     fn close_case(&mut self) {
         if matches!(&self.screen, Screen::Case(case) if !case.running()) {
             self.screen = Screen::Welcome;
@@ -508,6 +519,7 @@ impl VortiaApp {
             "shortcuts" => self.dialog = Some(Dialog::Shortcuts),
             "quit" => ctx.send_viewport_cmd(ViewportCommand::Close),
             "run" => self.start_run(ctx),
+            "pause" => self.toggle_pause(),
             "stop" => self.stop_run(),
             "close" => self.close_case(),
             _ => {}
@@ -526,6 +538,7 @@ impl VortiaApp {
             Screen::Welcome => (false, false, false),
         };
         menu.set_enabled("run", open && !running);
+        menu.set_enabled("pause", running && !stopping);
         menu.set_enabled("stop", running && !stopping);
         menu.set_enabled("close", open && !running);
         for action in clicks {

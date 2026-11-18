@@ -14,12 +14,14 @@ use eframe::egui::{
 use nodalia_theme::{Palette, component, font_size, for_egui, space};
 use vortia_core::{Aabb, Vec3};
 use vortia_mesh::PatchKind;
-use vortia_post::{Case, FieldReport, FieldValues, Sample, SectionReport, WallReport};
+use vortia_post::{Case, FieldReport, FieldValues, ForceReport, Sample, SectionReport, WallReport};
 
 mod analysis;
+mod forces;
 
 use super::{accent_button, corner, muted};
 use analysis::{SectionForm, section_card};
+use forces::{ForcesForm, forces_card};
 
 /// The times offered: the last ones, which is where a run ends up.
 const MAX_TIMES: usize = 200;
@@ -250,6 +252,11 @@ pub struct Results {
     section_form: SectionForm,
     section: Slot<SectionReport>,
     saved: Option<(bool, String)>,
+    /// The run writes `rho`: a gas, whose forces need a reference density.
+    compressible: bool,
+    forces_form: ForcesForm,
+    forces: Slot<ForceReport>,
+    saved_forces: Option<(bool, String)>,
     /// The case was read and the forms filled in once.
     started: bool,
 }
@@ -260,9 +267,15 @@ impl Results {
         self.case.poll();
         self.report.poll();
         self.walls.poll();
+        if self.forces_form.is_empty()
+            && let Slot::Done(Ok(walls)) = &self.walls
+        {
+            self.forces_form.with_walls(walls, self.compressible);
+        }
         self.profile.poll();
         self.probe.poll();
         self.section.poll();
+        self.forces.poll();
         if self.case.is_idle() {
             let dir = dir.to_owned();
             self.case = spawn(ctx, move || {
@@ -291,6 +304,7 @@ impl Results {
                 .and_then(|t| case.field_names(t).ok())
                 .is_some_and(|names| names.iter().any(|n| n == "rho"));
             self.section_form = SectionForm::across(&bounds, has_rho);
+            self.compressible = has_rho;
             if let Some(last) = self.times.last().cloned() {
                 self.set_time(&case, &last);
             }
@@ -336,6 +350,8 @@ impl Results {
         self.probe = Slot::Idle;
         self.section = Slot::Idle;
         self.saved = None;
+        self.forces = Slot::Idle;
+        self.saved_forces = None;
     }
 
     /// Reads the case again, for a run that wrote more times.
@@ -420,6 +436,8 @@ pub(super) fn results_tab(ui: &mut egui::Ui, p: &Palette, dir: &Path, results: &
             line_card(ui, p, &case, results);
             ui.add_space(space::MD);
             section_card(ui, p, &case, results);
+            ui.add_space(space::MD);
+            forces_card(ui, p, &case, results);
         });
 }
 

@@ -55,14 +55,19 @@ STL, updater, issue-report or translation code exists there).
 - **R5, started on 2026-11-18:** the mass balance (`Case::mass_balance` and
   `mass_balance_history` in `rust/vortia-post`, `vortia balance`, a card in the Run tab) reads
   the written `phi`, as the Qt `nozzleMassBalance` does. The residual plot of the Run tab
-  (initial residuals by field from the solver log, logarithmic) is done. Still to do for R5: the
-  run monitor's pause/resume of a job. The residual card warns while a run goes wrong (a residual
+  (initial residuals by field from the solver log, logarithmic) is done. Pause and resume of a run
+  (a ribbon button, the File and Case menus and the command search; `vortia_solvers::cancel::with_control`)
+  hold the engine at the start of its next step and a stop still ends a paused run. The residual card warns while a run goes wrong (a residual
   that is not a number, or that is back at 1 or above after falling by three decades or more).
 - **R6, on 2026-11-18:** the section analysis (`Case::section` in `rust/vortia-post`, `vortia
   section`, a card in the Results tab) integrates the stored fields over a plane cut through the
-  cells and the report is written as JSON (with SHA-256), CSV or HTML in
-  `postProcessing/section/<time>/`. Still to do for R6: forces and coefficients on walls, a
-  combined report and comparison between runs.
+  cells and the report is written as sealed JSON (a SHA-256 of its canonical payload, in the
+  `vortia_post::seal` envelope), CSV or HTML in `postProcessing/section/<time>/`. Forces and
+  moments on walls (`vortia_post::forces`, `vortia forces`, a Forces card in the Results tab) give
+  pressure and viscous parts and the coefficients against a reference density, speed, area and
+  length; a kinematic case reports force per unit density, and a gas without a reference density
+  is refused. `vortia compare NUMBER BASELINE REPORT...` compares two sealed reports and refuses those whose
+  definitions differ. Still to do for R6: the comparison in the app (it is CLI-only for now).
 
 - **R7, started on 2026-11-18:** `vortia_post::gci` (the three-mesh index, checked against
   `benchmarks/common/gci.py`) and `rust/vortia-cli/tests/verification.rs`, which runs a Poiseuille
