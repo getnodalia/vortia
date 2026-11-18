@@ -8,6 +8,9 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 ## [Unreleased]
 
 ### Añadido
+- **Abrir un croquis guardado (R2):** «Región dibujada» tiene un campo y un botón «Abrir croquis»
+  que cargan en el lienzo un croquis (el `sketch.vortia-sketch` que guarda cada caso, por ejemplo).
+  Si el archivo no se lee o no se puede resolver, se rechaza y el dibujo queda como estaba.
 - **Actualizador integrado en la app Rust (R8):** el menú tiene «Buscar actualizaciones…» y la app
   comprueba una vez al día, poco después de arrancar, si hay versión nueva. Usa el flujo común de
   Nodalia (`nodalia-update`): descarga con comprobación SHA-256, sustituye el AppImage o la app de

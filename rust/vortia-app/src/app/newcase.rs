@@ -98,6 +98,8 @@ pub(super) struct NewCase {
     sketch_axisymmetric: bool,
     segments: usize,
     region: RegionEditor,
+    /// The saved sketch being typed for "Open sketch".
+    region_file: String,
     /// The flow and mesh settings of the drawn region; its edges come from the sketch.
     drawn: Drawn,
 }
@@ -125,6 +127,7 @@ impl NewCase {
             sketch_axisymmetric: true,
             segments: 60,
             region: RegionEditor::default(),
+            region_file: String::new(),
             drawn: Drawn::default(),
         };
         form.propose(base);
@@ -292,6 +295,18 @@ impl NewCase {
                 {
                     self.region.restart(outline);
                 }
+            }
+            ui.add_space(space::MD);
+            ui.add(
+                egui::TextEdit::singleline(&mut self.region_file)
+                    .hint_text(tr("A saved sketch"))
+                    .desired_width(220.0),
+            );
+            if ui.button(tr("Open sketch")).clicked() {
+                // A refusal stays in the editor's `problem`, which the form shows below.
+                let _ = self
+                    .region
+                    .open(std::path::Path::new(self.region_file.trim()));
             }
         });
         ui.horizontal_wrapped(|ui| {

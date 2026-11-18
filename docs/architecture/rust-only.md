@@ -146,7 +146,7 @@ with the axis collapsed. The nozzle and the sketched duct use it with `cell-size
 gives the same flow on them as the Rust engine (outlet flux to 1e-5 on the half nozzle, to six
 digits on the wedge). The Drawn region canvas now has move, line, arc, dimension and delete tools with
 grid and point snapping (`RegionEditor`, `Sketch::draw_line`, `draw_arc`, `move_point`,
-`remove_edge`, `dimension_points`). Still to do: opening a saved sketch and more kinds of
+`remove_edge`, `dimension_points`). A saved sketch opens on the same canvas (`RegionEditor::open`). Still to do: more kinds of
 dimension. Closed sketches with several loops and
 named edges now exist (`Sketch::loops`, `Sketch::name`, the `channel-with-block` template) and
 `vortia_cases::Drawn` meshes and runs them (`vortia new region DIR FILE`; the same case run by
