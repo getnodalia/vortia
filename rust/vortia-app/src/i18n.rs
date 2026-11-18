@@ -134,7 +134,47 @@ fn spanish() -> &'static HashMap<&'static str, &'static str> {
 pub const ES: &[(&str, &str)] = &[
     ("About Vortia", "Acerca de Vortia"),
     ("Report a problem", "Informar de un problema"),
+    ("Jet into the atmosphere", "Chorro a la atmósfera"),
+    ("Orifice radius", "Radio del orificio"),
+    ("Atmosphere length", "Longitud de la atmósfera"),
+    ("Atmosphere radius", "Radio de la atmósfera"),
+    ("Total pressure", "Presión total"),
+    ("Total temperature", "Temperatura total"),
+    ("Ambient pressure", "Presión ambiente"),
+    ("Cells along the axis", "Celdas a lo largo del eje"),
+    ("Cells across the orifice", "Celdas a través del orificio"),
+    ("Cells outside the orifice", "Celdas fuera del orificio"),
+    (
+        "A straight 2D channel with the fluid coming in on the left: laminar, incompressible, steady (simpleFoam).",
+        "Un canal 2D recto con el fluido entrando por la izquierda: laminar, incompresible, estacionario (simpleFoam).",
+    ),
+    (
+        "A square box closed on every side whose top wall slides: laminar, incompressible, steady (simpleFoam). Reynolds number 100 by default, the case of Ghia et al. (1982).",
+        "Una caja cuadrada cerrada por todos lados cuya tapa se desliza: laminar, incompresible, estacionario (simpleFoam). Reynolds 100 por defecto, el caso de Ghia et al. (1982).",
+    ),
+    (
+        "A flat plate in a uniform stream with a slip wall ahead of it: laminar, incompressible, steady (simpleFoam). Reynolds number 10⁵ on the plate by default, the boundary layer Blasius solved.",
+        "Una placa plana en una corriente uniforme con una pared deslizante delante: laminar, incompresible, estacionario (simpleFoam). Reynolds 10⁵ sobre la placa por defecto, la capa límite que resolvió Blasius.",
+    ),
+    (
+        "A converging-diverging slot between two walls: compressible air, k-ω SST, steady (rhoSimpleFoam).",
+        "Una ranura convergente-divergente entre dos paredes: aire compresible, k-ω SST, estacionario (rhoSimpleFoam).",
+    ),
+    (
+        "A converging-diverging nozzle as a 5° wedge of its body of revolution: compressible air, k-ω SST, steady (rhoSimpleFoam).",
+        "Una tobera convergente-divergente como una cuña de 5° de su cuerpo de revolución: aire compresible, k-ω SST, estacionario (rhoSimpleFoam).",
+    ),
+    (
+        "A small orifice in a wall that lets air out into the open atmosphere, as a 5° wedge of the body of revolution: compressible, k-ω SST, steady (rhoSimpleFoam). The practice case of a jet at a pressure ratio of 1.18.",
+        "Un orificio pequeño en una pared que deja salir el aire a la atmósfera abierta, como una cuña de 5° del cuerpo de revolución: compresible, k-ω SST, estacionario (rhoSimpleFoam). El caso de práctica de un chorro con relación de presiones 1,18.",
+    ),
+    (
+        "A duct whose wall you dimension in a sketch: lines and arcs held by lengths, heights and radii, meshed by Vortia itself and run as a nozzle (rhoSimpleFoam). The sketch is kept in the case.",
+        "Un conducto cuya pared acotas en un croquis: líneas y arcos sujetos por longitudes, alturas y radios, mallado por el propio Vortia y calculado como tobera (rhoSimpleFoam). El croquis se guarda en el caso.",
+    ),
     ("Open a geometry", "Abrir una geometría"),
+    ("Half section", "Media sección"),
+    ("Symmetry plane on the axis", "Plano de simetría en el eje"),
     ("An STL file", "Un archivo STL"),
     ("Show geometry", "Ver geometría"),
     ("Close geometry", "Cerrar la geometría"),

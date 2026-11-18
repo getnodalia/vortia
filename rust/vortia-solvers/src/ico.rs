@@ -380,7 +380,7 @@ pub(crate) fn constrained_boundary(
     let mut out = Vec::with_capacity(fixed.len());
     let mut k = 0;
     for (i, patch) in mesh.patches().iter().enumerate() {
-        for f in patch.faces() {
+        for (j, f) in patch.faces().enumerate() {
             let own = mesh.owner().get(f).and_then(|&c| hbya.get(c)).copied();
             let v = fixed.get(k).copied().flatten();
             out.push(match (patch.kind == PatchKind::Empty, bc.fixes_value(i)) {
@@ -392,6 +392,19 @@ pub(crate) fn constrained_boundary(
                 (false, false) => match (bc.conditions.get(i), own) {
                     (Some(VectorBc::Wedge { face_t, .. }), Some(o)) => {
                         Some(vortia_fv::fvgeom::transform(face_t, o))
+                    }
+                    // A slip or symmetry plane keeps the components its mask fixes at their
+                    // reference (zero normal to the plane) and the cell's value in the others:
+                    // no mass crosses it.
+                    (Some(VectorBc::Mixed { mask, ref_value }), Some(o)) => {
+                        match (mask.get(j), ref_value.get(j)) {
+                            (Some(m), Some(r)) => Some(Vec3::new(
+                                m.x * r.x + (1.0 - m.x) * o.x,
+                                m.y * r.y + (1.0 - m.y) * o.y,
+                                m.z * r.z + (1.0 - m.z) * o.z,
+                            )),
+                            _ => own,
+                        }
                     }
                     _ => own,
                 },

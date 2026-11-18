@@ -7,7 +7,7 @@ use eframe::egui::{self, DragValue, Ui};
 use nodalia_theme::engineering::Look;
 use nodalia_theme::office;
 use nodalia_theme::{Palette, space};
-use vortia_cases::{Cavity, Channel, Geometry, Nozzle, NozzleKind, Plate};
+use vortia_cases::{Cavity, Channel, Geometry, Jet, Nozzle, NozzleKind, Plate};
 
 use crate::sketch_editor::{Outline, SketchEditor, Template};
 
@@ -19,16 +19,18 @@ pub(super) enum Kind {
     Plate,
     PlanarNozzle,
     AxisymmetricNozzle,
+    Jet,
     Sketch,
 }
 
 impl Kind {
-    const ALL: [Kind; 6] = [
+    const ALL: [Kind; 7] = [
         Kind::Channel,
         Kind::Cavity,
         Kind::Plate,
         Kind::PlanarNozzle,
         Kind::AxisymmetricNozzle,
+        Kind::Jet,
         Kind::Sketch,
     ];
 
@@ -39,6 +41,7 @@ impl Kind {
             Kind::Plate => tr("Flat plate"),
             Kind::PlanarNozzle => tr("Planar nozzle"),
             Kind::AxisymmetricNozzle => tr("Axisymmetric nozzle"),
+            Kind::Jet => tr("Jet into the atmosphere"),
             Kind::Sketch => tr("From sketch"),
         }
     }
@@ -60,6 +63,9 @@ impl Kind {
             Kind::AxisymmetricNozzle => {
                 "A converging-diverging nozzle as a 5° wedge of its body of revolution: compressible air, k-ω SST, steady (rhoSimpleFoam)."
             }
+            Kind::Jet => {
+                "A small orifice in a wall that lets air out into the open atmosphere, as a 5° wedge of the body of revolution: compressible, k-ω SST, steady (rhoSimpleFoam). The practice case of a jet at a pressure ratio of 1.18."
+            }
             Kind::Sketch => {
                 "A duct whose wall you dimension in a sketch: lines and arcs held by lengths, heights and radii, meshed by Vortia itself and run as a nozzle (rhoSimpleFoam). The sketch is kept in the case."
             }
@@ -77,6 +83,7 @@ pub(super) struct NewCase {
     plate: Plate,
     planar: Nozzle,
     wedge: Nozzle,
+    jet: Jet,
     sketch: SketchEditor,
     /// The flow and mesh settings of the sketched duct; its walls come from the sketch.
     sketched: Nozzle,
@@ -101,6 +108,7 @@ impl NewCase {
             plate: Plate::default(),
             planar: Nozzle::new(NozzleKind::Planar),
             wedge: Nozzle::new(NozzleKind::Axisymmetric),
+            jet: Jet::default(),
             sketch: SketchEditor::default(),
             sketched: Nozzle::new(NozzleKind::Axisymmetric),
             sketch_axisymmetric: true,
@@ -125,6 +133,7 @@ impl NewCase {
             Kind::Plate => "plate",
             Kind::PlanarNozzle => "planar-nozzle",
             Kind::AxisymmetricNozzle => "nozzle",
+            Kind::Jet => "jet",
             Kind::Sketch => "sketch",
         };
         let free = (1..1000)
@@ -153,6 +162,7 @@ impl NewCase {
             Kind::Plate => Geometry::Plate(self.plate.clone()),
             Kind::PlanarNozzle => Geometry::Nozzle(self.planar.clone()),
             Kind::AxisymmetricNozzle => Geometry::Nozzle(self.wedge.clone()),
+            Kind::Jet => Geometry::Jet(self.jet.clone()),
             Kind::Sketch => Geometry::Nozzle(self.sketched_nozzle()?),
         })
     }
@@ -209,7 +219,7 @@ impl NewCase {
                 }
             });
             ui.add_space(space::SM);
-            ui.label(self.kind.about());
+            ui.label(tr(self.kind.about()));
             ui.add_space(space::SM);
             match self.kind {
                 Kind::Channel => channel_fields(ui, &mut self.channel),
@@ -217,6 +227,7 @@ impl NewCase {
                 Kind::Plate => plate_fields(ui, &mut self.plate),
                 Kind::PlanarNozzle => nozzle_fields(ui, &mut self.planar),
                 Kind::AxisymmetricNozzle => nozzle_fields(ui, &mut self.wedge),
+                Kind::Jet => jet_fields(ui, &mut self.jet),
                 Kind::Sketch => self.sketch_fields(ui),
             }
             ui.add_space(space::SM);
@@ -447,6 +458,41 @@ fn plate_fields(ui: &mut Ui, p: &mut Plate) {
         });
 }
 
+fn jet_fields(ui: &mut Ui, j: &mut Jet) {
+    egui::Grid::new("new_jet")
+        .num_columns(2)
+        .spacing([space::MD, space::SM])
+        .show(ui, |ui| {
+            row(ui, tr("Orifice radius"), |ui| {
+                value(ui, &mut j.orifice_radius, "mm")
+            });
+            row(ui, tr("Atmosphere length"), |ui| {
+                value(ui, &mut j.length, "mm")
+            });
+            row(ui, tr("Atmosphere radius"), |ui| {
+                value(ui, &mut j.radius, "mm")
+            });
+            row(ui, tr("Total pressure"), |ui| {
+                value(ui, &mut j.total_pressure, "Pa")
+            });
+            row(ui, tr("Total temperature"), |ui| {
+                value(ui, &mut j.total_temperature, "K")
+            });
+            row(ui, tr("Ambient pressure"), |ui| {
+                value(ui, &mut j.ambient_pressure, "Pa")
+            });
+            row(ui, tr("Cells along the axis"), |ui| {
+                count(ui, &mut j.cells_axial)
+            });
+            row(ui, tr("Cells across the orifice"), |ui| {
+                count(ui, &mut j.cells_orifice)
+            });
+            row(ui, tr("Cells outside the orifice"), |ui| {
+                count(ui, &mut j.cells_outer)
+            });
+        });
+}
+
 fn nozzle_fields(ui: &mut Ui, n: &mut Nozzle) {
     egui::Grid::new("new_nozzle")
         .num_columns(2)
@@ -477,6 +523,11 @@ fn nozzle_fields(ui: &mut Ui, n: &mut Nozzle) {
                 value(ui, &mut n.outlet_pressure, "Pa")
             });
             row(ui, tr("Cells across"), |ui| count(ui, &mut n.radial_cells));
+            if n.kind == vortia_cases::NozzleKind::Planar {
+                row(ui, tr("Half section"), |ui| {
+                    ui.checkbox(&mut n.half, tr("Symmetry plane on the axis"));
+                });
+            }
         });
 }
 

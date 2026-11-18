@@ -149,7 +149,7 @@ impl ModelField {
             })?;
             let mut kind = if pf.kind == "empty" {
                 Kind::Empty
-            } else if pf.kind == "wedge" {
+            } else if pf.kind == "wedge" || crate::thermo::is_symmetry_condition(&pf.kind) {
                 Kind::ZeroGradient
             } else {
                 kind_of(pf).ok_or_else(|| {
@@ -167,7 +167,10 @@ impl ModelField {
                     pf.kind
                 )));
             }
-            if (patch.kind == PatchKind::Wedge) != (pf.kind == "wedge") {
+            if (patch.kind == PatchKind::Wedge) != (pf.kind == "wedge")
+                || crate::thermo::is_symmetry_condition(&pf.kind)
+                    != crate::thermo::is_symmetry_patch(&patch.kind)
+            {
                 return Err(SolverError::Setup(format!(
                     "{name}: patch '{}' is {} but its condition is '{}'",
                     patch.name,

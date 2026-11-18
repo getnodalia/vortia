@@ -487,6 +487,11 @@ fn openfoam_makes_the_same_meshes() {
         Geometry::Plate(Plate::default()),
         Geometry::Nozzle(nozzle(NozzleKind::Planar)),
         Geometry::Nozzle(nozzle(NozzleKind::Axisymmetric)),
+        Geometry::Nozzle(Nozzle {
+            half: true,
+            ..nozzle(NozzleKind::Planar)
+        }),
+        Geometry::Jet(Jet::default()),
     ];
     for geometry in geometries {
         let dir = tempfile::tempdir().unwrap();
@@ -547,4 +552,132 @@ fn settings_are_set_by_name_and_only_whole_counts_are_counts() {
     assert_eq!((n.throat_diameter, n.radial_cells), (40.0, 30));
     assert!(n.set("radial-cells", f64::NAN).is_err());
     assert!(n.set("height", 1.0).is_err());
+}
+
+#[test]
+fn the_half_nozzle_is_the_upper_half_of_the_slot_with_a_symmetry_plane() {
+    let whole = coarse(NozzleKind::Planar);
+    let half = Nozzle {
+        half: true,
+        ..whole.clone()
+    };
+    let make = |n: &Nozzle| {
+        let dir = tempfile::tempdir().unwrap();
+        let made = create(dir.path(), &Geometry::Nozzle(n.clone())).unwrap();
+        (dir, made)
+    };
+    let (whole_dir, whole_made) = make(&whole);
+    let (half_dir, half_made) = make(&half);
+    assert_eq!(half_made.cells * 2, whole_made.cells);
+
+    let mesh = PolyMesh::read_case(half_dir.path()).unwrap();
+    let names: Vec<_> = mesh.patches().iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(
+        names,
+        ["inlet", "outlet", "nozzleWall", "symmetry", "frontAndBack"]
+    );
+    assert_eq!(
+        mesh.patches()
+            .iter()
+            .find(|p| p.name == "symmetry")
+            .map(|p| p.kind.name()),
+        Some("symmetryPlane")
+    );
+    assert!(check::check(&mesh, &MeshGeometry::compute(&mesh)).is_ok());
+    // Half the volume of the whole slot, and every field names the plane.
+    let whole_mesh = PolyMesh::read_case(whole_dir.path()).unwrap();
+    let (half_volume, whole_volume) = (
+        MeshGeometry::compute(&mesh).total_volume(),
+        MeshGeometry::compute(&whole_mesh).total_volume(),
+    );
+    assert!((2.0 * half_volume - whole_volume).abs() < 1e-9 * whole_volume);
+    for field in ["U", "p", "T", "k", "omega", "nut", "alphat"] {
+        let text = read(half_dir.path(), &format!("0/{field}"));
+        assert!(
+            text.contains("symmetry\n    {\n        type            symmetryPlane;"),
+            "{field}"
+        );
+    }
+    // The axisymmetric nozzle has no plane to cut at, and ignores it.
+    let wedge = Nozzle {
+        half: true,
+        ..coarse(NozzleKind::Axisymmetric)
+    };
+    let (dir, _) = make(&wedge);
+    assert!(!read(dir.path(), "system/blockMeshDict").contains("symmetryPlane"));
+}
+
+#[test]
+fn the_jet_is_an_orifice_in_a_wall_facing_an_open_atmosphere() {
+    let jet = Jet {
+        cells_axial: 20,
+        cells_orifice: 6,
+        cells_outer: 10,
+        ..Jet::default()
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let made = create(dir.path(), &Geometry::Jet(jet.clone())).unwrap();
+    assert_eq!(made.cells, 20 * (6 + 10));
+    assert_eq!(made.application, "rhoSimpleFoam");
+    let mesh = PolyMesh::read_case(dir.path()).unwrap();
+    let names: Vec<_> = mesh.patches().iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(
+        names,
+        ["axis", "inlet", "walls", "atmosphere", "front", "back"]
+    );
+    assert!(check::check(&mesh, &MeshGeometry::compute(&mesh)).is_ok());
+    // A wedge of the cylinder: the volume of the cylinder of the chamber, 5° of 360°.
+    let expected = std::f64::consts::PI
+        * jet.radius.powi(2)
+        * jet.length
+        * 1e-9
+        * jet.wedge_angle.to_radians()
+        / (2.0 * std::f64::consts::PI);
+    let volume = MeshGeometry::compute(&mesh).total_volume();
+    assert!(
+        (volume - expected).abs() < 2e-3 * expected,
+        "{volume} against {expected}"
+    );
+    assert!(read(dir.path(), "0/p").contains("totalPressure"));
+
+    // What cannot be meshed is refused and writes nothing.
+    let target = dir.path().join("refused");
+    for bad in [
+        Jet {
+            radius: 0.05,
+            ..jet.clone()
+        },
+        Jet {
+            orifice_radius: 0.0,
+            ..jet.clone()
+        },
+        Jet {
+            wedge_angle: 6.0,
+            ..jet.clone()
+        },
+        Jet {
+            cells_axial: 0,
+            ..jet.clone()
+        },
+        Jet {
+            cells_axial: 2000,
+            cells_outer: 1000,
+            cells_orifice: 1000,
+            ..jet.clone()
+        },
+        Jet {
+            total_pressure: f64::NAN,
+            ..jet.clone()
+        },
+    ] {
+        assert!(
+            create(&target, &Geometry::Jet(bad.clone())).is_err(),
+            "{bad:?}"
+        );
+    }
+    assert!(!target.exists());
+    let mut jet = jet;
+    assert!(jet.set("orifice-radius", 0.2).is_ok() && jet.orifice_radius == 0.2);
+    assert!(jet.set("axial-cells", 2.5).is_err());
+    assert!(jet.set("nonsense", 1.0).is_err());
 }

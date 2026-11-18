@@ -445,3 +445,113 @@ fn the_turbulent_plate_is_in_the_range_of_prandtl_schlichting() {
         "C_D {cd} is not within 15 % of {correlation}"
     );
 }
+
+/// The half section of the planar nozzle, with a symmetry plane on the axis, is the upper half
+/// of the whole slot: the same flow through it half as much, nothing through the plane, and the
+/// same speed, temperature and pressure at a point of the half.
+#[test]
+fn a_half_nozzle_with_a_symmetry_plane_is_half_of_the_whole_slot() {
+    let run = |half: bool| {
+        let dir = tempfile::tempdir().expect("a folder");
+        let nozzle = vortia_cases::Nozzle {
+            converging_segments: 6,
+            diverging_segments: 10,
+            axial_cells_per_segment: 2,
+            radial_cells: 12,
+            radial_grading: 1.5,
+            half,
+            ..vortia_cases::Nozzle::new(vortia_cases::NozzleKind::Planar)
+        };
+        vortia_cases::create(dir.path(), &Geometry::Nozzle(nozzle)).expect("the nozzle is written");
+        let case = vortia_solvers::Case::open(dir.path()).expect("the solver opens it");
+        vortia_solvers::run(&case, |_| {}).expect("the run finishes");
+        let results = Case::open(dir.path()).expect("the results open");
+        let time = results.latest_time().expect("a time was written");
+        (dir, results, time)
+    };
+    let (_whole_dir, whole, whole_time) = run(false);
+    let (_half_dir, half, half_time) = run(true);
+
+    let out = |case: &Case, time: &str| case.flux(time, "outlet").expect("the flux is read");
+    let (whole_out, half_out) = (out(&whole, &whole_time), out(&half, &half_time));
+    assert!(
+        (2.0 * half_out - whole_out).abs() < 1e-3 * whole_out.abs(),
+        "twice the half's outlet flux {} against the whole's {whole_out}",
+        2.0 * half_out
+    );
+    let across = half.flux(&half_time, "symmetry").expect("the flux is read");
+    assert!(
+        across.abs() < 1e-12,
+        "the symmetry plane lets {across} through"
+    );
+
+    let point = Vec3::new(0.2, 0.02, 0.0005);
+    for field in ["U", "T", "p"] {
+        let value = |case: &Case, time: &str| {
+            case.probe(time, field, point)
+                .expect("the point is inside")
+                .value
+        };
+        let (a, b) = (value(&half, &half_time), value(&whole, &whole_time));
+        let first = |v: &[f64]| v.first().copied().unwrap_or(f64::NAN);
+        assert!(
+            (first(&a) - first(&b)).abs() < 1e-3 * first(&b).abs(),
+            "{field}: {a:?} in the half, {b:?} in the whole"
+        );
+    }
+}
+
+/// A jet from an orifice into the open atmosphere (`vortia_cases::Jet`, the practice case of
+/// `examples/nozzle-practice-2026`): the flow leaving at a pressure ratio of 1.18 is the
+/// isentropic one, Mach 0.50 at 169 m/s, and what enters through the orifice leaves through the
+/// atmosphere.
+#[test]
+fn a_jet_into_the_atmosphere_leaves_at_the_isentropic_speed() {
+    let dir = tempfile::tempdir().expect("a folder");
+    let jet = vortia_cases::Jet {
+        cells_axial: 40,
+        cells_orifice: 15,
+        cells_outer: 30,
+        ..vortia_cases::Jet::default()
+    };
+    let (p0, pa, t0, gamma, r_gas) = (
+        jet.total_pressure,
+        jet.ambient_pressure,
+        jet.total_temperature,
+        1.4_f64,
+        287.0_f64,
+    );
+    vortia_cases::create(dir.path(), &Geometry::Jet(jet)).expect("the jet is written");
+    let case = vortia_solvers::Case::open(dir.path()).expect("the solver opens it");
+    vortia_solvers::run(&case, |_| {}).expect("the run finishes");
+    let results = Case::open(dir.path()).expect("the results open");
+    let time = results.latest_time().expect("a time was written");
+
+    let mach_squared = 2.0 / (gamma - 1.0) * ((p0 / pa).powf((gamma - 1.0) / gamma) - 1.0);
+    let speed = mach_squared.sqrt()
+        * (gamma * r_gas * t0 / (1.0 + 0.5 * (gamma - 1.0) * mach_squared)).sqrt();
+    let orifice = results
+        .patch_stats(&time, "U", "inlet")
+        .expect("the patch is read");
+    let mean = orifice.average.first().copied().unwrap_or(f64::NAN);
+    assert!(
+        (mean - speed).abs() < 0.05 * speed,
+        "{mean} m/s against the isentropic {speed} m/s"
+    );
+    let (entering, leaving) = (
+        results.flux(&time, "inlet").expect("the flux is read"),
+        results.flux(&time, "atmosphere").expect("the flux is read"),
+    );
+    assert!(entering < 0.0 && leaving > 0.0);
+    assert!(
+        (entering + leaving).abs() < 1e-3 * leaving,
+        "{entering} in, {leaving} out"
+    );
+    assert!(
+        results
+            .flux(&time, "walls")
+            .expect("the flux is read")
+            .abs()
+            < 1e-18
+    );
+}
