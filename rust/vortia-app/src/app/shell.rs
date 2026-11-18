@@ -19,6 +19,7 @@ use super::{
     muted, own_controls, palette, results_tab, scientific, settings_tab, status_label, tone_colors,
 };
 use crate::numerics::File;
+use crate::residuals::Residuals;
 use crate::summary::Summary;
 use crate::viewer::Source;
 use vortia_post::BalanceHistory;
@@ -1057,6 +1058,118 @@ fn case_view(ui: &mut egui::Ui, ctx: &Context, look: &Look, p: &Palette, case: &
     }
 }
 
+/// The colours of the residual lines: eight that stay apart on both themes.
+const SERIES: [(u8, u8, u8); 8] = [
+    (0, 114, 178),
+    (230, 159, 0),
+    (0, 158, 115),
+    (213, 94, 0),
+    (204, 121, 167),
+    (86, 180, 233),
+    (240, 228, 66),
+    (153, 153, 153),
+];
+
+fn series_colour(i: usize) -> egui::Color32 {
+    let (r, g, b) = SERIES
+        .get(i % SERIES.len())
+        .copied()
+        .unwrap_or((153, 153, 153));
+    egui::Color32::from_rgb(r, g, b)
+}
+
+/// How the residuals have fallen, one line per equation, on a logarithmic axis.
+fn residual_card(ui: &mut egui::Ui, p: &Palette, residuals: &Residuals) {
+    Frame::NONE
+        .fill(for_egui::color(p.surface_sunken))
+        .corner_radius(super::corner(nodalia_theme::component::CONTROL_RADIUS))
+        .inner_margin(Margin::same(space::MD as i8))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.label(RichText::new("Residuals").strong());
+            let Some(([t0, t1], [lo, hi])) = residuals.bounds() else {
+                ui.label(
+                    RichText::new("They appear as the solver reports each step.").color(muted(p)),
+                );
+                return;
+            };
+            ui.horizontal_wrapped(|ui| {
+                for (i, series) in residuals.series.iter().enumerate() {
+                    let (swatch, _) =
+                        ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
+                    ui.painter().rect_filled(swatch, 2.0, series_colour(i));
+                    ui.label(RichText::new(&series.field).color(muted(p)));
+                }
+            });
+            let (rect, _) = ui.allocate_exact_size(
+                egui::vec2(ui.available_width(), 150.0),
+                egui::Sense::hover(),
+            );
+            let painter = ui.painter_at(rect);
+            let left = rect.left() + 44.0;
+            let area = egui::Rect::from_min_max(
+                egui::pos2(left, rect.top() + 4.0),
+                egui::pos2(rect.right() - 6.0, rect.bottom() - 16.0),
+            );
+            // Whole decades: the axis runs from the one under the smallest residual to the
+            // one over the largest, so a flat run still has a visible range.
+            let top = hi.log10().ceil().max(lo.log10().floor() + 1.0);
+            let bottom = lo.log10().floor();
+            let span = (top - bottom).max(1.0);
+            let x_of = |t: f64| {
+                let f = if t1 > t0 { (t - t0) / (t1 - t0) } else { 0.5 };
+                area.left() + f as f32 * area.width()
+            };
+            let y_of = |r: f64| {
+                let f = ((r.log10() - bottom) / span).clamp(0.0, 1.0);
+                area.bottom() - f as f32 * area.height()
+            };
+            let grid = for_egui::color(p.border_subtle);
+            let ink = for_egui::color(p.text_secondary);
+            let mut decade = bottom;
+            while decade <= top {
+                let y = y_of(10f64.powf(decade));
+                painter.line_segment(
+                    [egui::pos2(area.left(), y), egui::pos2(area.right(), y)],
+                    egui::Stroke::new(1.0, grid),
+                );
+                painter.text(
+                    egui::pos2(area.left() - 4.0, y),
+                    egui::Align2::RIGHT_CENTER,
+                    format!("1e{decade:.0}"),
+                    eng::caption(),
+                    ink,
+                );
+                decade += 1.0;
+            }
+            painter.text(
+                egui::pos2(area.left(), rect.bottom()),
+                egui::Align2::LEFT_BOTTOM,
+                format!("{t0}"),
+                eng::caption(),
+                ink,
+            );
+            painter.text(
+                egui::pos2(area.right(), rect.bottom()),
+                egui::Align2::RIGHT_BOTTOM,
+                format!("{t1}"),
+                eng::caption(),
+                ink,
+            );
+            for (i, series) in residuals.series.iter().enumerate() {
+                let line: Vec<egui::Pos2> = series
+                    .points
+                    .iter()
+                    .map(|&(t, v)| egui::pos2(x_of(t), y_of(v)))
+                    .collect();
+                painter.add(egui::Shape::line(
+                    line,
+                    egui::Stroke::new(1.5, series_colour(i)),
+                ));
+            }
+        });
+}
+
 /// What entered against what left, from the flux the run wrote: a case that conserves mass
 /// closes this to a small fraction of a percent once it has converged.
 fn balance_card(ui: &mut egui::Ui, p: &Palette, balance: Option<&BalanceHistory>) {
@@ -1106,33 +1219,43 @@ fn balance_card(ui: &mut egui::Ui, p: &Palette, balance: Option<&BalanceHistory>
 }
 
 fn run_view(ui: &mut egui::Ui, p: &Palette, case: &CaseView) {
-    convergence_card(ui, p, case.report.as_ref());
-    ui.add_space(space::MD);
-    balance_card(
-        ui,
-        p,
-        case.summary.as_ref().and_then(|s| s.balance.as_ref()),
-    );
-    ui.add_space(space::MD);
-    ui.label(RichText::new("Log").color(muted(p)));
-    Frame::NONE
-        .fill(for_egui::color(p.surface_sunken))
-        .corner_radius(super::corner(nodalia_theme::component::CONTROL_RADIUS))
-        .inner_margin(Margin::same(space::MD as i8))
+    egui::ScrollArea::vertical()
+        .id_salt("run-view")
+        .auto_shrink([false, false])
         .show(ui, |ui| {
-            ui.set_min_size(ui.available_size());
-            egui::ScrollArea::vertical()
-                .auto_shrink([false, false])
-                .stick_to_bottom(true)
+            convergence_card(ui, p, case.report.as_ref());
+            ui.add_space(space::MD);
+            residual_card(ui, p, &case.residuals);
+            ui.add_space(space::MD);
+            balance_card(
+                ui,
+                p,
+                case.summary.as_ref().and_then(|s| s.balance.as_ref()),
+            );
+            ui.add_space(space::MD);
+            ui.label(RichText::new("Log").color(muted(p)));
+            Frame::NONE
+                .fill(for_egui::color(p.surface_sunken))
+                .corner_radius(super::corner(nodalia_theme::component::CONTROL_RADIUS))
+                .inner_margin(Margin::same(space::MD as i8))
                 .show(ui, |ui| {
-                    if case.log.is_empty() {
-                        ui.label(
-                            RichText::new("The solver's output appears here.").color(muted(p)),
-                        );
-                    }
-                    for line in &case.log {
-                        ui.label(RichText::new(line).font(eng::value_font()));
-                    }
+                    ui.set_width(ui.available_width());
+                    ui.set_height(260.0);
+                    egui::ScrollArea::vertical()
+                        .id_salt("run-log")
+                        .auto_shrink([false, false])
+                        .stick_to_bottom(true)
+                        .show(ui, |ui| {
+                            if case.log.is_empty() {
+                                ui.label(
+                                    RichText::new("The solver's output appears here.")
+                                        .color(muted(p)),
+                                );
+                            }
+                            for line in &case.log {
+                                ui.label(RichText::new(line).font(eng::value_font()));
+                            }
+                        });
                 });
         });
 }

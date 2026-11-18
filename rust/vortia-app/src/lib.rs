@@ -25,6 +25,7 @@ pub mod flowlines;
 pub mod globalmenu;
 pub mod numerics;
 pub mod prefs;
+pub mod residuals;
 pub mod section;
 pub mod session;
 pub mod summary;

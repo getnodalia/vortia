@@ -21,6 +21,7 @@ use crate::convergence::Convergence;
 use crate::globalmenu::{Entry, GlobalMenu, Menu};
 use crate::numerics::{self, File, Group};
 use crate::prefs::{self, Prefs, Theme};
+use crate::residuals::Residuals;
 use crate::session::{Event, Outcome, Session};
 use crate::summary::{self, Summary};
 use crate::surface;
@@ -74,6 +75,8 @@ struct CaseView {
     session: Option<Session>,
     log: VecDeque<String>,
     report: Option<Convergence>,
+    /// What the log has said about the residuals of this run.
+    residuals: Residuals,
     outcome: Option<Outcome>,
     /// A stop was asked for and the engine has not ended yet.
     stopping: bool,
@@ -154,6 +157,7 @@ impl CaseView {
             session: None,
             log: VecDeque::new(),
             report: None,
+            residuals: Residuals::default(),
             outcome: None,
             stopping: false,
             summary: None,
@@ -259,6 +263,7 @@ impl CaseView {
     }
 
     fn push_log(&mut self, line: String) {
+        self.residuals.push(&line);
         if self.log.len() >= MAX_LOG {
             self.log.pop_front();
         }
@@ -468,6 +473,7 @@ impl VortiaApp {
                 case.session = Some(session);
                 case.log.clear();
                 case.report = None;
+                case.residuals = Residuals::default();
                 case.outcome = None;
                 case.stopping = false;
             }
