@@ -475,6 +475,23 @@ impl RegionEditor {
     pub fn save(&self, path: &Path) -> Result<(), SketchError> {
         self.sketch.save(path)
     }
+
+    /// Replaces the drawing with the sketch saved at `path` (one a case kept as
+    /// `sketch.vortia-sketch`, or any sketch file). A file that cannot be read, or whose sketch
+    /// cannot be solved, is refused and leaves the drawing as it was.
+    pub fn open(&mut self, path: &Path) -> Result<(), SketchError> {
+        let sketch = Sketch::open(path).and_then(|mut s| {
+            s.solve()?;
+            s.edges(5.0)?;
+            Ok(s)
+        });
+        self.keep(sketch)?;
+        self.picked.clear();
+        self.picked_points.clear();
+        self.dragging = None;
+        self.fit();
+        Ok(())
+    }
 }
 
 /// Where the drawing is on the screen: the view fitted into a rectangle, centred, the same scale
@@ -609,6 +626,29 @@ mod tests {
         let path = dir.path().join("region.vortia-sketch");
         editor.save(&path).unwrap();
         assert_eq!(&Sketch::open(&path).unwrap(), editor.sketch());
+    }
+
+    #[test]
+    fn a_saved_sketch_is_opened_and_a_bad_file_leaves_the_drawing_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("region.vortia-sketch");
+        let mut saved = RegionEditor::default();
+        saved.rename(0, "inlet").unwrap();
+        saved.save(&path).unwrap();
+
+        let mut e = RegionEditor::new(Outline::Blank);
+        e.open(&path).unwrap();
+        assert_eq!(e.sketch(), saved.sketch());
+        assert!(e.problem.is_none());
+        assert_eq!(e.names().first().map(|(_, n)| n.as_str()), Some("inlet"));
+
+        let before = e.sketch().clone();
+        assert!(e.open(&dir.path().join("missing")).is_err());
+        let junk = dir.path().join("junk.vortia-sketch");
+        std::fs::write(&junk, "not json").unwrap();
+        assert!(e.open(&junk).is_err());
+        assert!(e.problem.is_some());
+        assert_eq!(e.sketch(), &before);
     }
 
     const TOL: f64 = 3.0;
