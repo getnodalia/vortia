@@ -2,6 +2,7 @@
 //! volume flow, momentum flux, pressure load, power, coefficients), worked out by
 //! `vortia-post` and saved as a report in JSON, CSV or HTML.
 
+use crate::i18n::{tr, trf};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -87,22 +88,22 @@ impl SectionForm {
         let density = if self.from_field {
             Density::Field
         } else {
-            Density::Constant(number(&self.density, "The density")?)
+            Density::Constant(number(&self.density, tr("The density"))?)
         };
         let wedge = match self.wedge.trim() {
             "" => None,
-            text => Some(number(text, "The wedge angle")?),
+            text => Some(number(text, tr("The wedge angle"))?),
         };
         Ok(SectionOptions {
             axis: self.axis,
             direction: if self.reverse { -1.0 } else { 1.0 },
-            position: number(&self.position, "The position")?,
+            position: number(&self.position, tr("The position"))?,
             density,
             kinematic_pressure: self.kinematic,
-            reference_pressure: number(&self.reference_pressure, "The reference pressure")?,
-            reference_density: number(&self.reference_density, "The reference density")?,
-            reference_speed: number(&self.reference_speed, "The reference speed")?,
-            reference_area: number(&self.reference_area, "The reference area")?,
+            reference_pressure: number(&self.reference_pressure, tr("The reference pressure"))?,
+            reference_density: number(&self.reference_density, tr("The reference density"))?,
+            reference_speed: number(&self.reference_speed, tr("The reference speed"))?,
+            reference_area: number(&self.reference_area, tr("The reference area"))?,
             wedge_angle: wedge,
         })
     }
@@ -122,27 +123,27 @@ pub(super) fn section_card(
 ) {
     let (mut ask, mut save) = (false, None::<&'static str>);
     card(ui, p, |ui| {
-        ui.label(RichText::new("Section").strong());
+        ui.label(RichText::new(tr("Section")).strong());
         ui.label(
-            RichText::new("What goes through a plane across the domain.")
+            RichText::new(tr("What goes through a plane across the domain."))
                 .size(font_size::SMALL)
                 .color(muted(p)),
         );
         ui.add_space(space::SM);
         let form = &mut results.section_form;
         ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new("Perpendicular to").color(muted(p)));
+            ui.label(RichText::new(tr("Perpendicular to")).color(muted(p)));
             for (i, name) in ["x", "y", "z"].iter().enumerate() {
                 ui.selectable_value(&mut form.axis, i, *name);
             }
             ui.add_space(space::MD);
             ui.label(RichText::new("at").color(muted(p)));
             ui.add(egui::TextEdit::singleline(&mut form.position).desired_width(90.0));
-            ui.checkbox(&mut form.reverse, "positive against the axis");
+            ui.checkbox(&mut form.reverse, tr("positive against the axis"));
         });
         ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new("Density").color(muted(p)));
-            ui.selectable_value(&mut form.from_field, true, "from rho");
+            ui.label(RichText::new(tr("Density")).color(muted(p)));
+            ui.selectable_value(&mut form.from_field, true, tr("from rho"));
             ui.selectable_value(&mut form.from_field, false, "constant");
             if !form.from_field {
                 ui.add(egui::TextEdit::singleline(&mut form.density).desired_width(70.0));
@@ -154,22 +155,22 @@ pub(super) fn section_card(
             }
             ui.checkbox(&mut form.kinematic, "pressure is p/ρ");
         });
-        egui::CollapsingHeader::new(RichText::new("Reference values").color(muted(p)))
+        egui::CollapsingHeader::new(RichText::new(tr("Reference values")).color(muted(p)))
             .id_salt("section-reference")
             .show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
-                    field(ui, p, "Pressure", "Pa", &mut form.reference_pressure);
-                    field(ui, p, "Density", "kg/m³", &mut form.reference_density);
-                    field(ui, p, "Speed", "m/s", &mut form.reference_speed);
-                    field(ui, p, "Area", "m²", &mut form.reference_area);
-                    field(ui, p, "Wedge angle", "° (≤ 5, x axis)", &mut form.wedge);
+                    field(ui, p, tr("Pressure"), "Pa", &mut form.reference_pressure);
+                    field(ui, p, tr("Density"), "kg/m³", &mut form.reference_density);
+                    field(ui, p, tr("Speed"), "m/s", &mut form.reference_speed);
+                    field(ui, p, tr("Area"), "m²", &mut form.reference_area);
+                    field(ui, p, tr("Wedge angle"), "° (≤ 5, x axis)", &mut form.wedge);
                 });
             });
         ui.add_space(space::SM);
-        ask = accent_button(ui, p, "Analyse").clicked();
+        ask = accent_button(ui, p, tr("Analyse")).clicked();
         match &results.section {
             Slot::Idle => {}
-            Slot::Working(_) => wait(ui, "Cutting the cells…"),
+            Slot::Working(_) => wait(ui, tr("Cutting the cells…")),
             Slot::Done(Err(message)) => {
                 ui.colored_label(for_egui::color(p.status_danger_fg), message.as_str());
             }
@@ -190,7 +191,7 @@ pub(super) fn section_card(
                 ui.add_space(space::SM);
                 ui.horizontal(|ui| {
                     for (format, label) in [("json", "JSON"), ("csv", "CSV"), ("html", "HTML")] {
-                        if ui.button(format!("Save {label}")).clicked() {
+                        if ui.button(trf("Save {}", &[&label])).clicked() {
                             save = Some(format);
                         }
                     }
@@ -279,11 +280,11 @@ pub(super) fn write_report(
     body: &str,
 ) -> (bool, String) {
     if time.contains(['/', '\\']) || time == ".." || time.is_empty() {
-        return (false, "The time is not a folder name.".into());
+        return (false, tr("The time is not a folder name.").into());
     }
     let relative = Path::new("postProcessing").join(kind).join(time).join(name);
     match vortia_foamfile::write::atomic(&dir.join(&relative), body.as_bytes()) {
-        Ok(()) => (true, format!("Saved to {}.", relative.display())),
+        Ok(()) => (true, trf("Saved to {}.", &[&relative.display()])),
         Err(e) => (false, e.to_string()),
     }
 }

@@ -2,6 +2,7 @@
 //! `system/controlDict`. The file is edited as text, one value at a time, so its comments, its
 //! layout and everything else in it stay as they were.
 
+use crate::i18n::tr;
 use std::path::Path;
 
 use vortia_foamfile::write;
@@ -27,16 +28,16 @@ impl RunSettings {
             self.write_interval,
         ];
         if all.iter().any(|v| !v.is_finite()) {
-            return Err("Every setting has to be a number.".to_owned());
+            return Err(tr("Every setting has to be a number.").to_owned());
         }
         if self.end_time <= self.start_time {
-            return Err("The end time has to be after the start time.".to_owned());
+            return Err(tr("The end time has to be after the start time.").to_owned());
         }
         if self.delta_t <= 0.0 {
-            return Err("The time step has to be greater than zero.".to_owned());
+            return Err(tr("The time step has to be greater than zero.").to_owned());
         }
         if self.write_interval <= 0.0 {
-            return Err("The write interval has to be greater than zero.".to_owned());
+            return Err(tr("The write interval has to be greater than zero.").to_owned());
         }
         Ok(())
     }
@@ -71,10 +72,10 @@ impl SettingsForm {
                 .map_err(|_| format!("'{name}' is not a number."))
         };
         let settings = RunSettings {
-            start_time: number("Start time", &self.start_time)?,
-            end_time: number("End time", &self.end_time)?,
-            delta_t: number("Time step", &self.delta_t)?,
-            write_interval: number("Write interval", &self.write_interval)?,
+            start_time: number(tr("Start time"), &self.start_time)?,
+            end_time: number(tr("End time"), &self.end_time)?,
+            delta_t: number(tr("Time step"), &self.delta_t)?,
+            write_interval: number(tr("Write interval"), &self.write_interval)?,
         };
         settings.check()?;
         Ok(settings)

@@ -4,6 +4,7 @@
 //! The seeds lie on a grid across the two longest sides of the mesh, in the middle of the
 //! third: that is the plane a 2-D or wedge case lives in, and a readable slice of a 3-D one.
 
+use crate::i18n::tr;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, channel};
 
@@ -168,7 +169,7 @@ pub fn spawn(
         .name("vortia-flow".into())
         .spawn(move || {
             let read = std::panic::catch_unwind(|| compute(&case, &time, &name))
-                .unwrap_or_else(|_| Err("The flow could not be computed.".to_owned()));
+                .unwrap_or_else(|_| Err(tr("The flow could not be computed.").to_owned()));
             let _ = tx.send(read);
             wake();
         });

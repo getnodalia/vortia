@@ -3,6 +3,7 @@
 //! the title bar, a ribbon of workflow steps, the Browser with the case's tree, Properties,
 //! the status bar with the run and its residuals, Home, and the command search.
 
+use crate::i18n::{tr, trf};
 use eframe::egui::{
     self, Color32, Context, Frame, Id, Key, Margin, Pos2, RichText, Sense, Vec2, ViewportCommand,
 };
@@ -75,10 +76,10 @@ impl Step {
 
     fn name(self) -> &'static str {
         match self {
-            Step::Case => "Case",
-            Step::Mesh => "Mesh",
-            Step::Setup => "Setup",
-            Step::Results => "Results",
+            Step::Case => tr("Case"),
+            Step::Mesh => tr("Mesh"),
+            Step::Setup => tr("Setup"),
+            Step::Results => tr("Results"),
         }
     }
 
@@ -119,16 +120,16 @@ pub(super) enum Selection {
 /// The name a view carries over the main island.
 fn view_title(tab: Tab) -> &'static str {
     match tab {
-        Tab::Run => "Run",
-        Tab::Mesh => "Mesh",
-        Tab::Results => "Results",
-        Tab::Conditions => "Boundary conditions",
-        Tab::Numerics => "Solver numbers",
-        Tab::Schemes => "Schemes",
-        Tab::Settings => "Run settings",
-        Tab::Fluid => "Fluid",
-        Tab::Turbulence => "Turbulence",
-        Tab::Transport => "Viscosity",
+        Tab::Run => tr("Run"),
+        Tab::Mesh => tr("Mesh"),
+        Tab::Results => tr("Results"),
+        Tab::Conditions => tr("Boundary conditions"),
+        Tab::Numerics => tr("Solver numbers"),
+        Tab::Schemes => tr("Schemes"),
+        Tab::Settings => tr("Run settings"),
+        Tab::Fluid => tr("Fluid"),
+        Tab::Turbulence => tr("Turbulence"),
+        Tab::Transport => tr("Viscosity"),
     }
 }
 
@@ -224,15 +225,15 @@ impl VortiaApp {
             documents: &documents,
             active: (!self.home && !documents.is_empty()).then_some(0),
             labels: TitleLabels {
-                home: "Home",
-                file: "File",
-                save: "Save",
-                undo: "Undo",
-                redo: "Redo",
-                new_document: "Open a case",
-                close_document: "Close the case",
-                search: "Search commands",
-                menu: "Menu",
+                home: tr("Home"),
+                file: tr("File"),
+                save: tr("Save"),
+                undo: tr("Undo"),
+                redo: tr("Redo"),
+                new_document: tr("Open a case"),
+                close_document: tr("Close the case"),
+                search: tr("Search commands"),
+                menu: tr("Menu"),
             },
             quick_access: &[],
             controls_width,
@@ -253,10 +254,10 @@ impl VortiaApp {
                 Mode::Light
             };
             let labels = window_controls::Labels {
-                minimize: "Minimize",
-                maximize: "Maximize",
-                restore: "Restore",
-                close: "Close",
+                minimize: tr("Minimize"),
+                maximize: tr("Maximize"),
+                restore: tr("Restore"),
+                close: tr("Close"),
             };
             let action = window_controls::show(
                 ui,
@@ -323,14 +324,19 @@ impl VortiaApp {
                         ui.close();
                     }
                 };
-                item(ui, "New case", true, Cmd::New);
-                item(ui, "Open a case", true, Cmd::Open);
-                item(ui, "Run", case_open && !running, Cmd::Run);
-                item(ui, "Pause or resume", running, Cmd::Pause);
-                item(ui, "Stop", running, Cmd::Stop);
-                item(ui, "Close the case", case_open && !running, Cmd::CloseCase);
+                item(ui, tr("New case"), true, Cmd::New);
+                item(ui, tr("Open a case"), true, Cmd::Open);
+                item(ui, tr("Run"), case_open && !running, Cmd::Run);
+                item(ui, tr("Pause or resume"), running, Cmd::Pause);
+                item(ui, tr("Stop"), running, Cmd::Stop);
+                item(
+                    ui,
+                    tr("Close the case"),
+                    case_open && !running,
+                    Cmd::CloseCase,
+                );
                 ui.separator();
-                item(ui, "Quit", true, Cmd::Quit);
+                item(ui, tr("Quit"), true, Cmd::Quit);
             });
         egui::Popup::new(app_menu(), ctx.clone(), at(app_menu()), ui.layer_id())
             .kind(egui::PopupKind::Menu)
@@ -338,9 +344,9 @@ impl VortiaApp {
             .show(|ui| {
                 ui.set_min_width(190.0);
                 for (label, dialog) in [
-                    ("Preferences", Dialog::Preferences),
-                    ("Keyboard shortcuts", Dialog::Shortcuts),
-                    ("About Vortia", Dialog::About),
+                    (tr("Preferences"), Dialog::Preferences),
+                    (tr("Keyboard shortcuts"), Dialog::Shortcuts),
+                    (tr("About Vortia"), Dialog::About),
                 ] {
                     if ui.button(label).clicked() {
                         chosen = Some(Cmd::Show(dialog));
@@ -366,7 +372,7 @@ impl VortiaApp {
             ui.set_width(nodalia_theme::size::DIALOG);
             let field = ui.add(
                 egui::TextEdit::singleline(query)
-                    .hint_text("Search commands")
+                    .hint_text(tr("Search commands"))
                     .desired_width(f32::INFINITY),
             );
             field.request_focus();
@@ -374,20 +380,24 @@ impl VortiaApp {
             let needle = query.trim().to_lowercase();
             let hits: Vec<&(&str, Cmd)> = COMMANDS
                 .iter()
-                .filter(|(label, _)| needle.is_empty() || label.to_lowercase().contains(&needle))
+                .filter(|(label, _)| {
+                    needle.is_empty() || tr(label).to_lowercase().contains(&needle)
+                })
                 .collect();
             for (i, (label, command)) in hits.iter().enumerate() {
                 let row = ui.add(
-                    egui::Button::new(RichText::new(*label).color(for_egui::color(p.text_primary)))
-                        .frame(false)
-                        .min_size(Vec2::new(ui.available_width(), layout::TREE_ROW)),
+                    egui::Button::new(
+                        RichText::new(tr(label)).color(for_egui::color(p.text_primary)),
+                    )
+                    .frame(false)
+                    .min_size(Vec2::new(ui.available_width(), layout::TREE_ROW)),
                 );
                 if row.clicked() || (i == 0 && ctx.input(|i| i.key_pressed(Key::Enter))) {
                     chosen = Some(*command);
                 }
             }
             if hits.is_empty() {
-                ui.label(RichText::new("Nothing matches.").color(muted(p)));
+                ui.label(RichText::new(tr("Nothing matches.")).color(muted(p)));
             }
             if ctx.input(|i| i.key_pressed(Key::Escape)) {
                 close = true;
@@ -408,13 +418,13 @@ impl VortiaApp {
         let p = &look.palette;
         let has_case = matches!(self.screen, Screen::Case(_));
         let nav = Nav {
-            back: if has_case { "Back to the case" } else { "" },
+            back: if has_case { tr("Back to the case") } else { "" },
             top: vec![
-                Entry::item("home", "Home", "home"),
-                Entry::item("new", "New", "plus"),
-                Entry::item("open", "Open", "folder"),
+                Entry::item("home", tr("Home"), "home"),
+                Entry::item("new", tr("New"), "plus"),
+                Entry::item("open", tr("Open"), "folder"),
             ],
-            bottom: vec![Entry::item("preferences", "Preferences", "settings")],
+            bottom: vec![Entry::item("preferences", tr("Preferences"), "settings")],
             selected: Some(if self.new_case.is_some() {
                 "new"
             } else {
@@ -422,7 +432,7 @@ impl VortiaApp {
             }),
         };
         let icon = self.icon(ctx).id();
-        let version = format!("Version {}", env!("CARGO_PKG_VERSION"));
+        let version = trf("Version {}", &[&env!("CARGO_PKG_VERSION")]);
         let focus = std::mem::take(&mut self.focus_open);
         let recent: Vec<(String, String)> = self
             .prefs
@@ -454,26 +464,26 @@ impl VortiaApp {
                 }
                 return;
             }
-            office::section(ui, &home, "Open a case", |ui| {
+            office::section(ui, &home, tr("Open a case"), |ui| {
                 ui.horizontal(|ui| {
                     let width = (ui.available_width() - 120.0).clamp(160.0, 420.0);
                     let field = ui.add(
                         egui::TextEdit::singleline(&mut self.path_input)
-                            .hint_text("Folder of a case")
+                            .hint_text(tr("Folder of a case"))
                             .desired_width(width),
                     );
                     if focus {
                         field.request_focus();
                     }
                     open |= field.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
-                    open |= super::accent_button(ui, p, "Open case").clicked();
+                    open |= super::accent_button(ui, p, tr("Open case")).clicked();
                 });
                 if let Some(notice) = &self.notice {
                     ui.add_space(space::SM);
                     ui.colored_label(for_egui::color(p.status_danger_fg), notice);
                 }
             });
-            office::section(ui, &home, "Recent", |ui| {
+            office::section(ui, &home, tr("Recent"), |ui| {
                 let docs: Vec<eng::RecentDocument> = recent
                     .iter()
                     .map(|(name, folder)| eng::RecentDocument {
@@ -488,7 +498,7 @@ impl VortiaApp {
                     ui,
                     look,
                     &docs,
-                    "Nothing here yet. Open a case folder to get started.",
+                    tr("Nothing here yet. Open a case folder to get started."),
                 );
             });
         });
@@ -642,55 +652,61 @@ fn ribbon(ui: &mut egui::Ui, look: &Look, case: &mut CaseView) -> Option<Cmd> {
         };
         match step {
             Step::Case => {
-                eng::ribbon_group(ui, look, "Run", |ui| {
-                    if tool(ui, "run", "Run", running, !running) {
+                eng::ribbon_group(ui, look, tr("Run"), |ui| {
+                    if tool(ui, "run", tr("Run"), running, !running) {
                         command = Some(Cmd::Run);
                     }
                     let (icon, text) = if paused {
-                        ("play", "Resume")
+                        ("play", tr("Resume"))
                     } else {
-                        ("pause", "Pause")
+                        ("pause", tr("Pause"))
                     };
                     if tool(ui, icon, text, paused, running && !stopping) {
                         command = Some(Cmd::Pause);
                     }
-                    if tool(ui, "stop", "Stop", false, running && !stopping) {
+                    if tool(ui, "stop", tr("Stop"), false, running && !stopping) {
                         command = Some(Cmd::Stop);
                     }
                 });
-                eng::ribbon_group(ui, look, "Case", |ui| {
-                    if tool(ui, "folder", "Open", false, !running) {
+                eng::ribbon_group(ui, look, tr("Case"), |ui| {
+                    if tool(ui, "folder", tr("Open"), false, !running) {
                         command = Some(Cmd::Open);
                     }
-                    if tool(ui, "close", "Close", false, !running) {
+                    if tool(ui, "close", tr("Close"), false, !running) {
                         command = Some(Cmd::CloseCase);
                     }
                 });
             }
             Step::Mesh => {
-                eng::ribbon_group(ui, look, "Mesh", |ui| {
-                    if tool(ui, "mesh", "Surface", tab == Tab::Mesh, true) {
+                eng::ribbon_group(ui, look, tr("Mesh"), |ui| {
+                    if tool(ui, "mesh", tr("Surface"), tab == Tab::Mesh, true) {
                         go = Some(Tab::Mesh);
                     }
                 });
             }
             Step::Setup => {
-                eng::ribbon_group(ui, look, "Physics", |ui| {
-                    if tool(ui, "boundary", "Conditions", tab == Tab::Conditions, true) {
+                eng::ribbon_group(ui, look, tr("Physics"), |ui| {
+                    if tool(
+                        ui,
+                        "boundary",
+                        tr("Conditions"),
+                        tab == Tab::Conditions,
+                        true,
+                    ) {
                         go = Some(Tab::Conditions);
                     }
                     for (icon, text, target, file) in PHYSICS {
                         let present = has_constant(case, file);
-                        if tool(ui, icon, text, tab == target, present) {
+                        if tool(ui, icon, tr(text), tab == target, present) {
                             go = Some(target);
                         }
                     }
                 });
-                eng::ribbon_group(ui, look, "Solver", |ui| {
+                eng::ribbon_group(ui, look, tr("Solver"), |ui| {
                     for (icon, text, target) in [
-                        ("settings", "Settings", Tab::Settings),
-                        ("solver", "Numerics", Tab::Numerics),
-                        ("parameters", "Schemes", Tab::Schemes),
+                        ("settings", tr("Settings"), Tab::Settings),
+                        ("solver", tr("Numerics"), Tab::Numerics),
+                        ("parameters", tr("Schemes"), Tab::Schemes),
                     ] {
                         if tool(ui, icon, text, tab == target, true) {
                             go = Some(target);
@@ -699,8 +715,8 @@ fn ribbon(ui: &mut egui::Ui, look: &Look, case: &mut CaseView) -> Option<Cmd> {
                 });
             }
             Step::Results => {
-                eng::ribbon_group(ui, look, "Fields", |ui| {
-                    if tool(ui, "probe", "Probes", tab == Tab::Results, true) {
+                eng::ribbon_group(ui, look, tr("Fields"), |ui| {
+                    if tool(ui, "probe", tr("Probes"), tab == Tab::Results, true) {
                         go = Some(Tab::Results);
                     }
                 });
@@ -771,7 +787,7 @@ fn tree(case: &CaseView) -> Vec<Row> {
         group: Some("mesh"),
         depth: 1,
         icon: "mesh",
-        label: "Mesh".into(),
+        label: tr("Mesh").into(),
         selected: view(Tab::Mesh),
         muted: false,
         pick: Pick::View(Tab::Mesh),
@@ -795,7 +811,7 @@ fn tree(case: &CaseView) -> Vec<Row> {
         group: Some("physics"),
         depth: 1,
         icon: "boundary",
-        label: "Boundary conditions".into(),
+        label: tr("Boundary conditions").into(),
         selected: view(Tab::Conditions) && case.conditions_field.is_none(),
         muted: false,
         pick: Pick::View(Tab::Conditions),
@@ -807,7 +823,7 @@ fn tree(case: &CaseView) -> Vec<Row> {
                     group: None,
                     depth: 2,
                     icon,
-                    label: label.into(),
+                    label: tr(label).into(),
                     selected: view(tab),
                     muted: false,
                     pick: Pick::View(tab),
@@ -830,16 +846,16 @@ fn tree(case: &CaseView) -> Vec<Row> {
         group: Some("solver"),
         depth: 1,
         icon: "solver",
-        label: "Solver".into(),
+        label: tr("Solver").into(),
         selected: false,
         muted: false,
         pick: Pick::View(Tab::Settings),
     });
     if open("solver") {
         for (icon, label, tab) in [
-            ("settings", "Run settings", Tab::Settings),
-            ("parameters", "Numerics", Tab::Numerics),
-            ("parameters", "Schemes", Tab::Schemes),
+            ("settings", tr("Run settings"), Tab::Settings),
+            ("parameters", tr("Numerics"), Tab::Numerics),
+            ("parameters", tr("Schemes"), Tab::Schemes),
         ] {
             rows.push(Row {
                 group: None,
@@ -856,7 +872,7 @@ fn tree(case: &CaseView) -> Vec<Row> {
         group: None,
         depth: 1,
         icon: "run",
-        label: "Run".into(),
+        label: tr("Run").into(),
         selected: view(Tab::Run),
         muted: false,
         pick: Pick::View(Tab::Run),
@@ -865,7 +881,7 @@ fn tree(case: &CaseView) -> Vec<Row> {
         group: None,
         depth: 1,
         icon: "chart",
-        label: "Results".into(),
+        label: tr("Results").into(),
         selected: view(Tab::Results),
         muted: false,
         pick: Pick::View(Tab::Results),
@@ -874,10 +890,10 @@ fn tree(case: &CaseView) -> Vec<Row> {
 }
 
 fn browser(ui: &mut egui::Ui, look: &Look, case: &mut CaseView) {
-    eng::panel_header(ui, look, "Browser", |ui| {
+    eng::panel_header(ui, look, tr("Browser"), |ui| {
         if let Some(Ok(mesh)) = case.summary.as_ref().and_then(|s| s.mesh.as_ref()) {
             ui.label(
-                RichText::new(format!("{} cells", grouped(mesh.cells)))
+                RichText::new(trf("{} cells", &[&grouped(mesh.cells)]))
                     .font(eng::caption())
                     .color(for_egui::color(look.palette.text_secondary)),
             );
@@ -936,8 +952,8 @@ fn browser(ui: &mut egui::Ui, look: &Look, case: &mut CaseView) {
 
 fn properties(ui: &mut egui::Ui, look: &Look, case: &CaseView) {
     let title = match &case.selection {
-        Selection::Patch(_) => "Patch",
-        Selection::Nothing => "Case",
+        Selection::Patch(_) => tr("Patch"),
+        Selection::Nothing => tr("Case"),
     };
     eng::panel_header(ui, look, title, |_| {});
     egui::ScrollArea::vertical()
@@ -947,7 +963,7 @@ fn properties(ui: &mut egui::Ui, look: &Look, case: &CaseView) {
             (_, None) => {
                 ui.horizontal(|ui| {
                     ui.spinner();
-                    ui.label(RichText::new("Reading the case…").color(muted(&look.palette)));
+                    ui.label(RichText::new(tr("Reading the case…")).color(muted(&look.palette)));
                 });
             }
             (Selection::Patch(name), Some(summary)) => patch_properties(ui, look, summary, name),
@@ -962,31 +978,31 @@ fn case_properties(ui: &mut egui::Ui, look: &Look, s: &Summary) {
             eng::property(ui, look, name, |ui| eng::value(ui, look, &text));
         };
         if let Some(app) = &s.application {
-            row(ui, "Solver", app.clone());
+            row(ui, tr("Solver"), app.clone());
         }
         if let (Some(start), Some(end)) = (s.start_time, s.end_time) {
-            row(ui, "Time", format!("{start} to {end} s"));
+            row(ui, tr("Time"), trf("{} to {} s", &[&start, &end]));
         }
         if let Some(dt) = s.delta_t {
-            row(ui, "Time step", format!("{dt} s"));
+            row(ui, tr("Time step"), format!("{dt} s"));
         }
         if let Some(every) = s.write_interval {
-            row(ui, "Writes every", every.to_string());
+            row(ui, tr("Writes every"), every.to_string());
         }
         if let Some(Ok(mesh)) = &s.mesh {
-            row(ui, "Cells", grouped(mesh.cells));
-            row(ui, "Faces", grouped(mesh.faces));
-            row(ui, "Points", grouped(mesh.points));
-            row(ui, "Patches", mesh.patches.len().to_string());
+            row(ui, tr("Cells"), grouped(mesh.cells));
+            row(ui, tr("Faces"), grouped(mesh.faces));
+            row(ui, tr("Points"), grouped(mesh.points));
+            row(ui, tr("Patches"), mesh.patches.len().to_string());
         }
         if let Some(last) = s.times.last() {
-            row(ui, "Written up to", format!("{last} s"));
+            row(ui, tr("Written up to"), format!("{last} s"));
         }
     });
     match &s.mesh {
         None => {
             ui.add_space(space::SM);
-            ui.label(RichText::new("The case has no mesh yet.").color(muted(p)));
+            ui.label(RichText::new(tr("The case has no mesh yet.")).color(muted(p)));
         }
         Some(Err(message)) => {
             ui.add_space(space::SM);
@@ -1003,22 +1019,24 @@ fn patch_properties(ui: &mut egui::Ui, look: &Look, s: &Summary, name: &str) {
         .and_then(|m| m.as_ref().ok())
         .and_then(|m| m.patches.iter().find(|p| p.name == name));
     let Some(patch) = patch else {
-        ui.label(RichText::new("This patch is not in the mesh.").color(muted(&look.palette)));
+        ui.label(RichText::new(tr("This patch is not in the mesh.")).color(muted(&look.palette)));
         return;
     };
     eng::properties(ui, "patch", |ui| {
-        eng::property(ui, look, "Name", |ui| eng::value(ui, look, &patch.name));
-        eng::property(ui, look, "Type", |ui| eng::value(ui, look, &patch.kind));
-        eng::property(ui, look, "Faces", |ui| {
+        eng::property(ui, look, tr("Name"), |ui| eng::value(ui, look, &patch.name));
+        eng::property(ui, look, tr("Type"), |ui| eng::value(ui, look, &patch.kind));
+        eng::property(ui, look, tr("Faces"), |ui| {
             eng::value(ui, look, &grouped(patch.faces))
         });
     });
     if patch.kind == "wall" {
         ui.add_space(space::SM);
         ui.label(
-            RichText::new("Shear, y+, forces and heat flux of this wall are under Results.")
-                .font(eng::caption())
-                .color(muted(&look.palette)),
+            RichText::new(tr(tr(
+                "Shear, y+, forces and heat flux of this wall are under Results.",
+            )))
+            .font(eng::caption())
+            .color(muted(&look.palette)),
         );
     }
 }
@@ -1030,7 +1048,7 @@ fn case_view(ui: &mut egui::Ui, ctx: &Context, look: &Look, p: &Palette, case: &
     let running = case.running();
     eng::panel_header(ui, look, view_title(case.tab), |ui| {
         if running {
-            ui.label(RichText::new("Running…").color(muted(p)));
+            ui.label(RichText::new(tr("Running…")).color(muted(p)));
             ui.spinner();
         }
     });
@@ -1040,9 +1058,9 @@ fn case_view(ui: &mut egui::Ui, ctx: &Context, look: &Look, p: &Palette, case: &
             Outcome::Failed(message) => (p.status_danger_fg, message.as_str()),
             Outcome::Stopped => (
                 p.status_warning_fg,
-                "The run was stopped; what was written before stays in the case.",
+                tr("The run was stopped; what was written before stays in the case."),
             ),
-            Outcome::Done => (p.status_success_fg, "The run finished."),
+            Outcome::Done => (p.status_success_fg, tr("The run finished.")),
         };
         ui.colored_label(for_egui::color(tone), text);
         ui.add_space(space::SM);
@@ -1121,7 +1139,7 @@ fn residual_card(ui: &mut egui::Ui, p: &Palette, residuals: &Residuals) {
         .inner_margin(Margin::same(space::MD as i8))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.label(RichText::new("Residuals").strong());
+            ui.label(RichText::new(tr("Residuals")).strong());
             if let Some(trouble) = residuals.trouble() {
                 ui.colored_label(
                     for_egui::color(p.status_danger_fg),
@@ -1130,7 +1148,8 @@ fn residual_card(ui: &mut egui::Ui, p: &Palette, residuals: &Residuals) {
             }
             let Some(([t0, t1], [lo, hi])) = residuals.bounds() else {
                 ui.label(
-                    RichText::new("They appear as the solver reports each step.").color(muted(p)),
+                    RichText::new(tr("They appear as the solver reports each step."))
+                        .color(muted(p)),
                 );
                 return;
             };
@@ -1220,18 +1239,24 @@ fn balance_card(ui: &mut egui::Ui, p: &Palette, balance: Option<&BalanceHistory>
         .inner_margin(Margin::same(space::MD as i8))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.label(RichText::new("Mass balance").strong());
+            ui.label(RichText::new(tr("Mass balance")).strong());
             let Some(b) = balance else {
                 ui.label(
-                    RichText::new("It appears once a run has written the flux (phi).")
+                    RichText::new(tr("It appears once a run has written the flux (phi)."))
                         .color(muted(p)),
                 );
                 return;
             };
             ui.label(
-                RichText::new(format!(
-                    "Times {} to {} ({} written): mean {:.3} %, worst {:.3} %",
-                    b.first, b.last, b.samples, b.mean_abs_percent, b.max_abs_percent
+                RichText::new(trf(
+                    "Times {} to {} ({} written): mean {} %, worst {} %",
+                    &[
+                        &b.first,
+                        &b.last,
+                        &b.samples,
+                        &format!("{:.3}", b.mean_abs_percent),
+                        &format!("{:.3}", b.max_abs_percent),
+                    ],
                 ))
                 .color(muted(p)),
             );
@@ -1245,7 +1270,7 @@ fn balance_card(ui: &mut egui::Ui, p: &Palette, balance: Option<&BalanceHistory>
                         ui.label(RichText::new(format!("{flux:+.4e}")).monospace());
                         ui.end_row();
                     }
-                    ui.label(RichText::new("Net").strong());
+                    ui.label(RichText::new(tr("Net")).strong());
                     ui.label(
                         RichText::new(format!(
                             "{:+.4e} ({:+.3} %)",
@@ -1274,7 +1299,7 @@ fn run_view(ui: &mut egui::Ui, p: &Palette, case: &CaseView) {
                 case.summary.as_ref().and_then(|s| s.balance.as_ref()),
             );
             ui.add_space(space::MD);
-            ui.label(RichText::new("Log").color(muted(p)));
+            ui.label(RichText::new(tr("Log")).color(muted(p)));
             Frame::NONE
                 .fill(for_egui::color(p.surface_sunken))
                 .corner_radius(super::corner(nodalia_theme::component::CONTROL_RADIUS))
@@ -1289,7 +1314,7 @@ fn run_view(ui: &mut egui::Ui, p: &Palette, case: &CaseView) {
                         .show(ui, |ui| {
                             if case.log.is_empty() {
                                 ui.label(
-                                    RichText::new("The solver's output appears here.")
+                                    RichText::new(tr("The solver's output appears here."))
                                         .color(muted(p)),
                                 );
                             }
@@ -1309,18 +1334,18 @@ fn run_state(case: &CaseView) -> (String, Tone) {
     if case.running() {
         let paused = case.session.as_ref().is_some_and(|s| s.is_paused());
         let text = match (&case.report, case.stopping) {
-            (_, true) => "Stopping".to_owned(),
-            _ if paused => "Paused".to_owned(),
-            (Some(report), false) => format!("Running · {}", status_label(&report.status).0),
-            (None, false) => "Running".to_owned(),
+            (_, true) => tr("Stopping").to_owned(),
+            _ if paused => tr("Paused").to_owned(),
+            (Some(report), false) => trf("Running · {}", &[&status_label(&report.status).0]),
+            (None, false) => tr("Running").to_owned(),
         };
         return (text, Tone::Info);
     }
     match &case.outcome {
-        Some(Outcome::Done) => ("Finished".into(), Tone::Success),
-        Some(Outcome::Stopped) => ("Stopped".into(), Tone::Warning),
-        Some(Outcome::Failed(_)) => ("Failed".into(), Tone::Danger),
-        None => ("Ready".into(), Tone::Info),
+        Some(Outcome::Done) => (tr("Finished").into(), Tone::Success),
+        Some(Outcome::Stopped) => (tr("Stopped").into(), Tone::Warning),
+        Some(Outcome::Failed(_)) => (tr("Failed").into(), Tone::Danger),
+        None => (tr("Ready").into(), Tone::Info),
     }
 }
 
@@ -1563,6 +1588,7 @@ mod tests {
                 Prefs {
                     theme,
                     recent: vec![dir.path().to_path_buf()],
+                    ..Prefs::default()
                 },
                 None,
             );

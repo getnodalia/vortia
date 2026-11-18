@@ -2,6 +2,7 @@
 //! into pressure and viscous, along a drag and a lift direction, with the coefficients and a
 //! report in JSON, CSV or HTML. Worked out by `vortia-post`.
 
+use crate::i18n::{tr, trf};
 use std::sync::Arc;
 
 use eframe::egui::{self, RichText};
@@ -81,13 +82,13 @@ impl ForcesForm {
             .map(|(name, _)| name.clone())
             .collect();
         if patches.is_empty() {
-            return Err("Choose at least one wall.".into());
+            return Err(tr("Choose at least one wall.").into());
         }
         if self.drag == self.lift {
-            return Err("The stream and the lift cannot be along the same axis.".into());
+            return Err(tr("The stream and the lift cannot be along the same axis.").into());
         }
         let density = if self.give_density {
-            Some(number(&self.density, "The density")?)
+            Some(number(&self.density, tr("The density"))?)
         } else {
             None
         };
@@ -96,13 +97,13 @@ impl ForcesForm {
             patches,
             ForceReference {
                 density,
-                speed: number(&self.speed, "The reference speed")?,
-                area: number(&self.area, "The reference area")?,
-                length: number(&self.length, "The reference length")?,
+                speed: number(&self.speed, tr("The reference speed"))?,
+                area: number(&self.area, tr("The reference area"))?,
+                length: number(&self.length, tr("The reference length"))?,
                 centre: Vec3::new(
-                    number(cx, "The centre of rotation")?,
-                    number(cy, "The centre of rotation")?,
-                    number(cz, "The centre of rotation")?,
+                    number(cx, tr("The centre of rotation"))?,
+                    number(cy, tr("The centre of rotation"))?,
+                    number(cz, tr("The centre of rotation"))?,
                 ),
                 drag: axis(self.drag),
                 lift: axis(self.lift),
@@ -114,42 +115,44 @@ impl ForcesForm {
 pub(super) fn forces_card(ui: &mut egui::Ui, p: &Palette, case: &Arc<Case>, results: &mut Results) {
     let (mut ask, mut save) = (false, None::<&'static str>);
     card(ui, p, |ui| {
-        ui.label(RichText::new("Forces").strong());
+        ui.label(RichText::new(tr("Forces")).strong());
         ui.label(
-            RichText::new("Force and moment on the walls, with their coefficients.")
-                .size(font_size::SMALL)
-                .color(muted(p)),
+            RichText::new(tr(tr(
+                "Force and moment on the walls, with their coefficients.",
+            )))
+            .size(font_size::SMALL)
+            .color(muted(p)),
         );
         ui.add_space(space::SM);
         let form = &mut results.forces_form;
         if form.walls.is_empty() {
-            ui.label(RichText::new("The case has no wall with results.").color(muted(p)));
+            ui.label(RichText::new(tr("The case has no wall with results.")).color(muted(p)));
             return;
         }
         ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new("Walls").color(muted(p)));
+            ui.label(RichText::new(tr("Walls")).color(muted(p)));
             for (name, on) in &mut form.walls {
                 ui.checkbox(on, name.as_str());
             }
         });
         ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new("Stream along").color(muted(p)));
+            ui.label(RichText::new(tr("Stream along")).color(muted(p)));
             for (i, name) in ["x", "y", "z"].iter().enumerate() {
                 ui.selectable_value(&mut form.drag, i, *name);
             }
             ui.add_space(space::MD);
-            ui.label(RichText::new("lift along").color(muted(p)));
+            ui.label(RichText::new(tr("lift along")).color(muted(p)));
             for (i, name) in ["x", "y", "z"].iter().enumerate() {
                 ui.selectable_value(&mut form.lift, i, *name);
             }
         });
         ui.horizontal_wrapped(|ui| {
-            field(ui, p, "Speed", "m/s", &mut form.speed);
-            field(ui, p, "Area", "m²", &mut form.area);
-            field(ui, p, "Length", "m", &mut form.length);
+            field(ui, p, tr("Speed"), "m/s", &mut form.speed);
+            field(ui, p, tr("Area"), "m²", &mut form.area);
+            field(ui, p, tr("Length"), "m", &mut form.length);
         });
         ui.horizontal_wrapped(|ui| {
-            ui.checkbox(&mut form.give_density, "Density");
+            ui.checkbox(&mut form.give_density, tr("Density"));
             if form.give_density {
                 ui.add(egui::TextEdit::singleline(&mut form.density).desired_width(70.0));
                 ui.label(
@@ -159,16 +162,16 @@ pub(super) fn forces_card(ui: &mut egui::Ui, p: &Palette, case: &Arc<Case>, resu
                 );
             }
             ui.add_space(space::MD);
-            ui.label(RichText::new("Moments about").color(muted(p)));
+            ui.label(RichText::new(tr("Moments about")).color(muted(p)));
             for c in &mut form.centre {
                 ui.add(egui::TextEdit::singleline(c).desired_width(50.0));
             }
         });
         ui.add_space(space::SM);
-        ask = accent_button(ui, p, "Calculate").clicked();
+        ask = accent_button(ui, p, tr("Calculate")).clicked();
         match &results.forces {
             Slot::Idle => {}
-            Slot::Working(_) => wait(ui, "Adding up the faces…"),
+            Slot::Working(_) => wait(ui, tr("Adding up the faces…")),
             Slot::Done(Err(message)) => {
                 ui.colored_label(for_egui::color(p.status_danger_fg), message.as_str());
             }
@@ -189,7 +192,7 @@ pub(super) fn forces_card(ui: &mut egui::Ui, p: &Palette, case: &Arc<Case>, resu
                 ui.add_space(space::SM);
                 ui.horizontal(|ui| {
                     for (format, label) in [("json", "JSON"), ("csv", "CSV"), ("html", "HTML")] {
-                        if ui.button(format!("Save {label}")).clicked() {
+                        if ui.button(trf("Save {}", &[&label])).clicked() {
                             save = Some(format);
                         }
                     }
@@ -233,7 +236,7 @@ pub(super) fn forces_card(ui: &mut egui::Ui, p: &Palette, case: &Arc<Case>, resu
                         .file_name()
                         .map(|n| n.to_string_lossy().into_owned())
                         .unwrap_or_default();
-                    report.label = format!("Forces on {}", patches.join(", "));
+                    report.label = trf("Forces on {}", &[&patches.join(", ")]);
                     Ok(report)
                 })
             }

@@ -23,6 +23,7 @@ pub mod fieldview;
 pub mod flowlines;
 #[cfg(target_os = "linux")]
 pub mod globalmenu;
+pub mod i18n;
 pub mod numerics;
 pub mod prefs;
 pub mod residuals;

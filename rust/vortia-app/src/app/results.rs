@@ -4,6 +4,7 @@
 //! Everything is calculated by `vortia-post`, on a thread, so a large case does not freeze the
 //! window; this file holds the forms, the jobs and the drawing.
 
+use crate::i18n::{tr, trf};
 use std::panic::AssertUnwindSafe;
 use std::path::Path;
 use std::sync::{Arc, mpsc};
@@ -46,7 +47,7 @@ impl<T> Slot<T> {
                 Ok(result) => Some(result),
                 Err(mpsc::TryRecvError::Empty) => None,
                 Err(mpsc::TryRecvError::Disconnected) => {
-                    Some(Err("The calculation stopped unexpectedly.".to_owned()))
+                    Some(Err(tr("The calculation stopped unexpectedly.").to_owned()))
                 }
             },
             _ => None,
@@ -69,7 +70,7 @@ fn spawn<T: Send + 'static>(
     let repaint = ctx.clone();
     std::thread::spawn(move || {
         let result = std::panic::catch_unwind(AssertUnwindSafe(job))
-            .unwrap_or_else(|_| Err("The calculation stopped unexpectedly.".to_owned()));
+            .unwrap_or_else(|_| Err(tr("The calculation stopped unexpectedly.").to_owned()));
         let _ = tx.send(result);
         repaint.request_repaint();
     });
@@ -127,8 +128,8 @@ impl LineForm {
     }
 
     fn parse(&self) -> Result<(Vec3, Vec3, usize), String> {
-        let start = self.start.parse("line's start")?;
-        let end = self.end.parse("line's end")?;
+        let start = self.start.parse(tr("line's start"))?;
+        let end = self.end.parse(tr("line's end"))?;
         let points = self
             .points
             .trim()
@@ -368,7 +369,7 @@ pub(super) fn results_tab(ui: &mut egui::Ui, p: &Palette, dir: &Path, results: &
     results.update(dir, ui.ctx());
     let case = match &results.case {
         Slot::Working(_) | Slot::Idle => {
-            wait(ui, "Reading the case…");
+            wait(ui, tr("Reading the case…"));
             return;
         }
         Slot::Done(Err(message)) => {
@@ -378,8 +379,8 @@ pub(super) fn results_tab(ui: &mut egui::Ui, p: &Palette, dir: &Path, results: &
         Slot::Done(Ok(case)) => Arc::clone(case),
     };
     if results.times.is_empty() {
-        ui.label(RichText::new("The case has no results yet. Run it first.").color(muted(p)));
-        if ui.button("Look again").clicked() {
+        ui.label(RichText::new(tr("The case has no results yet. Run it first.")).color(muted(p)));
+        if ui.button(tr("Look again")).clicked() {
             results.refresh();
         }
         return;
@@ -388,7 +389,7 @@ pub(super) fn results_tab(ui: &mut egui::Ui, p: &Palette, dir: &Path, results: &
     let mut pick_field: Option<String> = None;
     let mut refresh = false;
     ui.horizontal(|ui| {
-        ui.label(RichText::new("Time").color(muted(p)));
+        ui.label(RichText::new(tr("Time")).color(muted(p)));
         let shown = results.time.clone().unwrap_or_default();
         egui::ComboBox::from_id_salt("results-time")
             .selected_text(shown.as_str())
@@ -400,7 +401,7 @@ pub(super) fn results_tab(ui: &mut egui::Ui, p: &Palette, dir: &Path, results: &
                 }
             });
         ui.add_space(space::MD);
-        ui.label(RichText::new("Field").color(muted(p)));
+        ui.label(RichText::new(tr("Field")).color(muted(p)));
         let shown = results.field.clone().unwrap_or_default();
         egui::ComboBox::from_id_salt("results-field")
             .selected_text(shown.as_str())
@@ -412,7 +413,7 @@ pub(super) fn results_tab(ui: &mut egui::Ui, p: &Palette, dir: &Path, results: &
                 }
             });
         ui.add_space(space::MD);
-        refresh = ui.button("Reload").clicked();
+        refresh = ui.button(tr("Reload")).clicked();
     });
     if let Some(t) = pick_time {
         results.set_time(&case, &t);
@@ -506,7 +507,7 @@ fn shown(values: &[f64]) -> String {
 
 fn overview(ui: &mut egui::Ui, p: &Palette, results: &Results) {
     card(ui, p, |ui| match &results.report {
-        Slot::Idle | Slot::Working(_) => wait(ui, "Adding up the field…"),
+        Slot::Idle | Slot::Working(_) => wait(ui, tr("Adding up the field…")),
         Slot::Done(Err(message)) => {
             ui.colored_label(for_egui::color(p.status_danger_fg), message.as_str());
         }
@@ -516,12 +517,12 @@ fn overview(ui: &mut egui::Ui, p: &Palette, results: &Results) {
             let v = &report.volume;
             ui.horizontal_wrapped(|ui| {
                 for (name, value) in [
-                    ("Cells", v.cells.to_string()),
-                    ("Volume", plain(v.volume)),
-                    ("Average", shown(&v.average)),
-                    ("Minimum", shown(&v.min)),
-                    ("Maximum", shown(&v.max)),
-                    ("Integral", shown(&v.integral)),
+                    (tr("Cells"), v.cells.to_string()),
+                    (tr("Volume"), plain(v.volume)),
+                    (tr("Average"), shown(&v.average)),
+                    (tr("Minimum"), shown(&v.min)),
+                    (tr("Maximum"), shown(&v.max)),
+                    (tr("Integral"), shown(&v.integral)),
                 ] {
                     ui.label(RichText::new(name).color(muted(p)));
                     ui.label(value);
@@ -529,14 +530,20 @@ fn overview(ui: &mut egui::Ui, p: &Palette, results: &Results) {
                 }
             });
             ui.add_space(space::MD);
-            ui.label(RichText::new("Patches").color(muted(p)));
+            ui.label(RichText::new(tr("Patches")).color(muted(p)));
             egui::Grid::new("results-patches")
                 .num_columns(7)
                 .spacing([space::LG, space::XS])
                 .striped(true)
                 .show(ui, |ui| {
                     for head in [
-                        "Patch", "Type", "Area", "Average", "Minimum", "Maximum", "Flux out",
+                        tr("Patch"),
+                        tr("Type"),
+                        tr("Area"),
+                        tr("Average"),
+                        tr("Minimum"),
+                        tr("Maximum"),
+                        tr("Flux out"),
                     ] {
                         ui.label(RichText::new(head).size(font_size::SMALL).color(muted(p)));
                     }
@@ -580,7 +587,7 @@ fn walls_card(ui: &mut egui::Ui, p: &Palette, walls: &Slot<Vec<WallReport>>) {
         Slot::Done(Ok(reports)) if reports.is_empty() => return,
         Slot::Done(Err(message)) => {
             card(ui, p, |ui| {
-                ui.label(RichText::new("Walls").strong());
+                ui.label(RichText::new(tr("Walls")).strong());
                 ui.label(RichText::new(format!("Not worked out: {message}")).color(muted(p)));
             });
             return;
@@ -588,7 +595,7 @@ fn walls_card(ui: &mut egui::Ui, p: &Palette, walls: &Slot<Vec<WallReport>>) {
         Slot::Done(Ok(reports)) => reports,
     };
     card(ui, p, |ui| {
-        ui.label(RichText::new("Walls").strong());
+        ui.label(RichText::new(tr("Walls")).strong());
         ui.add_space(space::SM);
         egui::ScrollArea::horizontal()
             .id_salt("results-walls-scroll")
@@ -599,12 +606,12 @@ fn walls_card(ui: &mut egui::Ui, p: &Palette, walls: &Slot<Vec<WallReport>>) {
                     .striped(true)
                     .show(ui, |ui| {
                         for head in [
-                            "Patch",
-                            "Mean shear",
-                            "Viscous",
-                            "Pressure",
-                            "y+ (min, mean, max)",
-                            "Heat in",
+                            tr("Patch"),
+                            tr("Mean shear"),
+                            tr("Viscous"),
+                            tr("Pressure"),
+                            tr("y+ (min, mean, max)"),
+                            tr("Heat in"),
                         ] {
                             ui.label(RichText::new(head).size(font_size::SMALL).color(muted(p)));
                         }
@@ -629,9 +636,11 @@ fn walls_card(ui: &mut egui::Ui, p: &Palette, walls: &Slot<Vec<WallReport>>) {
                     });
             });
         let units = if reports.iter().any(|w| w.kinematic) {
-            "Per unit density (m²/s², m³/s²): the solver is incompressible."
+            tr("Per unit density (m²/s², m³/s²): the solver is incompressible.")
         } else {
-            "Stress in Pa, force in N. Shear is the wall's pull on the fluid, so it is negative along the flow."
+            tr(tr(
+                "Stress in Pa, force in N. Shear is the wall's pull on the fluid, so it is negative along the flow.",
+            ))
         };
         ui.add_space(space::SM);
         ui.label(RichText::new(units).size(font_size::SMALL).color(muted(p)));
@@ -649,14 +658,14 @@ fn point_row(ui: &mut egui::Ui, label: &str, p: &Palette, form: &mut PointForm) 
 fn probe_card(ui: &mut egui::Ui, p: &Palette, case: &Arc<Case>, results: &mut Results) {
     let mut ask = false;
     card(ui, p, |ui| {
-        ui.label(RichText::new("Probe").strong());
+        ui.label(RichText::new(tr("Probe")).strong());
         ui.add_space(space::SM);
         ui.horizontal(|ui| {
-            point_row(ui, "At", p, &mut results.point);
-            ask = accent_button(ui, p, "Read").clicked();
+            point_row(ui, tr("At"), p, &mut results.point);
+            ask = accent_button(ui, p, tr("Read")).clicked();
         });
         match &results.probe {
-            Slot::Working(_) => wait(ui, "Reading…"),
+            Slot::Working(_) => wait(ui, tr("Reading…")),
             Slot::Done(Err(message)) => {
                 ui.colored_label(for_egui::color(p.status_danger_fg), message.as_str());
             }
@@ -692,22 +701,22 @@ fn probe_card(ui: &mut egui::Ui, p: &Palette, case: &Arc<Case>, results: &mut Re
 fn line_card(ui: &mut egui::Ui, p: &Palette, case: &Arc<Case>, results: &mut Results) {
     let (mut ask, mut save) = (false, false);
     card(ui, p, |ui| {
-        ui.label(RichText::new("Line").strong());
+        ui.label(RichText::new(tr("Line")).strong());
         ui.add_space(space::SM);
-        ui.horizontal(|ui| point_row(ui, "From", p, &mut results.line.start));
+        ui.horizontal(|ui| point_row(ui, tr("From"), p, &mut results.line.start));
         ui.horizontal(|ui| {
-            point_row(ui, "To", p, &mut results.line.end);
+            point_row(ui, tr("To"), p, &mut results.line.end);
             ui.label(
                 RichText::new("points")
                     .size(font_size::SMALL)
                     .color(muted(p)),
             );
             ui.add(egui::TextEdit::singleline(&mut results.line.points).desired_width(56.0));
-            ask = accent_button(ui, p, "Sample").clicked();
+            ask = accent_button(ui, p, tr("Sample")).clicked();
         });
         match &results.profile {
             Slot::Idle => {}
-            Slot::Working(_) => wait(ui, "Sampling…"),
+            Slot::Working(_) => wait(ui, tr("Sampling…")),
             Slot::Done(Err(message)) => {
                 ui.colored_label(for_egui::color(p.status_danger_fg), message.as_str());
             }
@@ -724,7 +733,7 @@ fn line_card(ui: &mut egui::Ui, p: &Palette, case: &Arc<Case>, results: &mut Res
                 let choice = results.choice.min(choices.len().saturating_sub(1));
                 plot(ui, p, &profile.runs(choice));
                 ui.horizontal(|ui| {
-                    save = ui.button("Save CSV").clicked();
+                    save = ui.button(tr("Save CSV")).clicked();
                     if let Some((ok, message)) = &results.saved {
                         let tone = if *ok {
                             p.status_success_fg
@@ -766,7 +775,7 @@ fn save_csv(dir: &Path, profile: &Profile) -> (bool, String) {
         .join(format!("{}.csv", profile.field));
     let text = vortia_post::line_csv(&profile.field, &profile.values, &profile.samples);
     match vortia_foamfile::write::atomic(&dir.join(&relative), text.as_bytes()) {
-        Ok(()) => (true, format!("Saved to {}.", relative.display())),
+        Ok(()) => (true, trf("Saved to {}.", &[&relative.display()])),
         Err(e) => (false, e.to_string()),
     }
 }
@@ -790,7 +799,7 @@ fn plot(ui: &mut egui::Ui, p: &Palette, runs: &[Vec<(f64, f64)>]) {
         painter.text(
             rect.center(),
             Align2::CENTER_CENTER,
-            "The line is outside the mesh",
+            tr("The line is outside the mesh"),
             FontId::proportional(font_size::SMALL),
             muted(p),
         );

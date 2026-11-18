@@ -4,6 +4,7 @@
 //! The case is read once and kept (`load`), because moving the plane asks for a new section
 //! at every step.
 
+use crate::i18n::tr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, channel};
@@ -77,7 +78,7 @@ pub fn load(dir: PathBuf, wake: impl Fn() + Send + 'static) -> Receiver<Result<A
             let read = std::panic::catch_unwind(|| {
                 Case::open(&dir).map(Arc::new).map_err(|e| e.to_string())
             })
-            .unwrap_or_else(|_| Err("The case could not be read.".to_owned()));
+            .unwrap_or_else(|_| Err(tr("The case could not be read.").to_owned()));
             let _ = tx.send(read);
             wake();
         });
@@ -97,7 +98,7 @@ pub fn spawn(
         .name("vortia-section".into())
         .spawn(move || {
             let done = std::panic::catch_unwind(|| compute(&case, axis, fraction))
-                .unwrap_or_else(|_| Err("The section could not be computed.".to_owned()));
+                .unwrap_or_else(|_| Err(tr("The section could not be computed.").to_owned()));
             let _ = tx.send(done);
             wake();
         });

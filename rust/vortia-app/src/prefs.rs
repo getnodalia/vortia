@@ -5,6 +5,8 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::i18n::Choice;
+
 /// How many recent cases the welcome screen lists.
 pub const MAX_RECENT: usize = 8;
 
@@ -37,6 +39,8 @@ impl Theme {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Prefs {
     pub theme: Theme,
+    /// The language of the interface.
+    pub lang: Choice,
     /// The cases opened last, the newest first.
     pub recent: Vec<PathBuf>,
 }
@@ -54,6 +58,11 @@ impl Prefs {
                         prefs.theme = theme;
                     }
                 }
+                "lang" => {
+                    if let Some(lang) = Choice::from_key(value.trim()) {
+                        prefs.lang = lang;
+                    }
+                }
                 "recent" if !value.is_empty() => {
                     prefs.remember(Path::new(value));
                 }
@@ -66,7 +75,7 @@ impl Prefs {
     }
 
     pub fn to_text(&self) -> String {
-        let mut text = format!("theme={}\n", self.theme.key());
+        let mut text = format!("theme={}\nlang={}\n", self.theme.key(), self.lang.key());
         for path in &self.recent {
             // A path with a line break could not be read back as one line.
             if let Some(path) = path.to_str().filter(|p| !p.contains(['\n', '\r'])) {
@@ -124,6 +133,7 @@ mod tests {
     fn preferences_round_trip_and_keep_the_order_of_the_recent_cases() {
         let mut prefs = Prefs {
             theme: Theme::Dark,
+            lang: Choice::Spanish,
             ..Prefs::default()
         };
         prefs.remember(Path::new("/cases/a"));

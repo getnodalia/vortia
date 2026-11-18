@@ -2,6 +2,7 @@
 //! patch, and the camera that looks at them. Nothing here draws; [`Camera::project`] turns the
 //! triangles into screen triangles, back to front, and the viewer paints those.
 
+use crate::i18n::tr;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, channel};
 
@@ -227,7 +228,7 @@ impl Surface {
     pub fn read(case: &Path) -> Result<Self, String> {
         let mesh = RawPolyMesh::read_case(case).map_err(|e| e.to_string())?;
         if mesh.patches.is_empty() {
-            return Err("The mesh has no boundary patches.".to_owned());
+            return Err(tr("The mesh has no boundary patches.").to_owned());
         }
         Ok(Self::from_mesh(&mesh))
     }
@@ -240,7 +241,7 @@ pub fn spawn(case: PathBuf, wake: impl Fn() + Send + 'static) -> Receiver<Result
         .name("vortia-surface".into())
         .spawn(move || {
             let surface = std::panic::catch_unwind(|| Surface::read(&case))
-                .unwrap_or_else(|_| Err("The mesh could not be read.".to_owned()));
+                .unwrap_or_else(|_| Err(tr("The mesh could not be read.").to_owned()));
             let _ = tx.send(surface);
             wake();
         });
