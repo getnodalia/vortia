@@ -37,6 +37,7 @@ fn main() -> eframe::Result {
             let flags = args;
             let has = |flag: &str| flags.iter().any(|a| a == flag);
             let mut app = VortiaApp::new(&cc.egui_ctx, case, has("--run"));
+            app.check_updates_at_start();
             if let Some(at) = flags.iter().position(|a| a == "--stl")
                 && let Some(file) = flags.get(at + 1)
             {

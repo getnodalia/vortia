@@ -326,6 +326,7 @@ pub const ES: &[(&str, &str)] = &[
     ),
     ("Name of edge {}", "Nombre de la arista {}"),
     ("Size of the triangles", "Tamaño de los triángulos"),
+    ("Check for updates…", "Buscar actualizaciones…"),
     ("Blank", "En blanco"),
     ("Move", "Mover"),
     ("Arc", "Arco"),

@@ -38,6 +38,7 @@ pub(super) enum Cmd {
     Quit,
     Go(Tab),
     Show(Dialog),
+    CheckUpdates,
 }
 
 /// What the command search offers, in the order it lists them.
@@ -61,6 +62,7 @@ const COMMANDS: &[(&str, Cmd)] = &[
     ("Preferences", Cmd::Show(Dialog::Preferences)),
     ("Keyboard shortcuts", Cmd::Show(Dialog::Shortcuts)),
     ("About Vortia", Cmd::Show(Dialog::About)),
+    ("Check for updates…", Cmd::CheckUpdates),
     ("Report a problem", Cmd::Show(Dialog::Report)),
 ];
 
@@ -198,6 +200,7 @@ impl VortiaApp {
                 }
             }
             Cmd::Show(dialog) => self.dialog = Some(dialog),
+            Cmd::CheckUpdates => self.updater.check_now(ctx),
         }
     }
 
@@ -355,6 +358,10 @@ impl VortiaApp {
                         chosen = Some(Cmd::Show(dialog));
                         ui.close();
                     }
+                }
+                if ui.button(tr("Check for updates…")).clicked() {
+                    chosen = Some(Cmd::CheckUpdates);
+                    ui.close();
                 }
             });
         if let Some(command) = chosen {
@@ -1675,6 +1682,16 @@ mod tests {
         // With no case open, a view cannot be gone to.
         app.perform(&ctx, Cmd::Go(Tab::Mesh));
         assert!(matches!(app.screen, Screen::Welcome));
+    }
+
+    #[test]
+    fn updates_are_offered_by_the_menus_and_never_checked_by_a_test_run() {
+        assert!(COMMANDS.iter().any(|(_, c)| *c == Cmd::CheckUpdates));
+        let app = VortiaApp::with_prefs(Prefs::default(), None);
+        // A new app has not asked GitHub anything, and no update window holds the keys.
+        assert!(!app.check_updates_at_start);
+        assert!(!app.updater.is_open());
+        assert_eq!(app.updater.app().name, "Vortia");
     }
 
     #[test]

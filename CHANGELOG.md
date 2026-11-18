@@ -8,6 +8,10 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 ## [Unreleased]
 
 ### Añadido
+- **Actualizador integrado en la app Rust (R8):** el menú tiene «Buscar actualizaciones…» y la app
+  comprueba una vez al día, poco después de arrancar, si hay versión nueva. Usa el flujo común de
+  Nodalia (`nodalia-update`): descarga con comprobación SHA-256, sustituye el AppImage o la app de
+  macOS y no toca las instalaciones gestionadas (Flatpak, .deb…), donde abre la página de la release.
 - **Dibujar la región sobre el lienzo (R2):** «Región dibujada» tiene ahora un lienzo con
   herramientas para mover puntos, trazar líneas y arcos, añadir cotas y borrar bordes, con
   rejilla y imán a los puntos. Se puede empezar desde un lienzo en blanco; el contorno se
