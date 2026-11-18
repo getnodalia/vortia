@@ -14,9 +14,12 @@ use eframe::egui::{
 use nodalia_theme::{Palette, component, font_size, for_egui, space};
 use vortia_core::{Aabb, Vec3};
 use vortia_mesh::PatchKind;
-use vortia_post::{Case, FieldReport, FieldValues, Sample, WallReport};
+use vortia_post::{Case, FieldReport, FieldValues, Sample, SectionReport, WallReport};
+
+mod analysis;
 
 use super::{accent_button, corner, muted};
+use analysis::{SectionForm, section_card};
 
 /// The times offered: the last ones, which is where a run ends up.
 const MAX_TIMES: usize = 200;
@@ -244,6 +247,8 @@ pub struct Results {
     choice: usize,
     point: PointForm,
     probe: Slot<Probe>,
+    section_form: SectionForm,
+    section: Slot<SectionReport>,
     saved: Option<(bool, String)>,
     /// The case was read and the forms filled in once.
     started: bool,
@@ -257,6 +262,7 @@ impl Results {
         self.walls.poll();
         self.profile.poll();
         self.probe.poll();
+        self.section.poll();
         if self.case.is_idle() {
             let dir = dir.to_owned();
             self.case = spawn(ctx, move || {
@@ -279,6 +285,12 @@ impl Results {
             let bounds = case.bounds();
             self.line = LineForm::along(&bounds);
             self.point = PointForm::of(bounds.center());
+            let has_rho = self
+                .times
+                .last()
+                .and_then(|t| case.field_names(t).ok())
+                .is_some_and(|names| names.iter().any(|n| n == "rho"));
+            self.section_form = SectionForm::across(&bounds, has_rho);
             if let Some(last) = self.times.last().cloned() {
                 self.set_time(&case, &last);
             }
@@ -322,6 +334,7 @@ impl Results {
         self.walls = Slot::Idle;
         self.profile = Slot::Idle;
         self.probe = Slot::Idle;
+        self.section = Slot::Idle;
         self.saved = None;
     }
 
@@ -405,6 +418,8 @@ pub(super) fn results_tab(ui: &mut egui::Ui, p: &Palette, dir: &Path, results: &
             probe_card(ui, p, &case, results);
             ui.add_space(space::MD);
             line_card(ui, p, &case, results);
+            ui.add_space(space::MD);
+            section_card(ui, p, &case, results);
         });
 }
 

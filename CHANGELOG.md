@@ -28,6 +28,17 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 - **Residuos de la corrida en la aplicación Rust:** la pestaña Run dibuja, en escala logarítmica,
   el residuo inicial de cada ecuación (Ux, Uy, p, T, k, omega…) paso a paso, leído del registro del
   solver mientras corre. La pestaña pasa a desplazarse entera para que el registro siga a mano.
+- **Análisis de sección y informe en la aplicación Rust:** en Results, la tarjeta «Section» corta el
+  dominio con un plano perpendicular a x, y o z y da, integrando de forma exacta los campos
+  constantes por celda, el área, el gasto másico con signo (y por separado el directo y el
+  inverso), el gasto volumétrico, la presión y la densidad medias por área, la velocidad normal
+  media, el flujo de cantidad de movimiento, el término de presión, la resultante normal, la
+  potencia cinética y los coeficientes. Admite densidad del campo o constante, presión cinemática
+  (p/ρ), valores de referencia y cuña axisimétrica (≤ 5°, eje x). Se guarda como JSON (con
+  SHA-256), CSV o HTML en `postProcessing/section/<tiempo>/`. La resultante es el flujo de cantidad
+  de movimiento más la presión a través de la sección, no un empuje de motor. En la línea de
+  comandos, `vortia section CASO [opciones]`. En la tobera plana de prueba el gasto de la sección
+  intermedia queda a menos de un 0,4 % del de entrada y salida.
 - **Física del caso en la aplicación Rust:** en Setup, «Fluid», «Turbulence» y «Viscosity» editan
   `thermophysicalProperties`, `turbulenceProperties` y `transportProperties` de `constant/`
   (modelo de turbulencia, propiedades del gas, viscosidad) sin tocar el resto del archivo; cada

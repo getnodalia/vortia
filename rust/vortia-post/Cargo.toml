@@ -6,6 +6,7 @@ license.workspace = true
 description = "Post-processing of the Vortia engine: probes, line sampling, patch and volume integrals"
 
 [dependencies]
+serde_json = "1"
 thiserror = "2"
 vortia-core = { path = "../vortia-core" }
 vortia-fields = { path = "../vortia-fields" }

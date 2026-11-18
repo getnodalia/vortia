@@ -34,6 +34,7 @@ macro_rules! out {
 
 mod new;
 mod post;
+mod section;
 
 const USAGE: &str = "usage: vortia new channel|nozzle|nozzle-wedge DIR [NAME=VALUE...]\n\
     \x20      vortia check-mesh [CASE]\n\
@@ -51,6 +52,8 @@ const USAGE: &str = "usage: vortia new channel|nozzle|nozzle-wedge DIR [NAME=VAL
     \x20      vortia patch CASE PATCH FIELD [TIME]\n\
     \x20      vortia flux CASE PATCH [TIME]\n\
     \x20      vortia balance CASE [WINDOW]\n\
+    \x20      vortia section CASE x|y|z POSITION [-time T] [-density D] [-kinematic] [-reverse]\n\
+    \x20             [-pref P] [-rhoref R] [-uref U] [-aref A] [-wedge DEG] [-report json|csv|html FILE]\n\
     \x20      vortia volume CASE FIELD [TIME]\n\
     \x20      vortia wall CASE PATCH [TIME]\n\n\
     new          make a case in DIR: a channel, a planar nozzle or an axisymmetric one,\n\
@@ -74,6 +77,8 @@ const USAGE: &str = "usage: vortia new channel|nozzle|nozzle-wedge DIR [NAME=VAL
     flux         what flows out through a patch (the sum of phi on it)\n\
     balance      what enters against what leaves over the last WINDOW times (default 10)\n\
     \x20            written, from phi: the net flux as a percentage of the larger side\n\
+    section      mass and volume flow, momentum flux, pressure load, power and coefficients\n\
+    \x20            through the plane across the domain, and its report as JSON, CSV or HTML\n\
     volume       volume, integral, average and range of FIELD over the domain\n\
     wall         shear stress, y+, forces and heat flux on a wall patch";
 

@@ -736,3 +736,228 @@ fn the_history_of_a_case_that_never_ran_is_an_error() {
     assert!(case.mass_balance_history(0).is_err());
     assert!(case.mass_balance("0").is_err());
 }
+
+fn write_uniform(dir: &TempDir, name: &str, class: &str, value: &str) {
+    write(dir, name, class, &format!("uniform {value}"), &[]);
+}
+
+use crate::{Density, SectionOptions};
+
+fn flow(dir: &TempDir, u: &str, p: &str, rho: Option<&str>) {
+    write_uniform(dir, "U", "volVectorField", u);
+    write_uniform(dir, "p", "volScalarField", p);
+    if let Some(r) = rho {
+        write_uniform(dir, "rho", "volScalarField", r);
+    }
+}
+
+#[test]
+fn a_uniform_flow_through_a_section_gives_the_textbook_numbers() {
+    let (dir, case) = case();
+    flow(&dir, "(2 0 0)", "101425", Some("1.5"));
+    let o = SectionOptions {
+        position: 2.5,
+        reference_pressure: 101_325.0,
+        reference_speed: 10.0,
+        reference_density: 1.0,
+        reference_area: 2.0,
+        ..SectionOptions::default()
+    };
+    let s = case.section("0", &o).unwrap();
+    // The plane x = 2.5 cuts the 2 × 1 cross-section of the box.
+    assert!((s.area - 2.0).abs() < 1e-12, "{}", s.area);
+    assert!((s.mass_flow - 1.5 * 2.0 * 2.0).abs() < 1e-12);
+    assert_eq!(
+        (s.forward_mass_flow, s.reverse_mass_flow),
+        (s.mass_flow, 0.0)
+    );
+    assert!((s.volume_flow - 4.0).abs() < 1e-12);
+    assert!((s.momentum_flux - 1.5 * 4.0 * 2.0).abs() < 1e-12);
+    assert!((s.pressure_load - 100.0 * 2.0).abs() < 1e-9);
+    assert!((s.resultant - (12.0 + 200.0)).abs() < 1e-9);
+    assert!((s.kinetic_power - 0.5 * 1.5 * 4.0 * 2.0 * 2.0).abs() < 1e-12);
+    assert!((s.mean_pressure - 101_425.0).abs() < 1e-9);
+    assert_eq!((s.mean_density, s.mean_normal_velocity), (1.5, 2.0));
+    // q = ½ · 1 · 10² = 50 and A_ref = 2.
+    assert!((s.coefficient - 212.0 / 100.0).abs() < 1e-9);
+    assert!((s.mean_cp - 100.0 / 50.0).abs() < 1e-9);
+    assert_eq!((s.cells, s.shared_faces, s.area_scale), (2, 0, 1.0));
+}
+
+#[test]
+fn flow_the_other_way_is_reverse_flow_and_the_direction_flips_it() {
+    let (dir, case) = case();
+    flow(&dir, "(-2 0 0)", "0", Some("1"));
+    let o = SectionOptions {
+        position: 1.5,
+        ..SectionOptions::default()
+    };
+    let s = case.section("0", &o).unwrap();
+    assert_eq!((s.forward_mass_flow, s.reverse_mass_flow), (0.0, 4.0));
+    assert!((s.mass_flow + 4.0).abs() < 1e-12);
+    let back = SectionOptions {
+        direction: -1.0,
+        ..o
+    };
+    let s = case.section("0", &back).unwrap();
+    assert!((s.mass_flow - 4.0).abs() < 1e-12);
+}
+
+#[test]
+fn a_plane_on_the_faces_between_cells_counts_each_face_once() {
+    let (dir, case) = case();
+    flow(&dir, "(1 0 0)", "5", Some("2"));
+    let o = SectionOptions {
+        position: 2.0, // the face between the second and third cell
+        ..SectionOptions::default()
+    };
+    let s = case.section("0", &o).unwrap();
+    assert!((s.area - 2.0).abs() < 1e-9, "{}", s.area);
+    assert_eq!(s.shared_faces, 2);
+    assert!((s.mass_flow - 4.0).abs() < 1e-9);
+}
+
+#[test]
+fn an_incompressible_run_takes_a_constant_density_and_kinematic_pressure() {
+    let (dir, case) = case();
+    flow(&dir, "(1 0 0)", "3", None);
+    let o = SectionOptions {
+        position: 1.5,
+        density: Density::Constant(1000.0),
+        kinematic_pressure: true,
+        reference_pressure: 0.0,
+        ..SectionOptions::default()
+    };
+    let s = case.section("0", &o).unwrap();
+    assert!((s.mass_flow - 2000.0).abs() < 1e-9);
+    assert!((s.mean_pressure - 3000.0).abs() < 1e-9);
+    // Without a density it says so instead of guessing.
+    let o = SectionOptions {
+        position: 1.5,
+        ..SectionOptions::default()
+    };
+    assert!(case.section("0", &o).is_err());
+}
+
+#[test]
+fn a_wedge_is_scaled_to_the_full_revolution() {
+    let (dir, case) = case();
+    flow(&dir, "(1 0 0)", "0", Some("1"));
+    let o = SectionOptions {
+        position: 1.5,
+        wedge_angle: Some(5.0),
+        ..SectionOptions::default()
+    };
+    let s = case.section("0", &o).unwrap();
+    assert!((s.area_scale - 72.0).abs() < 1e-12);
+    assert!((s.area - 2.0 * 72.0).abs() < 1e-9);
+    assert!((s.mass_flow - 144.0).abs() < 1e-9);
+}
+
+#[test]
+fn a_section_refuses_what_it_cannot_work_out() {
+    let (dir, case) = case();
+    flow(&dir, "(1 0 0)", "0", Some("1"));
+    let base = SectionOptions {
+        position: 1.5,
+        ..SectionOptions::default()
+    };
+    let bad = [
+        SectionOptions {
+            axis: 3,
+            ..base.clone()
+        },
+        SectionOptions {
+            direction: 0.0,
+            ..base.clone()
+        },
+        SectionOptions {
+            position: f64::NAN,
+            ..base.clone()
+        },
+        SectionOptions {
+            position: 40.0,
+            ..base.clone()
+        },
+        SectionOptions {
+            reference_speed: 0.0,
+            ..base.clone()
+        },
+        SectionOptions {
+            reference_area: -1.0,
+            ..base.clone()
+        },
+        SectionOptions {
+            density: Density::Constant(0.0),
+            ..base.clone()
+        },
+        SectionOptions {
+            wedge_angle: Some(10.0),
+            ..base.clone()
+        },
+        SectionOptions {
+            axis: 1,
+            wedge_angle: Some(5.0),
+            position: 1.0,
+            ..base.clone()
+        },
+    ];
+    for (i, o) in bad.iter().enumerate() {
+        assert!(case.section("0", o).is_err(), "case {i}");
+    }
+    // A density that is not positive in a cell the plane cuts.
+    write_uniform(&dir, "rho", "volScalarField", "-1");
+    assert!(case.section("0", &base).is_err());
+    // No fields at that time.
+    assert!(case.section("5", &base).is_err());
+}
+
+fn report_of(label: &str) -> crate::SectionReport {
+    let (dir, case) = case();
+    flow(&dir, "(2 0 0)", "101425", Some("1.5"));
+    let options = SectionOptions {
+        position: 2.5,
+        ..SectionOptions::default()
+    };
+    let analysis = case.section("0", &options).unwrap();
+    crate::SectionReport {
+        label: label.to_owned(),
+        case: "box".to_owned(),
+        time: "0".to_owned(),
+        options,
+        analysis,
+    }
+}
+
+#[test]
+fn the_report_says_the_same_numbers_in_json_csv_and_html() {
+    let report = report_of("Throat");
+    let json: serde_json::Value = serde_json::from_str(&report.json()).unwrap();
+    assert_eq!(json["schema"], "vortia.section-report");
+    assert_eq!(json["metrics"]["massFlow"], 6.0);
+    assert_eq!(json["options"]["axis"], "x");
+    assert_eq!(json["options"]["density"], "field");
+    let csv = report.csv();
+    assert_eq!(csv.lines().count(), 1 + report.metrics().len());
+    assert!(
+        csv.contains("\"Throat\",\"box\",\"0\",massFlow,6,\"kg/s\""),
+        "{csv}"
+    );
+    let html = report.html();
+    assert!(html.contains("<h1>Throat</h1>") && html.contains("Signed mass flow"));
+}
+
+#[test]
+fn a_label_cannot_run_in_a_spreadsheet_or_a_page() {
+    let report = report_of("=HYPERLINK(\"x\")<script>");
+    assert!(
+        report.csv().contains("\"'=HYPERLINK(\"\"x\"\")<script>\""),
+        "{}",
+        report.csv()
+    );
+    let html = report.html();
+    assert!(!html.contains("<script>") && html.contains("&lt;script&gt;"));
+    let long = report_of(&"a".repeat(1000));
+    let json: serde_json::Value = serde_json::from_str(&long.json()).unwrap();
+    assert_eq!(json["label"].as_str().unwrap().len(), 160);
+}

@@ -33,7 +33,7 @@ STL, updater, issue-report or translation code exists there).
 | R3 | Meshing from a sketch | Gmsh 2D and axisymmetric bundled in the installers (`MesherRuntime`), `MeshRegionsWidget` | Gmsh `.msh` import only | A mesh from the sketch made by our own Rust mesher, see below |
 | R4 | Physics setup to a case | `FlowConfiguration`, `FlowSetup`, `BoundaryMapping`, `CaseWriter`, `CaseSetupJson`, `Physics` | Edits conditions of an existing case | Choose fluid, regime, model and boundaries in the app and get a runnable case |
 | R5 | Supervised run diagnostics | `CaseRunner`, `LogParser`, `RunMonitor`, `RunDiagnostics`, `JobController`, `MassBalance` | Run and residual plot | Mass balance and run diagnostics shown while running, with the same checks |
-| R6 | Results and reports | `SectionAnalysis`, `EngineeringReport`, `Forces`, `LineProfile`, `FieldStatistics`, `ResultFiles`, `PlanarView`, `AxisymmetricDisplay` | Fields, slices, streamlines, CSV/VTK; wall quantities and lines only in the CLI | Section analysis, forces and coefficients, line profiles and the HTML/CSV/JSON report in the app |
+| R6 | Results and reports | `SectionAnalysis`, `EngineeringReport`, `Forces`, `LineProfile`, `FieldStatistics`, `ResultFiles`, `PlanarView`, `AxisymmetricDisplay` | Fields, slices, streamlines, CSV/VTK, wall quantities, probes and lines, section analysis with HTML/CSV/JSON report | Forces and coefficients on walls, a combined report, comparison between runs |
 | R7 | Verification cases | `verification/*`: Poiseuille, Ghia cavity, Blasius, turbulent flat plate, GCI of three meshes | Some solver tests (de Vahl Davis, others) | The same cases run by the Rust engine in CI with the tolerances `docs/VALIDATION.md` records, plus GCI |
 | R8 | Application services | `AppUpdater`, `IssueReport`, translations (en/es), `STL` import, Fluent `.cas.h5`/`.dat.h5` viewing | None | In-app update (the shared `nodalia-update` crate), bug reports, en/es, STL viewing |
 | R9 | Packaging and release | AppImage and DMG with OpenFOAM and mesher inside (`packaging/`), release workflow reading the version from `CMakeLists.txt` | None | AppImage and DMG of the Rust app (no OpenFOAM inside), the release workflow reading `rust/Cargo.toml`, the website download pointing at them |
@@ -57,6 +57,11 @@ STL, updater, issue-report or translation code exists there).
   the written `phi`, as the Qt `nozzleMassBalance` does. The residual plot of the Run tab
   (initial residuals by field from the solver log, logarithmic) is done. Still to do for R5: the
   run monitor's divergence check and the pause/resume of a job.
+- **R6, on 2026-11-18:** the section analysis (`Case::section` in `rust/vortia-post`, `vortia
+  section`, a card in the Results tab) integrates the stored fields over a plane cut through the
+  cells and the report is written as JSON (with SHA-256), CSV or HTML in
+  `postProcessing/section/<time>/`. Still to do for R6: forces and coefficients on walls, a
+  combined report and comparison between runs.
 
 - **R4, started on 2026-11-18:** Setup has Fluid, Turbulence and Viscosity views that edit
   `constant/thermophysicalProperties`, `turbulenceProperties` and `transportProperties` in place,
