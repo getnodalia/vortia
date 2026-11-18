@@ -76,9 +76,10 @@ STL, updater, issue-report or translation code exists there).
   system language by default, a selector in Preferences, English as the key and anything the
   table lacks left in English). The problem report (`vortia-app/src/report.rs`: a GitHub
   new-issue draft with the version, the system and the solver, never a path) and STL import
-  (`vortia_mesh::stl`, shown on Home with its size, area, volume and open edges) are done. Still
-  to do for R8: Fluent `.cas.h5`/`.dat.h5` viewing and the updater (which waits for the Rust
-  releases).
+  (`vortia_mesh::stl`, shown on Home with its size, area, volume and open edges) are done. The
+  updater is wired (`nodalia_update::egui::Updater`: «Check for updates…» in the menu, a check a
+  while after starting, the shared modal windows). Still to do for R8: Fluent `.cas.h5`/`.dat.h5`
+  viewing.
 
 - **R7, started on 2026-11-18:** `vortia_post::gci` (the three-mesh index, checked against
   `benchmarks/common/gci.py`) and `rust/vortia-cli/tests/verification.rs`, which runs a Poiseuille
@@ -120,9 +121,10 @@ application, reading its version from `CMakeLists.txt`, until the cutover. The m
 (`rust/packaging/macos/package.sh`, built by the same workflow on `macos-15`) puts `Vortia.app`
 (the app and the `vortia` tool, signed ad hoc, not notarized) in the installer window of the
 existing app. It could only be written, not run, on the Linux machine that made it, so the
-workflow is its first test. Still to do: the release workflow reading `rust/Cargo.toml`, the website, and
-the in-app updater (`nodalia-update`), which stays off until the Rust app has releases of its own,
-or it would offer the C++ installers over the Rust app.
+workflow is its first test. Still to do: the release workflow reading `rust/Cargo.toml` and the website. The in-app
+updater already points at this repository's latest release, which today still holds the C++
+installers: no Rust package is distributed yet, so it can only open the release page, and the
+cutover must set the `rust/Cargo.toml` version above the C++ one before the first Rust release.
 
 ## The mesher (R3)
 

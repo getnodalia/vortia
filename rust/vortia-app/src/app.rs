@@ -320,10 +320,23 @@ pub struct VortiaApp {
     stl_input: String,
     /// The problem report being written: its title and its text.
     report: (String, String),
+    /// Looks for a new version, offers it and installs it.
+    updater: nodalia_update::egui::Updater,
+    /// Whether to look for a new version by itself a while after starting.
+    check_updates_at_start: bool,
     /// The menus in the shell's top bar, where there is one.
     #[cfg(target_os = "linux")]
     global_menu: Option<GlobalMenu>,
 }
+
+/// What the updater needs to know about this app.
+const UPDATE_APP: nodalia_update::App = nodalia_update::App {
+    name: "Vortia",
+    repo: "getnodalia/vortia",
+    bundle: "Vortia.app",
+    version: env!("CARGO_PKG_VERSION"),
+    edition: None,
+};
 
 /// The menus the shell shows for the app, each action named for [`VortiaApp::act`].
 #[cfg(target_os = "linux")]
@@ -337,6 +350,7 @@ fn global_menus() -> Vec<Menu> {
                 Entry::Separator,
                 Entry::action(tr("Preferences"), "preferences"),
                 Entry::action(tr("Keyboard shortcuts"), "shortcuts"),
+                Entry::action(tr("Check for updates…"), "updates"),
                 Entry::Separator,
                 Entry::action(tr("Quit"), "quit"),
             ],
@@ -398,6 +412,8 @@ impl VortiaApp {
             new_case: None,
             search: None,
             icon: None,
+            updater: nodalia_update::egui::Updater::new(UPDATE_APP),
+            check_updates_at_start: false,
             stl: None,
             stl_input: String::new(),
             report: (String::new(), String::new()),
@@ -554,6 +570,7 @@ impl VortiaApp {
             "preferences" => self.dialog = Some(Dialog::Preferences),
             "shortcuts" => self.dialog = Some(Dialog::Shortcuts),
             "report" => self.dialog = Some(Dialog::Report),
+            "updates" => self.updater.check_now(ctx),
             "quit" => ctx.send_viewport_cmd(ViewportCommand::Close),
             "run" => self.start_run(ctx),
             "pause" => self.toggle_pause(),
@@ -614,6 +631,10 @@ impl VortiaApp {
     }
 
     fn shortcuts(&mut self, ctx: &Context) {
+        // The update windows are modal: keys do not reach what is behind them.
+        if self.updater.is_open() {
+            return;
+        }
         let command = |key| KeyboardShortcut::new(Modifiers::COMMAND, key);
         let take = |shortcut: KeyboardShortcut| ctx.input_mut(|i| i.consume_shortcut(&shortcut));
         if take(command(Key::Comma)) {
@@ -670,9 +691,38 @@ impl VortiaApp {
             .show(root, |ui| self.shell(ui, ctx, maximized));
 
         self.dialogs(ctx, &p);
+        self.updates(ctx);
         if own_controls() && !maximized {
             resize_edges(ctx);
         }
+    }
+
+    /// Looks for a new version when asked (and once a day after starting, when the app says so),
+    /// and shows the windows of the update.
+    fn updates(&mut self, ctx: &Context) {
+        if self.check_updates_at_start {
+            self.updater.check_at_start(ctx);
+        }
+        // Closing is safe while no run is going and no dialog or search is open.
+        let safe = self.dialog.is_none()
+            && self.search.is_none()
+            && !matches!(&self.screen, Screen::Case(case) if case.running());
+        let language = match crate::i18n::current() {
+            crate::i18n::Lang::Es => nodalia_update::Language::Spanish,
+            crate::i18n::Lang::En => nodalia_update::Language::English,
+        };
+        match self.updater.show(ctx, language, safe) {
+            nodalia_update::egui::Action::OpenUrl(url) => {
+                ctx.open_url(egui::OpenUrl::new_tab(url));
+            }
+            nodalia_update::egui::Action::Exit => std::process::exit(0),
+            nodalia_update::egui::Action::None => {}
+        }
+    }
+
+    /// Makes the app look for a new version by itself a while after it starts.
+    pub fn check_updates_at_start(&mut self) {
+        self.check_updates_at_start = true;
     }
 
     fn dialogs(&mut self, ctx: &Context, p: &Palette) {
