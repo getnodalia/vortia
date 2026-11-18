@@ -21,6 +21,7 @@ use super::{
 use crate::numerics::File;
 use crate::summary::Summary;
 use crate::viewer::Source;
+use vortia_post::BalanceHistory;
 
 /// Something the user asked for, from the File menu, the ribbon or the command search.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -46,6 +47,9 @@ const COMMANDS: &[(&str, Cmd)] = &[
     ("Go to the mesh", Cmd::Go(Tab::Mesh)),
     ("Go to the results", Cmd::Go(Tab::Results)),
     ("Go to the boundary conditions", Cmd::Go(Tab::Conditions)),
+    ("Go to the fluid", Cmd::Go(Tab::Fluid)),
+    ("Go to the turbulence model", Cmd::Go(Tab::Turbulence)),
+    ("Go to the viscosity", Cmd::Go(Tab::Transport)),
     ("Go to the run settings", Cmd::Go(Tab::Settings)),
     ("Go to the solver numbers", Cmd::Go(Tab::Numerics)),
     ("Go to the schemes", Cmd::Go(Tab::Schemes)),
@@ -90,7 +94,13 @@ impl Step {
             Tab::Run => Step::Case,
             Tab::Mesh => Step::Mesh,
             Tab::Results => Step::Results,
-            Tab::Conditions | Tab::Numerics | Tab::Schemes | Tab::Settings => Step::Setup,
+            Tab::Conditions
+            | Tab::Fluid
+            | Tab::Turbulence
+            | Tab::Transport
+            | Tab::Numerics
+            | Tab::Schemes
+            | Tab::Settings => Step::Setup,
         }
     }
 }
@@ -113,6 +123,9 @@ fn view_title(tab: Tab) -> &'static str {
         Tab::Numerics => "Solver numbers",
         Tab::Schemes => "Schemes",
         Tab::Settings => "Run settings",
+        Tab::Fluid => "Fluid",
+        Tab::Turbulence => "Turbulence",
+        Tab::Transport => "Viscosity",
     }
 }
 
@@ -652,6 +665,12 @@ fn ribbon(ui: &mut egui::Ui, look: &Look, case: &mut CaseView) -> Option<Cmd> {
                     if tool(ui, "boundary", "Conditions", tab == Tab::Conditions, true) {
                         go = Some(Tab::Conditions);
                     }
+                    for (icon, text, target, file) in PHYSICS {
+                        let present = has_constant(case, file);
+                        if tool(ui, icon, text, tab == target, present) {
+                            go = Some(target);
+                        }
+                    }
                 });
                 eng::ribbon_group(ui, look, "Solver", |ui| {
                     for (icon, text, target) in [
@@ -699,6 +718,20 @@ struct Row {
     selected: bool,
     muted: bool,
     pick: Pick,
+}
+
+/// The dictionaries of `constant` that describe the physics, with the view that edits each.
+const PHYSICS: [(&str, &str, Tab, File); 3] = [
+    ("material", "Fluid", Tab::Fluid, File::Fluid),
+    ("waveform", "Turbulence", Tab::Turbulence, File::Turbulence),
+    ("droplet", "Viscosity", Tab::Transport, File::Transport),
+];
+
+/// Whether the case has the physics dictionary (it is read in with the rest of the folder).
+fn has_constant(case: &CaseView, file: File) -> bool {
+    case.summary
+        .as_ref()
+        .is_some_and(|s| s.constant.iter().any(|n| n == file.name()))
 }
 
 /// The rows of the case's tree: the case, its mesh and patches, the physics and its fields, the
@@ -754,6 +787,19 @@ fn tree(case: &CaseView) -> Vec<Row> {
         pick: Pick::View(Tab::Conditions),
     });
     if open("physics") {
+        for (icon, label, tab, file) in PHYSICS {
+            if has_constant(case, file) {
+                rows.push(Row {
+                    group: None,
+                    depth: 2,
+                    icon,
+                    label: label.into(),
+                    selected: view(tab),
+                    muted: false,
+                    pick: Pick::View(tab),
+                });
+            }
+        }
         for field in summary.map(|s| s.fields.as_slice()).unwrap_or_default() {
             rows.push(Row {
                 group: None,
@@ -994,6 +1040,9 @@ fn case_view(ui: &mut egui::Ui, ctx: &Context, look: &Look, p: &Palette, case: &
         Tab::Conditions => conditions_tab(ui, p, case),
         Tab::Numerics => file_tab(ui, p, case, File::Solution),
         Tab::Schemes => file_tab(ui, p, case, File::Schemes),
+        Tab::Fluid => file_tab(ui, p, case, File::Fluid),
+        Tab::Turbulence => file_tab(ui, p, case, File::Turbulence),
+        Tab::Transport => file_tab(ui, p, case, File::Transport),
         Tab::Settings => settings_tab(ui, p, case),
         Tab::Mesh => {
             let summary = case.summary.as_ref();
@@ -1008,8 +1057,62 @@ fn case_view(ui: &mut egui::Ui, ctx: &Context, look: &Look, p: &Palette, case: &
     }
 }
 
+/// What entered against what left, from the flux the run wrote: a case that conserves mass
+/// closes this to a small fraction of a percent once it has converged.
+fn balance_card(ui: &mut egui::Ui, p: &Palette, balance: Option<&BalanceHistory>) {
+    Frame::NONE
+        .fill(for_egui::color(p.surface_sunken))
+        .corner_radius(super::corner(nodalia_theme::component::CONTROL_RADIUS))
+        .inner_margin(Margin::same(space::MD as i8))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.label(RichText::new("Mass balance").strong());
+            let Some(b) = balance else {
+                ui.label(
+                    RichText::new("It appears once a run has written the flux (phi).")
+                        .color(muted(p)),
+                );
+                return;
+            };
+            ui.label(
+                RichText::new(format!(
+                    "Times {} to {} ({} written): mean {:.3} %, worst {:.3} %",
+                    b.first, b.last, b.samples, b.mean_abs_percent, b.max_abs_percent
+                ))
+                .color(muted(p)),
+            );
+            ui.add_space(space::SM);
+            egui::Grid::new("balance")
+                .num_columns(2)
+                .spacing([space::XL, space::XS])
+                .show(ui, |ui| {
+                    for (patch, flux) in &b.latest.patches {
+                        ui.label(RichText::new(patch).color(muted(p)));
+                        ui.label(RichText::new(format!("{flux:+.4e}")).monospace());
+                        ui.end_row();
+                    }
+                    ui.label(RichText::new("Net").strong());
+                    ui.label(
+                        RichText::new(format!(
+                            "{:+.4e} ({:+.3} %)",
+                            b.latest.net(),
+                            b.latest.percent()
+                        ))
+                        .monospace(),
+                    );
+                    ui.end_row();
+                });
+        });
+}
+
 fn run_view(ui: &mut egui::Ui, p: &Palette, case: &CaseView) {
     convergence_card(ui, p, case.report.as_ref());
+    ui.add_space(space::MD);
+    balance_card(
+        ui,
+        p,
+        case.summary.as_ref().and_then(|s| s.balance.as_ref()),
+    );
     ui.add_space(space::MD);
     ui.label(RichText::new("Log").color(muted(p)));
     Frame::NONE
@@ -1183,6 +1286,9 @@ mod tests {
             Tab::Numerics,
             Tab::Schemes,
             Tab::Settings,
+            Tab::Fluid,
+            Tab::Turbulence,
+            Tab::Transport,
         ] {
             assert_eq!(Step::of(Step::of(tab).first()), Step::of(tab));
         }
@@ -1308,6 +1414,9 @@ mod tests {
                 Tab::Numerics,
                 Tab::Schemes,
                 Tab::Settings,
+                Tab::Fluid,
+                Tab::Turbulence,
+                Tab::Transport,
             ] {
                 view(&mut app).go(tab);
                 frame(&mut app, &ctx);

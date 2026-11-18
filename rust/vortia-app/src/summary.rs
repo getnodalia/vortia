@@ -6,9 +6,13 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, channel};
 
 use vortia_foamfile::RawPolyMesh;
+use vortia_post::BalanceHistory;
 
 /// How many field files and time directories are listed; a case can hold thousands of times.
 const MAX_LISTED: usize = 200;
+
+/// How many of the last times the mass balance averages over.
+const BALANCE_WINDOW: usize = 10;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Patch {
@@ -39,6 +43,11 @@ pub struct Summary {
     pub times: Vec<String>,
     /// The field files of the latest time (the `0` directory when nothing was written).
     pub fields: Vec<String>,
+    /// The dictionaries of `constant` (`thermophysicalProperties`, `turbulenceProperties`…).
+    pub constant: Vec<String>,
+    /// What entered against what left over the last times written, when the run wrote the
+    /// flux `phi`.
+    pub balance: Option<BalanceHistory>,
 }
 
 /// Reads the case; whatever is missing stays `None` or empty, never an error.
@@ -65,8 +74,14 @@ pub fn read(dir: &Path) -> Summary {
         .map(|(_, name)| name.as_str())
         .unwrap_or("0");
     summary.fields = files_in(&dir.join(latest));
+    summary.constant = files_in(&dir.join("constant"));
     if dir.join("constant").join("polyMesh").is_dir() {
         summary.mesh = Some(read_mesh(dir));
+    }
+    if summary.fields.iter().any(|f| f == "phi") && matches!(summary.mesh, Some(Ok(_))) {
+        summary.balance = vortia_post::Case::open(dir)
+            .and_then(|case| case.mass_balance_history(BALANCE_WINDOW))
+            .ok();
     }
     summary
 }
@@ -189,6 +204,30 @@ mod tests {
         assert_eq!(mesh.cells, 7500);
         assert!(mesh.patches.iter().any(|p| p.name == "inlet"));
         assert!(mesh.points > 0 && mesh.faces > mesh.cells);
+    }
+
+    #[test]
+    fn a_run_leaves_a_mass_balance_to_show() {
+        let dir = tempfile::tempdir().unwrap();
+        let case = dir.path().join("channel");
+        vortia_cases::create(&case, &vortia_cases::Geometry::Channel(Default::default())).unwrap();
+        assert_eq!(read(&case).balance, None, "nothing has run yet");
+        let control = case.join("system/controlDict");
+        let text = std::fs::read_to_string(&control).unwrap();
+        let text: Vec<String> = text
+            .lines()
+            .map(|l| match l.split_whitespace().next() {
+                Some(key @ ("endTime" | "writeInterval")) => format!("{key} 20;"),
+                _ => l.to_owned(),
+            })
+            .collect();
+        std::fs::write(&control, text.join("\n")).unwrap();
+        let solver = vortia_solvers::Case::open(&case).unwrap();
+        vortia_solvers::run(&solver, |_| {}).unwrap();
+        let balance = read(&case).balance.expect("the run wrote phi");
+        assert_eq!(balance.last, "20");
+        assert!(balance.latest.inflow() > 0.0);
+        assert!(balance.max_abs_percent < 1.0, "{}", balance.max_abs_percent);
     }
 
     #[test]

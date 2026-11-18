@@ -19,6 +19,7 @@
     clippy::indexing_slicing
 )]
 
+mod balance;
 mod case;
 mod csv;
 mod error;
@@ -28,6 +29,7 @@ mod stats;
 mod streamline;
 mod wall;
 
+pub use balance::{BalanceHistory, MassBalance};
 pub use case::{Case, FieldReport, FieldValues, MAX_LINE_POINTS, PatchReport, Sample};
 pub use csv::line_csv;
 pub use error::{PostError, Result};
