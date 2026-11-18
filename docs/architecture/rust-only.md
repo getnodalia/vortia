@@ -99,6 +99,17 @@ R1, then R4 and R5 (a case can be made and run entirely in the Rust app), then
 R6 and R7 (what it shows can be trusted), R2 and R3 (new geometry), R8, R9, and
 R10 and R11 last. R9 can move earlier if a Rust-only release is wanted sooner.
 
+## Packaging (R9)
+
+Started on 2026-11-18: `rust/packaging/linux/package.sh` builds the Rust app and the `vortia`
+tool into a tarball and an AppImage (no OpenFOAM inside), and `.github/workflows/rust-packages.yml`
+runs it on Ubuntu 22.04 for changes under `rust/packaging/`, keeping the files as workflow
+artifacts. Nothing is attached to a release yet: the release flow keeps shipping the C++
+application, reading its version from `CMakeLists.txt`, until the cutover. Still to do: the macOS
+DMG with the designed window, the release workflow reading `rust/Cargo.toml`, the website, and
+the in-app updater (`nodalia-update`), which stays off until the Rust app has releases of its own,
+or it would offer the C++ installers over the Rust app.
+
 ## The mesher (R3)
 
 Decided on 2026-11-18, from Daniel's all-Rust rule: Vortia gets its own 2D mesher in Rust
