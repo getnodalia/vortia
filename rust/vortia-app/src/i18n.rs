@@ -338,14 +338,29 @@ pub const ES: &[(&str, &str)] = &[
     ("Click on a point.", "Pulsa sobre un punto."),
     ("Click on an edge.", "Pulsa sobre un borde."),
     ("Drag a point.", "Arrastra un punto."),
-    ("Click where the line starts.", "Pulsa donde empieza la línea."),
-    ("Click where it ends; Escape stops.", "Pulsa donde acaba; Escape la detiene."),
+    (
+        "Click where the line starts.",
+        "Pulsa donde empieza la línea.",
+    ),
+    (
+        "Click where it ends; Escape stops.",
+        "Pulsa donde acaba; Escape la detiene.",
+    ),
     ("Click the centre of the arc.", "Pulsa el centro del arco."),
-    ("Click where the arc starts.", "Pulsa donde empieza el arco."),
-    ("Click towards where it ends, counter-clockwise.", "Pulsa hacia donde acaba, en sentido antihorario."),
+    (
+        "Click where the arc starts.",
+        "Pulsa donde empieza el arco.",
+    ),
+    (
+        "Click towards where it ends, counter-clockwise.",
+        "Pulsa hacia donde acaba, en sentido antihorario.",
+    ),
     ("Click the first point.", "Pulsa el primer punto."),
     ("Click the second point.", "Pulsa el segundo punto."),
-    ("Click an edge to delete it.", "Pulsa un borde para borrarlo."),
+    (
+        "Click an edge to delete it.",
+        "Pulsa un borde para borrarlo.",
+    ),
     (
         "A closed outline you dimension in a sketch, with a name on every edge: `inlet` is where the fluid comes in, `outlet` where it leaves, `symmetry` a symmetry plane and any other name a wall. Meshed with triangles by Vortia itself and run as laminar, incompressible, steady flow (simpleFoam). The sketch is kept in the case.",
         "Un contorno cerrado que acotas en un croquis, con un nombre en cada arista: `inlet` es por donde entra el fluido, `outlet` por donde sale, `symmetry` un plano de simetría y cualquier otro nombre una pared. Vortia lo malla con triángulos y lo ejecuta como flujo laminar, incompresible y estacionario (simpleFoam). El croquis se guarda en el caso.",
