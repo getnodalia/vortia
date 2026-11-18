@@ -3056,6 +3056,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "vortia-h5"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "vortia-mesh"
 version = "0.1.0"
 dependencies = [

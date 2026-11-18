@@ -8,6 +8,11 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 ## [Unreleased]
 
 ### Añadido
+- **Lector HDF5 propio (R8):** el crate `vortia-h5` lee archivos HDF5 sin libhdf5, la base para
+  ver los `.cas.h5` y `.dat.h5` de Fluent: grupos, conjuntos de datos contiguos, compactos y por
+  bloques (con deflate y shuffle, cualquier orden de bytes) y atributos. Lo que no sabe leer
+  (grupos densos, índices de bloques de la versión 4) devuelve un error, y un archivo dañado
+  nunca provoca un fallo. Aún falta la capa de Fluent y el visor en la app.
 - **Abrir un croquis guardado (R2):** «Región dibujada» tiene un campo y un botón «Abrir croquis»
   que cargan en el lienzo un croquis (el `sketch.vortia-sketch` que guarda cada caso, por ejemplo).
   Si el archivo no se lee o no se puede resolver, se rechaza y el dibujo queda como estaba.

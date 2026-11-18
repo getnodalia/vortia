@@ -78,8 +78,13 @@ STL, updater, issue-report or translation code exists there).
   new-issue draft with the version, the system and the solver, never a path) and STL import
   (`vortia_mesh::stl`, shown on Home with its size, area, volume and open edges) are done. The
   updater is wired (`nodalia_update::egui::Updater`: «Check for updates…» in the menu, a check a
-  while after starting, the shared modal windows). Still to do for R8: Fluent `.cas.h5`/`.dat.h5`
-  viewing.
+  while after starting, the shared modal windows). The HDF5 reader Fluent's CFF files need is done
+  (`rust/vortia-h5`: our own, no libhdf5; superblocks 0 to 3, object headers 1 and 2, symbol-table
+  groups and link messages, contiguous, compact and chunked data with deflate and shuffle, any
+  byte order, attributes). What it cannot read says so with an error: dense groups and the
+  version 4 chunk indexes of the newest libhdf5. It is tested on files made with h5py, not yet on
+  a real Fluent file. Still to do for R8: the Fluent layer (mesh and results datasets) and the
+  viewer in the app.
 
 - **R7, started on 2026-11-18:** `vortia_post::gci` (the three-mesh index, checked against
   `benchmarks/common/gci.py`) and `rust/vortia-cli/tests/verification.rs`, which runs a Poiseuille
