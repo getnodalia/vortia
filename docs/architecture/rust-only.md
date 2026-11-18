@@ -83,8 +83,13 @@ STL, updater, issue-report or translation code exists there).
   groups and link messages, contiguous, compact and chunked data with deflate and shuffle, any
   byte order, attributes). What it cannot read says so with an error: dense groups and the
   version 4 chunk indexes of the newest libhdf5. It is tested on files made with h5py, not yet on
-  a real Fluent file. Still to do for R8: the Fluent layer (mesh and results datasets) and the
-  viewer in the app.
+  a real Fluent file. A Fluent case (`.cas.h5`, `.msh.h5`) is read into the same intermediate form
+  as a `.msh` and converted by the same code (`vortia_mesh::cff`), and Home's «Open a geometry»
+  shows it: cells, faces, points, boundaries and the surface to turn around. The layout it
+  expects (`meshes/1/nodes|faces|cells`, `zoneTopology`) is written from memory of the public
+  description and checked only on a file this project made, so a real Fluent file may name a
+  dataset differently: the error then names the missing path and what its group holds. Still to
+  do for R8: the results (`.dat.h5` fields) and a check against real Fluent files.
 
 - **R7, started on 2026-11-18:** `vortia_post::gci` (the three-mesh index, checked against
   `benchmarks/common/gci.py`) and `rust/vortia-cli/tests/verification.rs`, which runs a Poiseuille

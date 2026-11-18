@@ -8,6 +8,12 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 ## [Unreleased]
 
 ### Añadido
+- **Ver un caso de Fluent (R8):** «Abrir una geometría» acepta también un `.cas.h5` o `.msh.h5`:
+  se lee con el lector HDF5 propio, se convierte con el mismo código que un `.msh` y se muestra
+  con sus celdas, caras, puntos, contornos y la superficie para girarla. Está comprobado con un
+  archivo hecho en este proyecto, no con uno real de Fluent; si un archivo real nombra distinto un
+  conjunto de datos, el error dice cuál falta y qué contiene su grupo. Aún no lee los resultados
+  (`.dat.h5`).
 - **Lector HDF5 propio (R8):** el crate `vortia-h5` lee archivos HDF5 sin libhdf5, la base para
   ver los `.cas.h5` y `.dat.h5` de Fluent: grupos, conjuntos de datos contiguos, compactos y por
   bloques (con deflate y shuffle, cualquier orden de bytes) y atributos. Lo que no sabe leer

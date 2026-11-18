@@ -177,7 +177,15 @@ pub const ES: &[(&str, &str)] = &[
     ("Triangles (unstructured)", "Triángulos (no estructurada)"),
     ("Cell size", "Tamaño de celda"),
     ("Symmetry plane on the axis", "Plano de simetría en el eje"),
-    ("An STL file", "Un archivo STL"),
+    (
+        "An STL file or a Fluent case (.cas.h5)",
+        "Un archivo STL o un caso de Fluent (.cas.h5)",
+    ),
+    (
+        "{} cells, {} faces, {} points",
+        "{} celdas, {} caras, {} puntos",
+    ),
+    ("Boundaries: {}", "Contornos: {}"),
     ("Show geometry", "Ver geometría"),
     ("Close geometry", "Cerrar la geometría"),
     ("Reading the geometry…", "Leyendo la geometría…"),
