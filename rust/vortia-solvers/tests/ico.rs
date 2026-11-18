@@ -278,7 +278,7 @@ fn unsupported_settings_are_refused() {
         "pRefCell 400;",
         "pRefCell 400",
     );
-    refuse("0/U", "type noSlip;", "type slip;", "slip");
+    refuse("0/U", "type noSlip;", "type partialSlip;", "partialSlip");
     refuse("system/fvSolution", "pFinal", "pLast", "pFinal");
     // What a directive would change is unknown until it is evaluated.
     refuse(
