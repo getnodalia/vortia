@@ -912,6 +912,7 @@ fn file_tab(ui: &mut egui::Ui, p: &Palette, case: &mut CaseView, file: File) {
 fn conditions_tab(ui: &mut egui::Ui, p: &Palette, case: &mut CaseView) {
     let running = case.running();
     let time = case.start_time();
+    let application = case.application.clone();
     let Some(loaded) = case.conditions.as_mut() else {
         ui.horizontal(|ui| {
             ui.spinner();
@@ -954,6 +955,7 @@ fn conditions_tab(ui: &mut egui::Ui, p: &Palette, case: &mut CaseView) {
                     .patches
                     .iter()
                     .any(|patch| patch.items.iter().any(|i| i.changed()));
+            let types = conditions::patch_types(field, application.as_deref());
             egui::ScrollArea::vertical()
                 .id_salt("conditions")
                 .auto_shrink([false, false])
@@ -964,8 +966,27 @@ fn conditions_tab(ui: &mut egui::Ui, p: &Palette, case: &mut CaseView) {
                         for patch in &mut field.patches {
                             ui.add_space(space::MD);
                             ui.label(RichText::new(&patch.patch).strong());
+                            let retype = conditions::retypable(patch);
+                            let retyped =
+                                patch.items.iter().any(|i| i.key == "type" && i.changed());
                             for item in &mut patch.items {
-                                condition_row(ui, p, &item.key.clone(), item, &patch.patch);
+                                if retype && item.key == "type" {
+                                    choice_row(ui, p, "type", item, &types, &patch.patch);
+                                } else if retyped {
+                                    // The block is written again for the new type.
+                                    ui.horizontal(|ui| {
+                                        ui.add_space(space::MD);
+                                        ui.label(
+                                            RichText::new(format!(
+                                                "{} — replaced on save",
+                                                item.key
+                                            ))
+                                            .color(muted(p)),
+                                        );
+                                    });
+                                } else {
+                                    condition_row(ui, p, &item.key.clone(), item, &patch.patch);
+                                }
                             }
                         }
                     });

@@ -322,6 +322,152 @@ fn is_word(t: &str) -> bool {
     !t.is_empty() && !t.contains(|c: char| c.is_whitespace() || matches!(c, ';' | '{' | '}'))
 }
 
+/// Patch types that belong to the mesh and not to the choice of a condition: the field has to
+/// say what the mesh says, so a person does not pick them.
+const GEOMETRIC: &[&str] = &[
+    "empty",
+    "wedge",
+    "cyclic",
+    "cyclicAMI",
+    "processor",
+    "symmetryPlane",
+];
+
+/// Whether the vector in `field` is one (U) and not a scalar.
+fn is_vector(field: &FieldConditions) -> bool {
+    let text = field.internal.original.trim();
+    match text.strip_prefix("uniform") {
+        Some(rest) => rest.trim_start().starts_with('('),
+        None => field.field == "U",
+    }
+}
+
+/// Whether the patch's condition can be picked from a list: not one the mesh decides.
+pub fn retypable(patch: &PatchConditions) -> bool {
+    patch
+        .items
+        .iter()
+        .find(|i| i.key == "type")
+        .is_some_and(|i| !GEOMETRIC.contains(&i.original.as_str()))
+}
+
+/// The condition types the engine has for the field, for the application the case runs: what a
+/// person may pick for a patch that the mesh does not decide.
+pub fn patch_types(field: &FieldConditions, application: Option<&str>) -> Vec<&'static str> {
+    if is_vector(field) {
+        let mut types = vec!["fixedValue", "noSlip", "zeroGradient"];
+        if matches!(application, Some("icoFoam" | "simpleFoam")) {
+            types.extend(["slip", "symmetry"]);
+        }
+        types
+    } else {
+        vec!["fixedValue", "zeroGradient", "fixedGradient"]
+    }
+}
+
+/// The lines of a block for `kind`, with what it needs to be valid.
+fn block_for(field: &FieldConditions, kind: &str) -> Result<Vec<(&'static str, String)>, String> {
+    let vector = is_vector(field);
+    let start = if vector {
+        "uniform (0 0 0)".to_owned()
+    } else {
+        let internal = field.internal.original.trim();
+        match internal.strip_prefix("uniform") {
+            Some(v) if v.trim().parse::<f64>().is_ok_and(f64::is_finite) => {
+                format!("uniform {}", v.trim())
+            }
+            _ => "uniform 0".to_owned(),
+        }
+    };
+    let mut lines: Vec<(&'static str, String)> = Vec::new();
+    match kind {
+        "fixedValue" => lines.push(("value", start)),
+        "zeroGradient" => {}
+        "noSlip" | "slip" | "symmetry" if vector => {}
+        "fixedGradient" if !vector => {
+            lines.push(("gradient", "uniform 0".to_owned()));
+            lines.push(("value", start));
+        }
+        other => return Err(format!("'{other}' cannot be set for {}.", field.field)),
+    }
+    lines.insert(0, ("type", kind.to_owned()));
+    Ok(lines)
+}
+
+/// `text` with the block of `patch` written again from `lines`, keeping where it stands.
+fn replace_patch(text: &str, patch: &str, lines: &[(&str, String)]) -> Result<String, String> {
+    let source: Vec<&str> = text.split_inclusive('\n').collect();
+    let mut stack: Vec<String> = Vec::new();
+    let mut pending: Option<(String, usize)> = None;
+    let (mut in_comment, mut in_code) = (false, false);
+    let (mut start, mut end): (Option<usize>, Option<usize>) = (None, None);
+    for (i, line) in source.iter().enumerate() {
+        let code = code_of(line, &mut in_comment);
+        let t = code.trim();
+        if in_code || t.contains("#{") {
+            in_code = !t.contains("#}") && (in_code || t.contains("#{"));
+            continue;
+        }
+        let before = t.split('{').next().unwrap_or("").trim();
+        let mut name = if is_word(before) {
+            Some((before.to_owned(), i))
+        } else {
+            pending.take()
+        };
+        for c in t.chars() {
+            match c {
+                '{' => {
+                    let named = name.take();
+                    if start.is_none()
+                        && stack.len() == 1
+                        && stack.first().is_some_and(|s| s == "boundaryField")
+                        && let Some((n, at)) = &named
+                        && n == patch
+                    {
+                        start = Some(*at);
+                    }
+                    stack.push(named.map(|(n, _)| n).unwrap_or_default());
+                }
+                '}' => {
+                    stack.pop();
+                    if start.is_some() && end.is_none() && stack.len() == 1 {
+                        end = Some(i);
+                    }
+                }
+                _ => {}
+            }
+        }
+        pending = if !t.contains(['{', '}']) && is_word(t) {
+            Some((t.to_owned(), i))
+        } else {
+            None
+        };
+        if end.is_some() {
+            break;
+        }
+    }
+    let (Some(start), Some(end)) = (start, end) else {
+        return Err(format!(
+            "The block of {patch} is not written the way the editor reads; edit it in the file."
+        ));
+    };
+    let first = source.get(start).copied().unwrap_or("");
+    let indent: String = first.chars().take_while(|c| c.is_whitespace()).collect();
+    let mut out = String::with_capacity(text.len());
+    for line in source.iter().take(start) {
+        out.push_str(line);
+    }
+    out.push_str(&format!("{indent}{patch}\n{indent}{{\n"));
+    for (key, value) in lines {
+        out.push_str(&format!("{indent}    {key:<15} {value};\n"));
+    }
+    out.push_str(&format!("{indent}}}\n"));
+    for line in source.iter().skip(end + 1) {
+        out.push_str(line);
+    }
+    Ok(out)
+}
+
 /// The text of the field's file with every edited item of `conditions` applied.
 pub fn apply(text: &str, conditions: &FieldConditions) -> Result<String, String> {
     let mut text = text.to_owned();
@@ -329,6 +475,24 @@ pub fn apply(text: &str, conditions: &FieldConditions) -> Result<String, String>
         text = set_entry(&text, "internalField", &checked(&conditions.internal)?)?;
     }
     for patch in &conditions.patches {
+        // A new condition type starts the patch's block again: what the old type needed may not
+        // be what the new one does, and its other edits go with it.
+        if let Some(kind) = patch
+            .items
+            .iter()
+            .find(|i| i.key == "type" && i.changed())
+            .map(|i| i.text.clone())
+        {
+            if !retypable(patch) {
+                return Err(format!(
+                    "The condition type of {} is decided by the mesh.",
+                    patch.patch
+                ));
+            }
+            let lines = block_for(conditions, &kind)?;
+            text = replace_patch(&text, &patch.patch, &lines)?;
+            continue;
+        }
         for item in patch.items.iter().filter(|i| i.editable && i.changed()) {
             text = set_in_patch(&text, &patch.patch, &item.key, &checked(item)?)?;
         }
@@ -451,6 +615,140 @@ boundaryField
             item.text = bad.into();
             assert!(checked(&item).is_err(), "{bad}");
         }
+    }
+
+    const U: &str = "\
+FoamFile { version 2.0; format ascii; class volVectorField; object U; }
+dimensions      [0 1 -1 0 0 0 0];
+internalField   uniform (1 0 0);
+boundaryField
+{
+    inlet { type fixedValue; value uniform (1 0 0); }
+    wall
+    {
+        type            noSlip;
+    }
+    top // the lid
+    {
+        type            zeroGradient;
+    }
+    front
+    {
+        type            empty;
+    }
+}
+";
+
+    #[test]
+    fn a_patch_can_be_given_another_condition_type_and_keeps_the_rest_of_the_file() {
+        let case = case_with_field("U", U);
+        let mut read = read(case.path(), "0", "U").unwrap();
+        let set = |read: &mut FieldConditions, patch: &str, kind: &str| {
+            let patch = read.patches.iter_mut().find(|p| p.patch == patch).unwrap();
+            patch
+                .items
+                .iter_mut()
+                .find(|i| i.key == "type")
+                .unwrap()
+                .text = kind.into();
+        };
+        set(&mut read, "wall", "slip");
+        set(&mut read, "inlet", "zeroGradient");
+        set(&mut read, "top", "fixedValue");
+        save(case.path(), "0", &read).unwrap();
+        let text = std::fs::read_to_string(case.path().join("0/U")).unwrap();
+        let again = super::read(case.path(), "0", "U").unwrap();
+        let kind = |name: &str| {
+            let patch = again.patches.iter().find(|p| p.patch == name).unwrap();
+            let items: Vec<_> = patch
+                .items
+                .iter()
+                .map(|i| (i.key.as_str(), i.text.as_str()))
+                .collect();
+            items
+        };
+        assert_eq!(kind("wall"), [("type", "slip")]);
+        assert_eq!(kind("inlet"), [("type", "zeroGradient")]);
+        assert_eq!(
+            kind("top"),
+            [("type", "fixedValue"), ("value", "uniform (0 0 0)")]
+        );
+        assert_eq!(kind("front"), [("type", "empty")]);
+        assert!(text.starts_with("FoamFile { version 2.0;"), "{text}");
+        assert!(text.contains("internalField   uniform (1 0 0);"));
+        // Nothing of the old blocks is left behind.
+        assert!(!text.contains("noSlip"));
+    }
+
+    #[test]
+    fn a_scalar_type_that_needs_a_value_starts_from_the_internal_one() {
+        let case = case_with(T);
+        let mut read = read(case.path(), "0", "T").unwrap();
+        let inlet = read
+            .patches
+            .iter_mut()
+            .find(|p| p.patch == "inlet")
+            .unwrap();
+        inlet
+            .items
+            .iter_mut()
+            .find(|i| i.key == "type")
+            .unwrap()
+            .text = "fixedGradient".into();
+        // Other edits of that patch are dropped with the old block.
+        inlet
+            .items
+            .iter_mut()
+            .find(|i| i.key == "gamma")
+            .unwrap()
+            .text = "1.3".into();
+        save(case.path(), "0", &read).unwrap();
+        let again = super::read(case.path(), "0", "T").unwrap();
+        let inlet = again.patches.iter().find(|p| p.patch == "inlet").unwrap();
+        let items: Vec<_> = inlet
+            .items
+            .iter()
+            .map(|i| (i.key.as_str(), i.text.as_str()))
+            .collect();
+        assert_eq!(
+            items,
+            [
+                ("type", "fixedGradient"),
+                ("gradient", "uniform 0"),
+                ("value", "uniform 300")
+            ]
+        );
+        let atmosphere = again
+            .patches
+            .iter()
+            .find(|p| p.patch == "atmosphere")
+            .unwrap();
+        assert_eq!(atmosphere.items.len(), 3);
+    }
+
+    #[test]
+    fn what_the_mesh_decides_is_not_picked_and_the_list_follows_the_engine() {
+        let case = case_with_field("U", U);
+        let mut read = read(case.path(), "0", "U").unwrap();
+        let front = read
+            .patches
+            .iter()
+            .position(|p| p.patch == "front")
+            .unwrap();
+        assert!(!retypable(&read.patches[front]));
+        assert!(retypable(&read.patches[0]));
+        read.patches[front].items[0].text = "fixedValue".into();
+        let err = save(case.path(), "0", &read).unwrap_err();
+        assert!(err.contains("decided by the mesh"), "{err}");
+        let incompressible = patch_types(&read, Some("simpleFoam"));
+        assert!(incompressible.contains(&"slip") && incompressible.contains(&"symmetry"));
+        let compressible = patch_types(&read, Some("rhoSimpleFoam"));
+        assert!(!compressible.contains(&"slip"));
+        let scalar = super::read(case_with(T).path(), "0", "T").unwrap();
+        assert_eq!(
+            patch_types(&scalar, None),
+            ["fixedValue", "zeroGradient", "fixedGradient"]
+        );
     }
 
     #[test]
