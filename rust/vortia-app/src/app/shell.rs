@@ -19,7 +19,7 @@ use super::{
     muted, own_controls, palette, results_tab, scientific, settings_tab, status_label, tone_colors,
 };
 use crate::numerics::File;
-use crate::residuals::Residuals;
+use crate::residuals::{Residuals, Trouble};
 use crate::summary::Summary;
 use crate::viewer::Source;
 use vortia_post::BalanceHistory;
@@ -1078,6 +1078,28 @@ fn series_colour(i: usize) -> egui::Color32 {
     egui::Color32::from_rgb(r, g, b)
 }
 
+/// The warning for a run whose residuals are going the wrong way, and what to try.
+fn trouble_message(trouble: &Trouble) -> String {
+    match trouble {
+        Trouble::NotANumber { field, step } => format!(
+            "The residual of {field} is not a number at step {step}: the fields are no longer \
+             valid. Stop the run and check the boundary conditions, the initial values and the \
+             mesh; lower the relaxation factors in Numerics before running again."
+        ),
+        Trouble::Growing {
+            field,
+            step,
+            residual,
+            lowest,
+        } => format!(
+            "The residual of {field} has risen to {residual:.3e} at step {step} from a lowest \
+             value of {lowest:.1e}: the run seems to diverge. Stop it and check the boundary \
+             conditions and the mesh; lower the relaxation factors in Numerics before running \
+             again."
+        ),
+    }
+}
+
 /// How the residuals have fallen, one line per equation, on a logarithmic axis.
 fn residual_card(ui: &mut egui::Ui, p: &Palette, residuals: &Residuals) {
     Frame::NONE
@@ -1087,6 +1109,12 @@ fn residual_card(ui: &mut egui::Ui, p: &Palette, residuals: &Residuals) {
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.label(RichText::new("Residuals").strong());
+            if let Some(trouble) = residuals.trouble() {
+                ui.colored_label(
+                    for_egui::color(p.status_danger_fg),
+                    trouble_message(&trouble),
+                );
+            }
             let Some(([t0, t1], [lo, hi])) = residuals.bounds() else {
                 ui.label(
                     RichText::new("They appear as the solver reports each step.").color(muted(p)),

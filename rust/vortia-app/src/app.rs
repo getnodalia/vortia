@@ -839,7 +839,12 @@ fn file_tab(ui: &mut egui::Ui, p: &Palette, case: &mut CaseView, file: File) {
                             ui.label(RichText::new(group.title()).strong());
                             let id = group.title();
                             for item in &mut group.items {
-                                condition_row(ui, p, &item.key.clone(), item, &id);
+                                let words = numerics::choices(file, &group.path, &item.key);
+                                if item.editable && !words.is_empty() {
+                                    choice_row(ui, p, &item.key.clone(), item, words, &id);
+                                } else {
+                                    condition_row(ui, p, &item.key.clone(), item, &id);
+                                }
                             }
                         }
                     });
@@ -1018,6 +1023,51 @@ fn condition_row(ui: &mut egui::Ui, p: &Palette, key: &str, item: &mut condition
             ui.label(item.text.as_str());
         }
     });
+}
+
+/// One entry that is one of a few names: its name, and a pick-list of what the engine has. A word
+/// the case already has that is not in the list stays in it, so nothing is lost by looking.
+fn choice_row(
+    ui: &mut egui::Ui,
+    p: &Palette,
+    key: &str,
+    item: &mut conditions::Item,
+    words: &[&str],
+    id: &str,
+) {
+    ui.horizontal(|ui| {
+        ui.add_space(space::MD);
+        ui.allocate_ui_with_layout(
+            Vec2::new(140.0, 24.0),
+            Layout::left_to_right(Align::Center),
+            |ui| {
+                ui.set_min_width(140.0);
+                ui.label(RichText::new(key).color(muted(p)));
+            },
+        );
+        let current = item.text.clone();
+        egui::ComboBox::from_id_salt((id, key))
+            .selected_text(current.as_str())
+            .width(220.0)
+            .show_ui(ui, |ui| {
+                if !words.contains(&current.as_str()) {
+                    ui.selectable_value(&mut item.text, current.clone(), current.as_str());
+                }
+                for word in words {
+                    ui.selectable_value(&mut item.text, (*word).to_owned(), *word);
+                }
+            });
+    });
+    if let Some(fields) = numerics::model_fields(&item.text) {
+        ui.horizontal(|ui| {
+            ui.add_space(space::MD + 148.0);
+            ui.label(
+                RichText::new(format!("Needs {fields} in the time folder."))
+                    .size(font_size::SMALL)
+                    .color(muted(p)),
+            );
+        });
+    }
 }
 
 /// The run settings of the case, to edit and save into its controlDict.
