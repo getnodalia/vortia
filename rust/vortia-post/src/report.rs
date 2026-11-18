@@ -3,7 +3,11 @@
 
 use serde_json::{Value, json};
 
+use crate::seal::seal;
 use crate::section::{Density, SectionAnalysis, SectionOptions};
+
+/// What a saved section report calls itself.
+pub const SECTION_SCHEMA: &str = "vortia.section-report";
 
 /// A section analysis with what it was made from.
 #[derive(Debug, Clone, PartialEq)]
@@ -96,7 +100,7 @@ impl SectionReport {
         })
     }
 
-    /// The report as JSON.
+    /// The report as JSON, in the envelope of [`seal`], with its digest.
     pub fn json(&self) -> String {
         let metrics: serde_json::Map<String, Value> = self
             .metrics()
@@ -104,20 +108,20 @@ impl SectionReport {
             .map(|m| (m.key.to_owned(), json!(m.value)))
             .collect();
         let a = &self.analysis;
-        let value = json!({
-            "schema": "vortia.section-report",
-            "version": 1,
-            "label": self.label(),
-            "case": self.case,
-            "time": self.time,
-            "options": self.options_json(),
-            "metrics": metrics,
-            "cells": a.cells,
-            "sharedFaces": a.shared_faces,
-            "areaScale": a.area_scale,
-            "assessment": "stored fields only; convergence and physical validity are not established by this report",
-        });
-        serde_json::to_string_pretty(&value).unwrap_or_default()
+        seal(
+            SECTION_SCHEMA,
+            json!({
+                "label": self.label(),
+                "case": self.case,
+                "time": self.time,
+                "options": self.options_json(),
+                "metrics": metrics,
+                "cells": a.cells,
+                "sharedFaces": a.shared_faces,
+                "areaScale": a.area_scale,
+                "assessment": "stored fields only; convergence and physical validity are not established by this report",
+            }),
+        )
     }
 
     /// The report as CSV, one row per number. A text that starts like a formula is quoted so a
@@ -197,7 +201,7 @@ fn axis_name(axis: usize) -> &'static str {
     ["x", "y", "z"].get(axis).copied().unwrap_or("x")
 }
 
-fn escape(text: &str) -> String {
+pub(crate) fn escape(text: &str) -> String {
     text.chars()
         .map(|c| match c {
             '&' => "&amp;".to_owned(),
@@ -210,7 +214,7 @@ fn escape(text: &str) -> String {
         .collect()
 }
 
-fn csv_text(text: &str) -> String {
+pub(crate) fn csv_text(text: &str) -> String {
     let mut text = text.replace('"', "\"\"");
     if text
         .trim_start()

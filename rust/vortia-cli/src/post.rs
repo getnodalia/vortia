@@ -60,6 +60,8 @@ pub fn run(args: &[&str]) -> Option<ExitCode> {
             finish(flux(case, patch, time.first().copied()))
         }
         ["section", rest @ ..] => crate::section::run(rest),
+        ["forces", rest @ ..] => crate::forces::forces(rest),
+        ["compare", rest @ ..] => crate::forces::compare_reports(rest),
         ["balance", case, rest @ ..] if rest.len() <= 1 => {
             let window = match rest.first() {
                 None => Ok(DEFAULT_WINDOW),

@@ -934,9 +934,10 @@ fn the_report_says_the_same_numbers_in_json_csv_and_html() {
     let report = report_of("Throat");
     let json: serde_json::Value = serde_json::from_str(&report.json()).unwrap();
     assert_eq!(json["schema"], "vortia.section-report");
-    assert_eq!(json["metrics"]["massFlow"], 6.0);
-    assert_eq!(json["options"]["axis"], "x");
-    assert_eq!(json["options"]["density"], "field");
+    assert_eq!(json["payload"]["metrics"]["massFlow"], 6.0);
+    assert_eq!(json["payload"]["options"]["axis"], "x");
+    assert_eq!(json["payload"]["options"]["density"], "field");
+    assert_eq!(json["sha256"].as_str().unwrap().len(), 64);
     let csv = report.csv();
     assert_eq!(csv.lines().count(), 1 + report.metrics().len());
     assert!(
@@ -959,5 +960,270 @@ fn a_label_cannot_run_in_a_spreadsheet_or_a_page() {
     assert!(!html.contains("<script>") && html.contains("&lt;script&gt;"));
     let long = report_of(&"a".repeat(1000));
     let json: serde_json::Value = serde_json::from_str(&long.json()).unwrap();
-    assert_eq!(json["label"].as_str().unwrap().len(), 160);
+    assert_eq!(json["payload"]["label"].as_str().unwrap().len(), 160);
+}
+
+#[test]
+fn a_saved_report_opens_and_one_that_was_changed_does_not() {
+    let report = report_of("Throat");
+    let text = report.json();
+    let opened = crate::Sealed::open(&text).unwrap();
+    assert_eq!(opened.schema, crate::SECTION_SCHEMA);
+    assert_eq!(opened.metric("massFlow"), Some(6.0));
+    assert_eq!(opened.text("label"), "Throat");
+    // The number was edited after the report was saved.
+    let edited = text.replace("\"massFlow\": 6.0", "\"massFlow\": 7.0");
+    assert_ne!(edited, text);
+    let err = crate::Sealed::open(&edited).unwrap_err().to_string();
+    assert!(err.contains("digest"), "{err}");
+    // Not a report, not JSON, too large, another version.
+    assert!(crate::Sealed::open("{}").is_err());
+    assert!(crate::Sealed::open("not json").is_err());
+    assert!(crate::Sealed::open(&" ".repeat(crate::MAX_REPORT_BYTES + 1)).is_err());
+    assert!(crate::Sealed::open(&text.replace("\"version\": 1", "\"version\": 2")).is_err());
+}
+
+#[test]
+fn the_digest_does_not_depend_on_the_order_the_payload_was_built_in() {
+    let a = serde_json::json!({"b": 1, "a": {"y": [1, 2], "x": "t"}});
+    let b: serde_json::Value = serde_json::from_str(r#"{"a":{"x":"t","y":[1,2]},"b":1}"#).unwrap();
+    assert_eq!(crate::digest(&a), crate::digest(&b));
+    let c = serde_json::json!({"b": 2, "a": {"y": [1, 2], "x": "t"}});
+    assert_ne!(crate::digest(&a), crate::digest(&c));
+}
+
+#[test]
+fn runs_are_compared_to_a_baseline_and_a_different_definition_is_flagged() {
+    let one = crate::Sealed::open(&report_of("Run A").json()).unwrap();
+    let same = crate::Sealed::open(&report_of("Run B").json()).unwrap();
+    let rows = crate::compare(&[one.clone(), same.clone()], "massFlow", 0).unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].change_percent, Some(0.0));
+    assert_eq!(rows[1].change_percent, Some(0.0));
+    assert!(rows.iter().all(|r| r.warning.is_none()));
+
+    // The same flow read at another position: the number is the same, the definition is not.
+    let (dir, case) = case();
+    flow(&dir, "(2 0 0)", "101425", Some("1.5"));
+    let options = SectionOptions {
+        position: 1.5,
+        ..SectionOptions::default()
+    };
+    let moved = crate::SectionReport {
+        label: "Run C".into(),
+        case: "box".into(),
+        time: "0".into(),
+        analysis: case.section("0", &options).unwrap(),
+        options,
+    };
+    let moved = crate::Sealed::open(&moved.json()).unwrap();
+    let rows = crate::compare(&[one.clone(), moved], "massFlow", 0).unwrap();
+    assert_eq!(rows[1].warning, Some(crate::DEFINITIONS_DIFFER));
+    let csv = crate::comparison_csv(&rows, "massFlow", &one.sha256);
+    assert_eq!(csv.lines().count(), 3);
+    assert!(csv.contains("Different section"), "{csv}");
+
+    assert!(crate::compare(std::slice::from_ref(&one), "massFlow", 3).is_err());
+    assert!(crate::compare(&[one], "nothing", 0).is_err());
+}
+
+/// The box of `the_shear_on_a_wall...`: the bottom wall, 4 m² of it, pulled along x by the
+/// stress 0.04 and pushed down by p = 3.
+fn force_case() -> (TempDir, Case) {
+    let (dir, case) = case();
+    constant(&dir, "transportProperties", "nu [0 2 -1 0 0 0 0] 0.01;");
+    write(
+        &dir,
+        "U",
+        "volVectorField",
+        "uniform (2 0 0)",
+        &[("yMin", "type noSlip;")],
+    );
+    write(
+        &dir,
+        "p",
+        "volScalarField",
+        "uniform 3",
+        &[("yMin", "type calculated; value uniform 3;")],
+    );
+    (dir, case)
+}
+
+#[test]
+fn forces_are_split_along_drag_and_lift_and_made_into_coefficients() {
+    let (_dir, case) = force_case();
+    let reference = crate::ForceReference {
+        speed: 2.0,
+        area: 4.0,
+        length: 2.0,
+        ..crate::ForceReference::default()
+    };
+    let r = case.forces("0", &["yMin".to_owned()], &reference).unwrap();
+    assert!(r.per_unit_density);
+    let m = |key: &str| {
+        r.metrics()
+            .into_iter()
+            .find(|m| m.key == key)
+            .unwrap()
+            .value
+    };
+    assert!((m("area") - 4.0).abs() < 1e-12);
+    assert!((m("viscousDrag") - 0.16).abs() < 1e-12);
+    assert_eq!(m("pressureDrag"), 0.0);
+    assert!((m("drag") - 0.16).abs() < 1e-12);
+    // Pressure pushes the bottom wall down: out of the fluid.
+    assert!((m("pressureLift") + 12.0).abs() < 1e-12 && m("viscousLift") == 0.0);
+    assert!((m("lift") + 12.0).abs() < 1e-12 && m("side") == 0.0);
+    // ½ U² A = 8.
+    assert!((m("cd") - 0.02).abs() < 1e-12 && (m("cl") + 1.5).abs() < 1e-12);
+    // The four faces are at x = 0.5, 1.5, 2.5 and 3.5, each pushed down by 3: about the
+    // origin the moment about z is Σ x · (−3) = −24.
+    assert!((m("moment") + 24.0).abs() < 1e-9, "{}", m("moment"));
+    assert!((m("cm") + 24.0 / (8.0 * 2.0)).abs() < 1e-9);
+
+    // The same flow with a density gives newtons and the same coefficients.
+    let with_density = crate::ForceReference {
+        density: Some(1.2),
+        ..reference.clone()
+    };
+    let n = case
+        .forces("0", &["yMin".to_owned()], &with_density)
+        .unwrap();
+    assert!(!n.per_unit_density);
+    let k = |key: &str| {
+        n.metrics()
+            .into_iter()
+            .find(|m| m.key == key)
+            .unwrap()
+            .value
+    };
+    assert!((k("drag") - 1.2 * 0.16).abs() < 1e-12);
+    assert!((k("cd") - 0.02).abs() < 1e-12 && (k("cl") + 1.5).abs() < 1e-12);
+
+    // Another direction for the stream: the drag is then the force along y.
+    let up = crate::ForceReference {
+        drag: Vec3::new(0.0, 1.0, 0.0),
+        lift: Vec3::new(1.0, 0.0, 0.0),
+        ..reference
+    };
+    let u = case.forces("0", &["yMin".to_owned()], &up).unwrap();
+    let d = u
+        .metrics()
+        .into_iter()
+        .find(|m| m.key == "drag")
+        .unwrap()
+        .value;
+    assert!((d + 12.0).abs() < 1e-12);
+
+    // The report in its three forms, and the digest.
+    let mut report = r.clone();
+    report.label = "Floor".into();
+    report.case = "box".into();
+    let sealed = crate::Sealed::open(&report.json()).unwrap();
+    assert_eq!(sealed.schema, crate::FORCE_SCHEMA);
+    assert_eq!(sealed.metric("cd"), Some(m("cd")));
+    assert!(report.csv().contains("\"Floor\",\"box\",\"0\",cd,0.02"));
+    assert!(report.html().contains("<h1>Floor</h1>"));
+}
+
+#[test]
+fn forces_refuse_what_cannot_be_computed() {
+    let (dir, case) = force_case();
+    let ok = crate::ForceReference::default();
+    let wall = ["yMin".to_owned()];
+    let bad = |reference: crate::ForceReference| case.forces("0", &wall, &reference).is_err();
+    assert!(bad(crate::ForceReference {
+        speed: 0.0,
+        ..ok.clone()
+    }));
+    assert!(bad(crate::ForceReference {
+        area: f64::NAN,
+        ..ok.clone()
+    }));
+    assert!(bad(crate::ForceReference {
+        density: Some(-1.0),
+        ..ok.clone()
+    }));
+    assert!(bad(crate::ForceReference {
+        lift: Vec3::new(1.0, 0.1, 0.0),
+        ..ok.clone()
+    }));
+    assert!(bad(crate::ForceReference {
+        drag: Vec3::default(),
+        ..ok.clone()
+    }));
+    assert!(bad(crate::ForceReference {
+        centre: Vec3::new(f64::INFINITY, 0.0, 0.0),
+        ..ok.clone()
+    }));
+    assert!(case.forces("0", &[], &ok).is_err());
+    assert!(case.forces("0", &["nope".to_owned()], &ok).is_err());
+    assert!(
+        case.forces("0", &["yMin".to_owned(), "yMin".to_owned()], &ok)
+            .is_err()
+    );
+    // No pressure: no forces.
+    std::fs::remove_file(dir.path().join("0/p")).unwrap();
+    let err = case.forces("0", &wall, &ok).unwrap_err().to_string();
+    assert!(err.contains("pressure"), "{err}");
+}
+
+#[test]
+fn a_gas_needs_its_reference_density_for_the_coefficients() {
+    let (dir, case) = case();
+    constant(
+        &dir,
+        "thermophysicalProperties",
+        "mixture { specie { molWeight 28.96; } thermodynamics { Cp 1000; Hf 0; } \
+         transport { mu 0.01; Pr 1; } }",
+    );
+    write(
+        &dir,
+        "U",
+        "volVectorField",
+        "uniform (2 0 0)",
+        &[("yMin", "type fixedValue; value uniform (0 0 0);")],
+    );
+    write(
+        &dir,
+        "rho",
+        "volScalarField",
+        "uniform 2",
+        &[("yMin", "type calculated; value uniform 2;")],
+    );
+    write(
+        &dir,
+        "p",
+        "volScalarField",
+        "uniform 100",
+        &[("yMin", "type calculated; value uniform 100;")],
+    );
+    let wall = ["yMin".to_owned()];
+    assert!(
+        case.forces("0", &wall, &crate::ForceReference::default())
+            .is_err()
+    );
+    let reference = crate::ForceReference {
+        density: Some(2.0),
+        speed: 2.0,
+        area: 4.0,
+        ..crate::ForceReference::default()
+    };
+    let r = case.forces("0", &wall, &reference).unwrap();
+    assert!(!r.per_unit_density);
+    // Stress 0.01 · 2 / 0.5 = 0.04 Pa over 4 m²; ½ρU²A = 16.
+    let value = |key: &str| {
+        r.metrics()
+            .into_iter()
+            .find(|m| m.key == key)
+            .unwrap()
+            .value
+    };
+    assert!(
+        (value("viscousDrag") - 0.16).abs() < 1e-12,
+        "{}",
+        value("viscousDrag")
+    );
+    assert!((value("pressureLift") + 400.0).abs() < 1e-9);
+    assert!((value("cd") - 0.16 / 16.0).abs() < 1e-12);
 }

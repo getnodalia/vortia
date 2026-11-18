@@ -8,6 +8,14 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 ## [Unreleased]
 
 ### Añadido
+- **Fuerzas y coeficientes sobre paredes, informes sellados y comparación:** `vortia forces CASE
+  PARED[,PARED…] [-rho R] [-uref U] [-aref A] [-lref L]` integra presión y esfuerzo viscoso sobre las
+  paredes y da arrastre, sustentación, momento y sus coeficientes (en casos cinemáticos, fuerza por
+  unidad de densidad; un gas exige densidad de referencia). Los informes JSON (sección y fuerzas)
+  se escriben ahora sellados: sobre su contenido canónico se guarda un SHA-256, que
+  `vortia compare NÚMERO BASE INFORME…` comprueba antes de comparar y se niega a mezclar informes de definiciones
+  distintas. La pestaña Resultados tiene una tarjeta de fuerzas. Frente a Blasius, el
+  coeficiente de arrastre de la placa coincide con la fricción media.
 - **Placa plana como caso nuevo y condición `slip`:** `vortia new plate DIR [length= upstream=
   height= cells-x= cells-up= cells-y= grading= speed= viscosity=]` y, en Home, «New › Flat plate»
   escriben la placa plana laminar (Re = 10⁵ sobre la placa por defecto) con un tramo de pared

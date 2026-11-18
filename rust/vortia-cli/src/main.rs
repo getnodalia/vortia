@@ -32,6 +32,7 @@ macro_rules! out {
     }};
 }
 
+mod forces;
 mod new;
 mod post;
 mod section;
@@ -54,6 +55,9 @@ const USAGE: &str = "usage: vortia new channel|cavity|plate|nozzle|nozzle-wedge 
     \x20      vortia balance CASE [WINDOW]\n\
     \x20      vortia section CASE x|y|z POSITION [-time T] [-density D] [-kinematic] [-reverse]\n\
     \x20             [-pref P] [-rhoref R] [-uref U] [-aref A] [-wedge DEG] [-report json|csv|html FILE]\n\
+    \x20      vortia forces CASE WALL[,WALL...] [-time T] [-rho R] [-uref U] [-aref A] [-lref L]\n\
+    \x20             [-drag X Y Z] [-lift X Y Z] [-cofr X Y Z] [-report json|csv|html FILE]\n\
+    \x20      vortia compare NUMBER BASELINE REPORT... [-csv FILE]\n\
     \x20      vortia volume CASE FIELD [TIME]\n\
     \x20      vortia wall CASE PATCH [TIME]\n\n\
     new          make a case in DIR: a channel, a planar nozzle or an axisymmetric one,\n\
@@ -79,6 +83,10 @@ const USAGE: &str = "usage: vortia new channel|cavity|plate|nozzle|nozzle-wedge 
     \x20            written, from phi: the net flux as a percentage of the larger side\n\
     section      mass and volume flow, momentum flux, pressure load, power and coefficients\n\
     \x20            through the plane across the domain, and its report as JSON, CSV or HTML\n\
+    forces       force and moment on walls, pressure and viscous, along drag and lift, and as\n\
+    \x20            coefficients; its report as JSON, CSV or HTML\n\
+    compare      one number of saved reports (section or forces) against the first or another,\n\
+    \x20            with a warning where their definitions differ; refuses a report that was edited\n\
     volume       volume, integral, average and range of FIELD over the domain\n\
     wall         shear stress, y+, forces and heat flux on a wall patch";
 
