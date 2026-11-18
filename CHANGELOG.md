@@ -8,6 +8,10 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 ## [Unreleased]
 
 ### Añadido
+- **Pausar y reanudar una ejecución:** un botón «Pause/Resume» en la cinta, en los menús Archivo y
+  Caso y en el buscador de comandos detiene el motor al inicio de su siguiente paso, sin dejar
+  ningún paso a medias, y lo deja seguir cuando se reanuda. Detener funciona también con la
+  ejecución en pausa. La barra de estado dice «Paused».
 - **Fuerzas y coeficientes sobre paredes, informes sellados y comparación:** `vortia forces CASE
   PARED[,PARED…] [-rho R] [-uref U] [-aref A] [-lref L]` integra presión y esfuerzo viscoso sobre las
   paredes y da arrastre, sustentación, momento y sus coeficientes (en casos cinemáticos, fuerza por

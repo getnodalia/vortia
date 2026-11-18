@@ -41,21 +41,28 @@ pub struct Session {
     thread: Option<JoinHandle<()>>,
     finished: bool,
     stop: Arc<AtomicBool>,
+    pause: Arc<AtomicBool>,
 }
 
 impl Session {
     /// Starts the solver the case's `controlDict` names. `wake` is called after every event,
     /// so the window can draw again.
     pub fn start(case: &Path, wake: impl Fn() + Send + 'static) -> std::io::Result<Self> {
+        Self::begin(case, wake, false)
+    }
+
+    fn begin(case: &Path, wake: impl Fn() + Send + 'static, paused: bool) -> std::io::Result<Self> {
         let (tx, events) = channel();
         let dir = case.to_path_buf();
         let stop = Arc::new(AtomicBool::new(false));
         let flag = stop.clone();
+        let pause = Arc::new(AtomicBool::new(paused));
+        let held = pause.clone();
         let thread = std::thread::Builder::new()
             .name("vortia-engine".into())
             .stack_size(STACK)
             .spawn(move || {
-                let outcome = run(&dir, &tx, &wake, flag);
+                let outcome = run(&dir, &tx, &wake, flag, held);
                 let _ = tx.send(Event::Finished(outcome));
                 wake();
             })?;
@@ -65,6 +72,7 @@ impl Session {
             thread: Some(thread),
             finished: false,
             stop,
+            pause,
         })
     }
 
@@ -90,6 +98,15 @@ impl Session {
         self.stop.store(true, Ordering::Relaxed);
     }
 
+    /// Holds the engine at the start of its next step, or lets it go on. A stop ends a paused run.
+    pub fn set_paused(&self, paused: bool) {
+        self.pause.store(paused, Ordering::Relaxed);
+    }
+
+    pub fn is_paused(&self) -> bool {
+        self.pause.load(Ordering::Relaxed)
+    }
+
     pub fn is_finished(&self) -> bool {
         self.finished
     }
@@ -100,10 +117,11 @@ fn run(
     tx: &Sender<Event>,
     wake: &(impl Fn() + Send),
     stop: Arc<AtomicBool>,
+    pause: Arc<AtomicBool>,
 ) -> Outcome {
     let result = catch_unwind(AssertUnwindSafe(|| {
         let case = vortia_solvers::Case::open(dir)?;
-        vortia_solvers::cancel::with_flag(stop, || {
+        vortia_solvers::cancel::with_control(stop, pause, || {
             vortia_solvers::run(&case, |chunk| {
                 for line in chunk.lines() {
                     if let Some(report) = Convergence::from_log_line(line) {
@@ -253,6 +271,43 @@ mod tests {
         assert!(lines.iter().any(|l| l.contains("Time =")), "{lines:?}");
         assert!(lines.iter().all(|l| !l.contains('\n')));
         assert!(d.join("1/T").exists());
+    }
+
+    #[test]
+    fn a_paused_run_waits_between_steps_and_goes_on_when_resumed() {
+        let dir = diffusion_case(3);
+        let mut s = Session::begin(dir.path(), || {}, true).unwrap();
+        assert!(s.is_paused());
+        std::thread::sleep(Duration::from_millis(300));
+        let early = s.poll();
+        assert!(!s.is_finished(), "a paused run finished");
+        assert!(
+            !early
+                .iter()
+                .any(|e| matches!(e, Event::Log(l) if l.contains("Time ="))),
+            "a paused run took a step"
+        );
+        assert!(!dir.path().join("1").exists());
+        s.set_paused(false);
+        assert!(!s.is_paused());
+        let events = drain(&mut s);
+        assert!(matches!(
+            events.last(),
+            Some(Event::Finished(Outcome::Done))
+        ));
+        assert!(dir.path().join("3/T").exists());
+    }
+
+    #[test]
+    fn a_paused_run_can_still_be_stopped() {
+        let dir = diffusion_case(50);
+        let mut s = Session::begin(dir.path(), || {}, true).unwrap();
+        s.stop();
+        let events = drain(&mut s);
+        assert!(matches!(
+            events.last(),
+            Some(Event::Finished(Outcome::Stopped))
+        ));
     }
 
     #[test]

@@ -30,6 +30,7 @@ pub(super) enum Cmd {
     New,
     Open,
     Run,
+    Pause,
     Stop,
     CloseCase,
     Quit,
@@ -40,6 +41,7 @@ pub(super) enum Cmd {
 /// What the command search offers, in the order it lists them.
 const COMMANDS: &[(&str, Cmd)] = &[
     ("Run the case", Cmd::Run),
+    ("Pause or resume the run", Cmd::Pause),
     ("Stop the run", Cmd::Stop),
     ("New case", Cmd::New),
     ("Open a case", Cmd::Open),
@@ -179,6 +181,7 @@ impl VortiaApp {
                     self.home = false;
                 }
             }
+            Cmd::Pause => self.toggle_pause(),
             Cmd::Stop => self.stop_run(),
             Cmd::CloseCase => {
                 self.close_case();
@@ -323,6 +326,7 @@ impl VortiaApp {
                 item(ui, "New case", true, Cmd::New);
                 item(ui, "Open a case", true, Cmd::Open);
                 item(ui, "Run", case_open && !running, Cmd::Run);
+                item(ui, "Pause or resume", running, Cmd::Pause);
                 item(ui, "Stop", running, Cmd::Stop);
                 item(ui, "Close the case", case_open && !running, Cmd::CloseCase);
                 ui.separator();
@@ -627,6 +631,7 @@ fn ribbon(ui: &mut egui::Ui, look: &Look, case: &mut CaseView) -> Option<Cmd> {
     });
     let running = case.running();
     let stopping = case.stopping;
+    let paused = case.session.as_ref().is_some_and(|s| s.is_paused());
     let tab = case.tab;
     let mut go = None;
     ui.horizontal(|ui| {
@@ -640,6 +645,14 @@ fn ribbon(ui: &mut egui::Ui, look: &Look, case: &mut CaseView) -> Option<Cmd> {
                 eng::ribbon_group(ui, look, "Run", |ui| {
                     if tool(ui, "run", "Run", running, !running) {
                         command = Some(Cmd::Run);
+                    }
+                    let (icon, text) = if paused {
+                        ("play", "Resume")
+                    } else {
+                        ("pause", "Pause")
+                    };
+                    if tool(ui, icon, text, paused, running && !stopping) {
+                        command = Some(Cmd::Pause);
                     }
                     if tool(ui, "stop", "Stop", false, running && !stopping) {
                         command = Some(Cmd::Stop);
@@ -1294,8 +1307,10 @@ fn run_view(ui: &mut egui::Ui, p: &Palette, case: &CaseView) {
 fn run_state(case: &CaseView) -> (String, Tone) {
     use crate::session::Outcome;
     if case.running() {
+        let paused = case.session.as_ref().is_some_and(|s| s.is_paused());
         let text = match (&case.report, case.stopping) {
             (_, true) => "Stopping".to_owned(),
+            _ if paused => "Paused".to_owned(),
             (Some(report), false) => format!("Running · {}", status_label(&report.status).0),
             (None, false) => "Running".to_owned(),
         };

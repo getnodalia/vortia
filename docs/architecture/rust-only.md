@@ -55,8 +55,9 @@ STL, updater, issue-report or translation code exists there).
 - **R5, started on 2026-11-18:** the mass balance (`Case::mass_balance` and
   `mass_balance_history` in `rust/vortia-post`, `vortia balance`, a card in the Run tab) reads
   the written `phi`, as the Qt `nozzleMassBalance` does. The residual plot of the Run tab
-  (initial residuals by field from the solver log, logarithmic) is done. Still to do for R5: the
-  run monitor's pause/resume of a job. The residual card warns while a run goes wrong (a residual
+  (initial residuals by field from the solver log, logarithmic) is done. Pause and resume of a run
+  (a ribbon button, the File and Case menus and the command search; `vortia_solvers::cancel::with_control`)
+  hold the engine at the start of its next step and a stop still ends a paused run. The residual card warns while a run goes wrong (a residual
   that is not a number, or that is back at 1 or above after falling by three decades or more).
 - **R6, on 2026-11-18:** the section analysis (`Case::section` in `rust/vortia-post`, `vortia
   section`, a card in the Results tab) integrates the stored fields over a plane cut through the
