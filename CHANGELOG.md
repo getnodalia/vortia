@@ -8,6 +8,12 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 ## [Unreleased]
 
 ### Añadido
+- **Comparar informes en la app (R6):** la pestaña Resultados tiene una tarjeta «Comparar» que
+  lista los informes guardados en el caso (Sección y Fuerzas) o añadidos desde un archivo, deja
+  elegir la referencia y el número, muestra el cambio frente a ella, avisa cuando las definiciones
+  difieren y guarda un CSV en `postProcessing/comparison/`. Es lo mismo que `vortia compare`
+  (`vortia_post::compare`); los informes de otro tipo se dejan fuera y un archivo que no es un
+  informe íntegro se rechaza diciendo por qué.
 - **Regiones cerradas dibujadas, con bordes con nombre (R2/R3):** un boceto puede ser un contorno
   cerrado (más contornos interiores como huecos) cuyos bordes llevan nombre de parche
   (`Sketch::name`, guardado en el archivo del boceto). `vortia_cases::Drawn` lo malla con

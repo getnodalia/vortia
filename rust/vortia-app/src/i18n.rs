@@ -272,6 +272,48 @@ pub const ES: &[(&str, &str)] = &[
     ("Forces on plate", "Fuerzas sobre la placa"),
     ("From", "Desde"),
     ("From sketch", "Desde un croquis"),
+    ("Compare", "Comparar"),
+    (
+        "One number of saved reports side by side, against the baseline.",
+        "Un número de los informes guardados, uno junto a otro, frente al de referencia.",
+    ),
+    (
+        "Save a Section or Forces report, or add a report file, to compare runs.",
+        "Guarda un informe de Sección o de Fuerzas, o añade un archivo de informe, para comparar ejecuciones.",
+    ),
+    ("Baseline", "Referencia"),
+    ("Report", "Informe"),
+    ("{} at {}", "{} en {}"),
+    ("Number", "Número"),
+    (
+        "{} files were not reports.",
+        "{} archivos no eran informes.",
+    ),
+    (
+        "A report file from another run",
+        "Un archivo de informe de otra ejecución",
+    ),
+    ("Add", "Añadir"),
+    (
+        "That report is already in the list.",
+        "Ese informe ya está en la lista.",
+    ),
+    (
+        "There are too many reports in the list.",
+        "Hay demasiados informes en la lista.",
+    ),
+    (
+        "There are no reports to compare.",
+        "No hay informes que comparar.",
+    ),
+    (
+        "Tick at least one more report of the same kind.",
+        "Marca al menos un informe más del mismo tipo.",
+    ),
+    (
+        "Different section or reference definitions: compare the assumptions before interpreting a change.",
+        "Secciones o referencias distintas: compara las hipótesis antes de interpretar un cambio.",
+    ),
     ("Channel with a block", "Canal con un bloque"),
     ("Drawn region", "Región dibujada"),
     (

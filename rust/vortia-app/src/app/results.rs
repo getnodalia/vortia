@@ -18,10 +18,12 @@ use vortia_mesh::PatchKind;
 use vortia_post::{Case, FieldReport, FieldValues, ForceReport, Sample, SectionReport, WallReport};
 
 mod analysis;
+mod compare;
 mod forces;
 
 use super::{accent_button, corner, muted};
 use analysis::{SectionForm, section_card};
+use compare::{CompareForm, compare_card};
 use forces::{ForcesForm, forces_card};
 
 /// The times offered: the last ones, which is where a run ends up.
@@ -258,6 +260,7 @@ pub struct Results {
     forces_form: ForcesForm,
     forces: Slot<ForceReport>,
     saved_forces: Option<(bool, String)>,
+    compare_form: CompareForm,
     /// The case was read and the forms filled in once.
     started: bool,
 }
@@ -439,6 +442,8 @@ pub(super) fn results_tab(ui: &mut egui::Ui, p: &Palette, dir: &Path, results: &
             section_card(ui, p, &case, results);
             ui.add_space(space::MD);
             forces_card(ui, p, &case, results);
+            ui.add_space(space::MD);
+            compare_card(ui, p, dir, results);
         });
 }
 
