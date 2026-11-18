@@ -8,8 +8,9 @@ use nodalia_theme::engineering::Look;
 use nodalia_theme::office;
 use nodalia_theme::{Palette, space};
 use vortia_cases::{Cavity, Channel, Drawn, Geometry, Jet, Nozzle, NozzleKind, Plate};
+use vortia_sketch::Measure;
 
-use crate::region_editor::{self, DrawnEdge, RegionEditor, Role};
+use crate::region_editor::{self, Canvas, RegionEditor, Role};
 use crate::sketch_editor::{Outline, SketchEditor, Template};
 
 /// Which of the cases Home offers.
@@ -293,15 +294,57 @@ impl NewCase {
                 }
             }
         });
-        ui.add_space(space::SM);
-        draw_region(ui, &self.region.drawing());
+        ui.horizontal_wrapped(|ui| {
+            for tool in region_editor::Tool::ALL {
+                if ui
+                    .selectable_label(self.region.tool == tool, tool.title())
+                    .clicked()
+                    && self.region.tool != tool
+                {
+                    self.region.set_tool(tool);
+                }
+            }
+            ui.add_space(space::MD);
+            if self.region.tool == region_editor::Tool::Dimension {
+                for (measure, label) in [
+                    (Measure::Distance, tr("Distance")),
+                    (Measure::Along, tr("Along x")),
+                    (Measure::Height, tr("Height")),
+                ] {
+                    ui.selectable_value(&mut self.region.measure, measure, label);
+                }
+                ui.add_space(space::MD);
+            }
+            ui.label(tr("Grid"));
+            ui.add(
+                DragValue::new(&mut self.region.grid)
+                    .speed(0.5)
+                    .range(0.0..=1000.0)
+                    .suffix(" mm"),
+            );
+            if ui.button(tr("Fit view")).clicked() {
+                self.region.fit();
+            }
+        });
+        ui.label(
+            egui::RichText::new(
+                self.region
+                    .tool
+                    .hint(self.region.picked().len().max(self.region.pending_points())),
+            )
+            .weak(),
+        );
+        region_canvas(ui, &mut self.region);
         if let Some(problem) = &self.region.problem {
             ui.colored_label(ui.visuals().error_fg_color, problem);
+        } else if let Some(why) = self.region.open_because() {
+            ui.colored_label(ui.visuals().warn_fg_color, why);
         } else if let Some(missing) = self.region.missing() {
             ui.colored_label(ui.visuals().warn_fg_color, missing);
         }
         ui.add_space(space::SM);
         let mut edit = None;
+        let mut remove = None;
         let mut rename = None;
         egui::Grid::new("new_region_dimensions")
             .num_columns(2)
@@ -320,6 +363,9 @@ impl NewCase {
                             .changed()
                         {
                             edit = Some((d.index, d.value));
+                        }
+                        if ui.small_button("✕").clicked() {
+                            remove = Some(d.index);
                         }
                     });
                 }
@@ -348,6 +394,9 @@ impl NewCase {
         // A refused edit keeps the sketch as it was and says why above the dimensions.
         if let Some((index, v)) = edit {
             let _ = self.region.set_dimension(index, v);
+        }
+        if let Some(index) = remove {
+            let _ = self.region.remove_dimension(index);
         }
         if let Some((entity, name)) = rename {
             let _ = self.region.rename(entity, &name);
@@ -469,34 +518,73 @@ fn draw(ui: &mut Ui, outline: &Outline) {
     }
 }
 
-/// The loops of the region, each edge in the colour of what its name makes it, with the name
-/// beside it.
-fn draw_region(ui: &mut Ui, drawing: &[Vec<DrawnEdge>]) {
-    let width = ui.available_width().clamp(200.0, 640.0);
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(width, 220.0), egui::Sense::hover());
+/// The drawing of the region, which the tool in use acts on: each edge is in the colour of what
+/// its name makes it, with the name beside it.
+fn region_canvas(ui: &mut Ui, editor: &mut RegionEditor) {
+    let width = ui.available_width().clamp(240.0, 760.0);
+    let (rect, response) =
+        ui.allocate_exact_size(egui::vec2(width, 320.0), egui::Sense::click_and_drag());
+    let canvas = Canvas::new(
+        f64::from(rect.left()),
+        f64::from(rect.top()),
+        f64::from(rect.width()),
+        f64::from(rect.height()),
+        editor.view,
+    );
+    let tolerance = canvas.millimetres(8.0);
+    let world = |p: egui::Pos2| canvas.to_world(f64::from(p.x), f64::from(p.y));
+    let screen = |x: f64, y: f64| {
+        let (px, py) = canvas.to_screen(x, y);
+        egui::pos2(px as f32, py as f32)
+    };
+    if let Some(p) = response.interact_pointer_pos() {
+        let (x, y) = world(p);
+        if response.drag_started() {
+            editor.begin_drag(x, y, tolerance);
+        }
+        if response.dragged() {
+            editor.drag_to(x, y);
+        }
+        if response.clicked() {
+            editor.click(x, y, tolerance);
+        }
+    }
+    if response.drag_stopped() {
+        editor.end_drag();
+    }
+    if response.secondary_clicked()
+        || (response.hovered() && ui.input(|i| i.key_pressed(egui::Key::Escape)))
+    {
+        editor.cancel();
+    }
     let painter = ui.painter_at(rect);
-    let visuals = ui.visuals();
+    let visuals = ui.visuals().clone();
     painter.rect_filled(rect, 6.0, visuals.extreme_bg_color);
-    let Some((x0, x1, y0, y1)) = region_editor::bounds(drawing) else {
-        return;
-    };
-    let inner = rect.shrink(24.0);
-    let scale = (inner.width() as f64 / (x1 - x0).max(1.0e-9))
-        .min(inner.height() as f64 / (y1 - y0).max(1.0e-9));
-    let at = |(x, y): (f64, f64)| {
-        egui::pos2(
-            inner.center().x + ((x - (x0 + x1) / 2.0) * scale) as f32,
-            inner.center().y - ((y - (y0 + y1) / 2.0) * scale) as f32,
-        )
-    };
-    for edge in drawing.iter().flatten() {
+    if editor.grid > 0.0 && canvas.millimetres(1.0) * editor.grid >= 8.0 {
+        let (x0, y1) = canvas.to_world(f64::from(rect.left()), f64::from(rect.top()));
+        let (x1, y0) = canvas.to_world(f64::from(rect.right()), f64::from(rect.bottom()));
+        let step = editor.grid;
+        let (mut gx, count) = ((x0 / step).ceil() * step, 0);
+        let dots = visuals.weak_text_color().gamma_multiply(0.35);
+        let mut count: usize = count;
+        while gx <= x1 && count < 400 {
+            let mut gy = (y0 / step).ceil() * step;
+            while gy <= y1 {
+                painter.circle_filled(screen(gx, gy), 1.0, dots);
+                gy += step;
+            }
+            gx += step;
+            count += 1;
+        }
+    }
+    for edge in editor.drawing() {
         let color = match Role::of(&edge.patch) {
             Role::Inlet => visuals.selection.stroke.color,
             Role::Outlet => visuals.warn_fg_color,
             Role::Symmetry => visuals.weak_text_color(),
             Role::Wall => visuals.text_color(),
         };
-        let line: Vec<_> = edge.points.iter().copied().map(at).collect();
+        let line: Vec<_> = edge.points.iter().map(|&(x, y)| screen(x, y)).collect();
         painter.add(egui::Shape::line(
             line.clone(),
             egui::Stroke::new(2.0, color),
@@ -510,6 +598,31 @@ fn draw_region(ui: &mut Ui, drawing: &[Vec<DrawnEdge>]) {
                 color,
             );
         }
+    }
+    for (x, y, fixed) in editor.points() {
+        let c = screen(x, y);
+        if fixed {
+            painter.rect_filled(
+                egui::Rect::from_center_size(c, egui::vec2(7.0, 7.0)),
+                1.0,
+                visuals.selection.stroke.color,
+            );
+        } else {
+            painter.circle_filled(c, 3.5, visuals.selection.stroke.color);
+        }
+    }
+    // What the tool has been given, and a line from it to where the pointer would put the next.
+    if let (Some(&last), Some(p)) = (editor.picked().last(), response.hover_pos()) {
+        let (hx, hy) = editor.landing(world(p).0, world(p).1, tolerance);
+        painter.circle_stroke(
+            screen(last.0, last.1),
+            5.0,
+            egui::Stroke::new(1.5, visuals.warn_fg_color),
+        );
+        painter.line_segment(
+            [screen(last.0, last.1), screen(hx, hy)],
+            egui::Stroke::new(1.0, visuals.weak_text_color()),
+        );
     }
 }
 
