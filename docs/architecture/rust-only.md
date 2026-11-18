@@ -69,6 +69,11 @@ STL, updater, issue-report or translation code exists there).
   is refused. `vortia compare NUMBER BASELINE REPORT...` compares two sealed reports and refuses those whose
   definitions differ. Still to do for R6: the comparison in the app (it is CLI-only for now).
 
+- **R8, on 2026-11-18:** the app speaks English or Spanish (`rust/vortia-app/src/i18n.rs`: the
+  system language by default, a selector in Preferences, English as the key and anything the
+  table lacks left in English). Still to do for R8: the issue report, STL import and the
+  updater (which waits for the Rust releases).
+
 - **R7, started on 2026-11-18:** `vortia_post::gci` (the three-mesh index, checked against
   `benchmarks/common/gci.py`) and `rust/vortia-cli/tests/verification.rs`, which runs a Poiseuille
   channel from `vortia-cases` through the engine in the normal `cargo test`: profile within 3 %

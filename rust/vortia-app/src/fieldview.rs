@@ -2,6 +2,7 @@
 //! from a time directory as one number per cell (a vector gives its length), with the range of
 //! the numbers, and a colour scale to turn them into colours.
 
+use crate::i18n::tr;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, channel};
 
@@ -117,7 +118,7 @@ pub fn spawn(
         .name("vortia-field".into())
         .spawn(move || {
             let read = std::panic::catch_unwind(|| read(&case, &time, &name, cells))
-                .unwrap_or_else(|_| Err("The field could not be read.".to_owned()));
+                .unwrap_or_else(|_| Err(tr("The field could not be read.").to_owned()));
             let _ = tx.send(read);
             wake();
         });

@@ -1,5 +1,6 @@
 //! Home's "New": the form that starts a case (`vortia_cases`).
 
+use crate::i18n::tr;
 use std::path::{Path, PathBuf};
 
 use eframe::egui::{self, DragValue, Ui};
@@ -33,12 +34,12 @@ impl Kind {
 
     fn title(self) -> &'static str {
         match self {
-            Kind::Channel => "Channel",
-            Kind::Cavity => "Cavity",
-            Kind::Plate => "Flat plate",
-            Kind::PlanarNozzle => "Planar nozzle",
-            Kind::AxisymmetricNozzle => "Axisymmetric nozzle",
-            Kind::Sketch => "From sketch",
+            Kind::Channel => tr("Channel"),
+            Kind::Cavity => tr("Cavity"),
+            Kind::Plate => tr("Flat plate"),
+            Kind::PlanarNozzle => tr("Planar nozzle"),
+            Kind::AxisymmetricNozzle => tr("Axisymmetric nozzle"),
+            Kind::Sketch => tr("From sketch"),
         }
     }
 
@@ -176,7 +177,7 @@ impl NewCase {
     pub(super) fn create(&self) -> Result<PathBuf, String> {
         let dir = PathBuf::from(self.folder.trim());
         if self.folder.trim().is_empty() {
-            return Err("Say which folder the case goes in.".into());
+            return Err(tr("Say which folder the case goes in.").into());
         }
         vortia_cases::create(&dir, &self.geometry()?).map_err(|e| e.to_string())?;
         if self.kind == Kind::Sketch {
@@ -191,7 +192,7 @@ impl NewCase {
     pub(super) fn ui(&mut self, ui: &mut Ui, look: &Look, p: &Palette) -> Ask {
         let home = nodalia_theme::engineering::home_look(look);
         let mut ask = Ask::Nothing;
-        office::section(ui, &home, "New case", |ui| {
+        office::section(ui, &home, tr("New case"), |ui| {
             ui.horizontal(|ui| {
                 for kind in Kind::ALL {
                     if ui
@@ -223,10 +224,10 @@ impl NewCase {
                 let width = (ui.available_width() - 120.0).clamp(160.0, 420.0);
                 ui.add(
                     egui::TextEdit::singleline(&mut self.folder)
-                        .hint_text("Folder for the new case")
+                        .hint_text(tr("Folder for the new case"))
                         .desired_width(width),
                 );
-                if super::accent_button(ui, p, "Create case").clicked() {
+                if super::accent_button(ui, p, tr("Create case")).clicked() {
                     ask = Ask::Create;
                 }
             });
@@ -238,7 +239,7 @@ impl NewCase {
 impl NewCase {
     fn sketch_fields(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
-            ui.label("Start from");
+            ui.label(tr("Start from"));
             for template in Template::ALL {
                 if ui
                     .selectable_label(self.sketch.template == template, template.title())
@@ -250,9 +251,13 @@ impl NewCase {
             }
         });
         ui.horizontal(|ui| {
-            ui.label("Body");
-            ui.selectable_value(&mut self.sketch_axisymmetric, true, "Revolved (5° wedge)");
-            ui.selectable_value(&mut self.sketch_axisymmetric, false, "Planar slot");
+            ui.label(tr("Body"));
+            ui.selectable_value(
+                &mut self.sketch_axisymmetric,
+                true,
+                tr("Revolved (5° wedge)"),
+            );
+            ui.selectable_value(&mut self.sketch_axisymmetric, false, tr("Planar slot"));
         });
         ui.add_space(space::SM);
         draw(ui, &self.sketch.outline());
@@ -281,19 +286,19 @@ impl NewCase {
                         }
                     });
                 }
-                row(ui, "Blocks along the wall", |ui| {
+                row(ui, tr("Blocks along the wall"), |ui| {
                     ui.add(DragValue::new(&mut self.segments).speed(0.5).range(2..=400));
                 });
-                row(ui, "Cells across", |ui| {
+                row(ui, tr("Cells across"), |ui| {
                     count(ui, &mut self.sketched.radial_cells)
                 });
-                row(ui, "Inlet speed", |ui| {
+                row(ui, tr("Inlet speed"), |ui| {
                     value(ui, &mut self.sketched.inlet_speed, "m/s")
                 });
-                row(ui, "Inlet temperature", |ui| {
+                row(ui, tr("Inlet temperature"), |ui| {
                     value(ui, &mut self.sketched.inlet_temperature, "K")
                 });
-                row(ui, "Outlet pressure", |ui| {
+                row(ui, tr("Outlet pressure"), |ui| {
                     value(ui, &mut self.sketched.outlet_pressure, "Pa")
                 });
             });
@@ -371,12 +376,14 @@ fn channel_fields(ui: &mut Ui, c: &mut Channel) {
         .num_columns(2)
         .spacing([space::MD, space::SM])
         .show(ui, |ui| {
-            row(ui, "Length", |ui| value(ui, &mut c.length, "m"));
-            row(ui, "Height", |ui| value(ui, &mut c.height, "m"));
-            row(ui, "Cells along", |ui| count(ui, &mut c.cells_x));
-            row(ui, "Cells across", |ui| count(ui, &mut c.cells_y));
-            row(ui, "Inlet speed", |ui| value(ui, &mut c.speed, "m/s"));
-            row(ui, "Viscosity", |ui| value(ui, &mut c.viscosity, "m²/s"));
+            row(ui, tr("Length"), |ui| value(ui, &mut c.length, "m"));
+            row(ui, tr("Height"), |ui| value(ui, &mut c.height, "m"));
+            row(ui, tr("Cells along"), |ui| count(ui, &mut c.cells_x));
+            row(ui, tr("Cells across"), |ui| count(ui, &mut c.cells_y));
+            row(ui, tr("Inlet speed"), |ui| value(ui, &mut c.speed, "m/s"));
+            row(ui, tr("Viscosity"), |ui| {
+                value(ui, &mut c.viscosity, "m²/s")
+            });
         });
 }
 
@@ -385,17 +392,19 @@ fn cavity_fields(ui: &mut Ui, c: &mut Cavity) {
         .num_columns(2)
         .spacing([space::MD, space::SM])
         .show(ui, |ui| {
-            row(ui, "Side", |ui| value(ui, &mut c.side, "m"));
-            row(ui, "Cells along a side", |ui| count(ui, &mut c.cells));
-            row(ui, "Lid speed", |ui| value(ui, &mut c.lid_speed, "m/s"));
-            row(ui, "Viscosity", |ui| value(ui, &mut c.viscosity, "m²/s"));
+            row(ui, tr("Side"), |ui| value(ui, &mut c.side, "m"));
+            row(ui, tr("Cells along a side"), |ui| count(ui, &mut c.cells));
+            row(ui, tr("Lid speed"), |ui| value(ui, &mut c.lid_speed, "m/s"));
+            row(ui, tr("Viscosity"), |ui| {
+                value(ui, &mut c.viscosity, "m²/s")
+            });
         });
 }
 
 fn plate_fields(ui: &mut Ui, p: &mut Plate) {
     let mut turbulent = p.turbulent;
     if ui
-        .checkbox(&mut turbulent, "Turbulent (k-ω SST, wall functions)")
+        .checkbox(&mut turbulent, tr("Turbulent (k-ω SST, wall functions)"))
         .changed()
     {
         // The two plates have different sizes, so each starts from its own numbers.
@@ -409,23 +418,29 @@ fn plate_fields(ui: &mut Ui, p: &mut Plate) {
         .num_columns(2)
         .spacing([space::MD, space::SM])
         .show(ui, |ui| {
-            row(ui, "Plate length", |ui| value(ui, &mut p.length, "m"));
+            row(ui, tr("Plate length"), |ui| value(ui, &mut p.length, "m"));
             if !p.turbulent {
-                row(ui, "Slip wall ahead", |ui| value(ui, &mut p.upstream, "m"));
+                row(ui, tr("Slip wall ahead"), |ui| {
+                    value(ui, &mut p.upstream, "m")
+                });
             }
-            row(ui, "Height", |ui| value(ui, &mut p.height, "m"));
-            row(ui, "Cells along the plate", |ui| count(ui, &mut p.cells_x));
+            row(ui, tr("Height"), |ui| value(ui, &mut p.height, "m"));
+            row(ui, tr("Cells along the plate"), |ui| {
+                count(ui, &mut p.cells_x)
+            });
             if !p.turbulent {
-                row(ui, "Cells ahead", |ui| count(ui, &mut p.cells_up));
+                row(ui, tr("Cells ahead"), |ui| count(ui, &mut p.cells_up));
             }
-            row(ui, "Cells across", |ui| count(ui, &mut p.cells_y));
-            row(ui, "Stream speed", |ui| value(ui, &mut p.speed, "m/s"));
-            row(ui, "Viscosity", |ui| value(ui, &mut p.viscosity, "m²/s"));
+            row(ui, tr("Cells across"), |ui| count(ui, &mut p.cells_y));
+            row(ui, tr("Stream speed"), |ui| value(ui, &mut p.speed, "m/s"));
+            row(ui, tr("Viscosity"), |ui| {
+                value(ui, &mut p.viscosity, "m²/s")
+            });
             if p.turbulent {
-                row(ui, "Turbulence intensity", |ui| {
+                row(ui, tr("Turbulence intensity"), |ui| {
                     value(ui, &mut p.intensity, "")
                 });
-                row(ui, "Mixing length", |ui| {
+                row(ui, tr("Mixing length"), |ui| {
                     value(ui, &mut p.length_scale, "m")
                 });
             }
@@ -437,29 +452,31 @@ fn nozzle_fields(ui: &mut Ui, n: &mut Nozzle) {
         .num_columns(2)
         .spacing([space::MD, space::SM])
         .show(ui, |ui| {
-            row(ui, "Inlet diameter", |ui| {
+            row(ui, tr("Inlet diameter"), |ui| {
                 value(ui, &mut n.inlet_diameter, "mm")
             });
-            row(ui, "Throat diameter", |ui| {
+            row(ui, tr("Throat diameter"), |ui| {
                 value(ui, &mut n.throat_diameter, "mm")
             });
-            row(ui, "Outlet diameter", |ui| {
+            row(ui, tr("Outlet diameter"), |ui| {
                 value(ui, &mut n.outlet_diameter, "mm")
             });
-            row(ui, "Converging length", |ui| {
+            row(ui, tr("Converging length"), |ui| {
                 value(ui, &mut n.converging_length, "mm")
             });
-            row(ui, "Diverging length", |ui| {
+            row(ui, tr("Diverging length"), |ui| {
                 value(ui, &mut n.diverging_length, "mm")
             });
-            row(ui, "Inlet speed", |ui| value(ui, &mut n.inlet_speed, "m/s"));
-            row(ui, "Inlet temperature", |ui| {
+            row(ui, tr("Inlet speed"), |ui| {
+                value(ui, &mut n.inlet_speed, "m/s")
+            });
+            row(ui, tr("Inlet temperature"), |ui| {
                 value(ui, &mut n.inlet_temperature, "K")
             });
-            row(ui, "Outlet pressure", |ui| {
+            row(ui, tr("Outlet pressure"), |ui| {
                 value(ui, &mut n.outlet_pressure, "Pa")
             });
-            row(ui, "Cells across", |ui| count(ui, &mut n.radial_cells));
+            row(ui, tr("Cells across"), |ui| count(ui, &mut n.radial_cells));
         });
 }
 

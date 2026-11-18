@@ -8,6 +8,12 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 ## [Unreleased]
 
 ### Añadido
+- **Interfaz en español e inglés (R8):** la app Rust habla el idioma del sistema y Preferencias
+  tiene un selector (sistema, English, Español) que cambia los textos al momento. Los textos están
+  en `vortia-app/src/i18n.rs` (el inglés es la clave y lo que falta se queda en inglés); un test
+  comprueba que cada línea de la tabla sigue existiendo en el código. Los mensajes del motor y
+  de los ficheros siguen en inglés, y la barra de menús que dibuja el escritorio (menú global)
+  conserva el idioma con el que arrancó hasta el siguiente inicio.
 - **Placa plana turbulenta:** `vortia new plate-turbulent` y la casilla «Turbulent» de la placa en Home
   escriben el caso de `benchmarks/turbulent-flat-plate-sst` (k-ω SST con funciones de pared,
   Re = 10⁷). El motor Rust lo resuelve en `cargo test` y su coeficiente de fricción queda dentro de

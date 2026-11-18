@@ -1,6 +1,7 @@
 //! The window: Nodalia islands on the window surface, a header with the hamburger menu, and
 //! two screens, the welcome and the case.
 
+use crate::i18n::{Choice, tr, trf};
 use std::collections::{HashSet, VecDeque};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -325,22 +326,22 @@ fn global_menus() -> Vec<Menu> {
         Menu {
             title: "Vortia".into(),
             entries: vec![
-                Entry::action("About Vortia", "about"),
+                Entry::action(tr("About Vortia"), "about"),
                 Entry::Separator,
-                Entry::action("Preferences", "preferences"),
-                Entry::action("Keyboard shortcuts", "shortcuts"),
+                Entry::action(tr("Preferences"), "preferences"),
+                Entry::action(tr("Keyboard shortcuts"), "shortcuts"),
                 Entry::Separator,
-                Entry::action("Quit", "quit"),
+                Entry::action(tr("Quit"), "quit"),
             ],
         },
         Menu {
-            title: "Case".into(),
+            title: tr("Case").into(),
             entries: vec![
-                Entry::action("Run", "run"),
-                Entry::action("Pause or resume", "pause"),
-                Entry::action("Stop", "stop"),
+                Entry::action(tr("Run"), "run"),
+                Entry::action(tr("Pause or resume"), "pause"),
+                Entry::action(tr("Stop"), "stop"),
                 Entry::Separator,
-                Entry::action("Close case", "close"),
+                Entry::action(tr("Close case"), "close"),
             ],
         },
     ]
@@ -354,6 +355,8 @@ impl VortiaApp {
             .as_deref()
             .map(Prefs::load_from)
             .unwrap_or_default();
+        // Before the menus are built, and only here: a test must never change the language.
+        crate::i18n::apply(prefs.lang);
         let mut app = Self::with_prefs(prefs, prefs_file);
         #[cfg(target_os = "linux")]
         {
@@ -396,13 +399,13 @@ impl VortiaApp {
     /// Opens a case folder: it has to hold `system/controlDict`.
     pub fn open_case(&mut self, dir: &Path) -> Result<(), String> {
         if matches!(&self.screen, Screen::Case(case) if case.running()) {
-            return Err(
-                "Stop the current run and wait for it to finish before opening another case."
-                    .into(),
-            );
+            return Err(tr(tr(
+                "Stop the current run and wait for it to finish before opening another case.",
+            ))
+            .into());
         }
         if !dir.is_dir() {
-            return Err(format!("'{}' is not a folder.", dir.display()));
+            return Err(trf("'{}' is not a folder.", &[&dir.display()]));
         }
         if !dir.join("system").join("controlDict").is_file() {
             return Err(format!(
@@ -650,12 +653,13 @@ impl VortiaApp {
             return;
         };
         let title = match dialog {
-            Dialog::Preferences => "Preferences",
-            Dialog::Shortcuts => "Keyboard shortcuts",
-            Dialog::About => "About Vortia",
+            Dialog::Preferences => tr("Preferences"),
+            Dialog::Shortcuts => tr("Keyboard shortcuts"),
+            Dialog::About => tr("About Vortia"),
         };
         let mut close = false;
         let before = self.prefs.theme;
+        let lang_before = self.prefs.lang;
         egui::Modal::new(Id::unique("dialog")).show(ctx, |ui| {
             ui.set_width(component_dialog_width());
             ui.horizontal(|ui| {
@@ -667,9 +671,14 @@ impl VortiaApp {
             ui.add_space(space::MD);
             match dialog {
                 Dialog::Preferences => {
-                    ui.label(RichText::new("Appearance").color(muted(p)));
+                    ui.label(RichText::new(tr("Appearance")).color(muted(p)));
                     for theme in Theme::ALL {
                         ui.selectable_value(&mut self.prefs.theme, theme, theme_label(theme));
+                    }
+                    ui.add_space(space::MD);
+                    ui.label(RichText::new(tr("Language")).color(muted(p)));
+                    for lang in Choice::ALL {
+                        ui.selectable_value(&mut self.prefs.lang, lang, lang.label());
                     }
                 }
                 Dialog::Shortcuts => {
@@ -679,15 +688,17 @@ impl VortiaApp {
                         .show(ui, |ui| {
                             for (keys, what) in SHORTCUTS {
                                 ui.label(RichText::new(*keys).monospace());
-                                ui.label(*what);
+                                ui.label(tr(what));
                                 ui.end_row();
                             }
                         });
                 }
                 Dialog::About => {
-                    ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
+                    ui.label(trf("Version {}", &[&env!("CARGO_PKG_VERSION")]));
                     ui.add_space(space::SM);
-                    ui.label("A compressible-flow solver and its desktop app, written in Rust.");
+                    ui.label(tr(
+                        "A compressible-flow solver and its desktop app, written in Rust.",
+                    ));
                     ui.add_space(space::SM);
                     ui.label(RichText::new("GPL-3.0-or-later").color(muted(p)));
                 }
@@ -698,6 +709,10 @@ impl VortiaApp {
         }
         if self.prefs.theme != before {
             self.apply_theme(ctx);
+            self.save_prefs();
+        }
+        if self.prefs.lang != lang_before {
+            crate::i18n::apply(self.prefs.lang);
             self.save_prefs();
         }
     }
@@ -718,22 +733,22 @@ fn component_dialog_width() -> f32 {
 
 fn theme_label(theme: Theme) -> &'static str {
     match theme {
-        Theme::System => "Follow the system",
-        Theme::Light => "Light",
-        Theme::Dark => "Dark",
+        Theme::System => tr("Follow the system"),
+        Theme::Light => tr("Light"),
+        Theme::Dark => tr("Dark"),
     }
 }
 
 /// What a convergence status says to the user, and in which tone.
 pub fn status_label(status: &str) -> (&'static str, Tone) {
     match status {
-        "warming" => ("Warming up", Tone::Info),
-        "checking" => ("Checking", Tone::Info),
-        "stabilizing" => ("Settling", Tone::Warning),
-        "converged" => ("Converged", Tone::Success),
-        "limit" => ("Time limit reached", Tone::Warning),
-        "invalid" => ("The solution left its physical range", Tone::Danger),
-        _ => ("Unknown", Tone::Info),
+        "warming" => (tr("Warming up"), Tone::Info),
+        "checking" => (tr("Checking"), Tone::Info),
+        "stabilizing" => (tr("Settling"), Tone::Warning),
+        "converged" => (tr("Converged"), Tone::Success),
+        "limit" => (tr("Time limit reached"), Tone::Warning),
+        "invalid" => (tr("The solution left its physical range"), Tone::Danger),
+        _ => (tr("Unknown"), Tone::Info),
     }
 }
 
@@ -772,8 +787,10 @@ fn convergence_card(ui: &mut egui::Ui, p: &Palette, report: Option<&Convergence>
             ui.set_width(ui.available_width());
             let Some(r) = report else {
                 ui.label(
-                    RichText::new("Convergence appears once the solver has checked the run.")
-                        .color(muted(p)),
+                    RichText::new(tr(tr(
+                        "Convergence appears once the solver has checked the run.",
+                    )))
+                    .color(muted(p)),
                 );
                 return;
             };
@@ -807,10 +824,10 @@ fn convergence_card(ui: &mut egui::Ui, p: &Palette, report: Option<&Convergence>
                 .spacing([space::XL, space::XS])
                 .show(ui, |ui| {
                     for (name, value, limit) in [
-                        ("Mass balance", r.global_mass, r.mass_tolerance),
-                        ("Local mass", r.local_mass, r.mass_tolerance),
-                        ("Equations", r.equation_error, r.equation_tolerance),
-                        ("Field change", r.field_change, r.field_tolerance),
+                        (tr("Mass balance"), r.global_mass, r.mass_tolerance),
+                        (tr("Local mass"), r.local_mass, r.mass_tolerance),
+                        (tr("Equations"), r.equation_error, r.equation_tolerance),
+                        (tr("Field change"), r.field_change, r.field_tolerance),
                     ] {
                         ui.label(RichText::new(name).color(muted(p)));
                         ui.label(RichText::new(scientific(value)).monospace());
@@ -872,8 +889,8 @@ fn file_tab(ui: &mut egui::Ui, p: &Palette, case: &mut CaseView, file: File) {
             ui.add_space(space::MD);
             ui.add_enabled_ui(!running && dirty, |ui| {
                 ui.horizontal(|ui| {
-                    save = accent_button(ui, p, "Save").clicked();
-                    revert = ui.button("Revert").clicked();
+                    save = accent_button(ui, p, tr("Save")).clicked();
+                    revert = ui.button(tr("Revert")).clicked();
                 });
             });
             if running {
@@ -886,7 +903,7 @@ fn file_tab(ui: &mut egui::Ui, p: &Palette, case: &mut CaseView, file: File) {
                 );
             } else if file != File::Solution {
                 ui.label(
-                    RichText::new("The engine checks these entries when a run starts.")
+                    RichText::new(tr("The engine checks these entries when a run starts."))
                         .size(font_size::SMALL)
                         .color(muted(p)),
                 );
@@ -906,7 +923,10 @@ fn file_tab(ui: &mut egui::Ui, p: &Palette, case: &mut CaseView, file: File) {
         edit.message = None;
     } else if save && let Some(Ok(groups)) = &edit.groups {
         edit.message = Some(match numerics::save(&case.dir, file, groups) {
-            Ok(()) => (true, format!("Saved to {}/{}.", file.folder(), file.name())),
+            Ok(()) => (
+                true,
+                trf("Saved to {}/{}.", &[&file.folder(), &file.name()]),
+            ),
             Err(message) => (false, message),
         });
         if matches!(edit.message, Some((true, _))) {
@@ -923,13 +943,13 @@ fn conditions_tab(ui: &mut egui::Ui, p: &Palette, case: &mut CaseView) {
     let Some(loaded) = case.conditions.as_mut() else {
         ui.horizontal(|ui| {
             ui.spinner();
-            ui.label("Reading the field…");
+            ui.label(tr("Reading the field…"));
         });
         return;
     };
     let mut pick: Option<String> = None;
     ui.horizontal(|ui| {
-        ui.label(RichText::new("Field").color(muted(p)));
+        ui.label(RichText::new(tr("Field")).color(muted(p)));
         let shown = loaded
             .current
             .as_ref()
@@ -945,7 +965,7 @@ fn conditions_tab(ui: &mut egui::Ui, p: &Palette, case: &mut CaseView) {
                 }
             });
         ui.label(
-            RichText::new(format!("from the {time} folder"))
+            RichText::new(trf("from the {} folder", &[&time]))
                 .size(font_size::SMALL)
                 .color(muted(p)),
         );
@@ -969,7 +989,7 @@ fn conditions_tab(ui: &mut egui::Ui, p: &Palette, case: &mut CaseView) {
                 .max_height((ui.available_height() - 90.0).max(120.0))
                 .show(ui, |ui| {
                     ui.add_enabled_ui(!running, |ui| {
-                        condition_row(ui, p, "internalField", &mut field.internal, "Inside");
+                        condition_row(ui, p, "internalField", &mut field.internal, tr("Inside"));
                         for patch in &mut field.patches {
                             ui.add_space(space::MD);
                             ui.label(RichText::new(&patch.patch).strong());
@@ -1001,13 +1021,13 @@ fn conditions_tab(ui: &mut egui::Ui, p: &Palette, case: &mut CaseView) {
             ui.add_space(space::MD);
             ui.add_enabled_ui(!running && dirty, |ui| {
                 ui.horizontal(|ui| {
-                    save = accent_button(ui, p, "Save").clicked();
-                    revert = ui.button("Revert").clicked();
+                    save = accent_button(ui, p, tr("Save")).clicked();
+                    revert = ui.button(tr("Revert")).clicked();
                 });
             });
             if running {
                 ui.label(
-                    RichText::new("The conditions cannot change while the case runs.")
+                    RichText::new(tr("The conditions cannot change while the case runs."))
                         .color(muted(p)),
                 );
             }
@@ -1031,7 +1051,7 @@ fn conditions_tab(ui: &mut egui::Ui, p: &Palette, case: &mut CaseView) {
     } else if save && let Some(Ok(field)) = case.conditions.as_ref().map(|l| &l.current) {
         let result = conditions::save(&case.dir, &time, field);
         case.conditions_message = Some(match result {
-            Ok(()) => (true, format!("Saved to {time}/{}.", field.field)),
+            Ok(()) => (true, trf("Saved to {}/{}.", &[&time, &field.field])),
             Err(message) => (false, message),
         });
         if matches!(case.conditions_message, Some((true, _))) {
@@ -1124,7 +1144,7 @@ fn settings_tab(ui: &mut egui::Ui, p: &Palette, case: &mut CaseView) {
     let Some(form) = case.form.as_mut() else {
         ui.horizontal(|ui| {
             ui.spinner();
-            ui.label("Reading the case…");
+            ui.label(tr("Reading the case…"));
         });
         return;
     };
@@ -1134,12 +1154,12 @@ fn settings_tab(ui: &mut egui::Ui, p: &Palette, case: &mut CaseView) {
             .spacing([space::XL, space::MD])
             .show(ui, |ui| {
                 for (label, unit, text) in [
-                    ("Start time", "s", &mut form.start_time),
-                    ("End time", "s", &mut form.end_time),
-                    ("Time step", "s", &mut form.delta_t),
+                    (tr("Start time"), "s", &mut form.start_time),
+                    (tr("End time"), "s", &mut form.end_time),
+                    (tr("Time step"), "s", &mut form.delta_t),
                     (
-                        "Write interval",
-                        "steps or s, as the case writes",
+                        tr("Write interval"),
+                        tr("steps or s, as the case writes"),
                         &mut form.write_interval,
                     ),
                 ] {
@@ -1151,13 +1171,15 @@ fn settings_tab(ui: &mut egui::Ui, p: &Palette, case: &mut CaseView) {
             });
         ui.add_space(space::LG);
         ui.horizontal(|ui| {
-            save = accent_button(ui, p, "Save").clicked();
-            revert = ui.button("Revert").clicked();
+            save = accent_button(ui, p, tr("Save")).clicked();
+            revert = ui.button(tr("Revert")).clicked();
         });
     });
     if running {
         ui.add_space(space::SM);
-        ui.label(RichText::new("The settings cannot change while the case runs.").color(muted(p)));
+        ui.label(
+            RichText::new(tr("The settings cannot change while the case runs.")).color(muted(p)),
+        );
     }
     if let Some((ok, message)) = &case.form_message {
         ui.add_space(space::SM);
@@ -1176,12 +1198,12 @@ fn settings_tab(ui: &mut egui::Ui, p: &Palette, case: &mut CaseView) {
             .form
             .as_ref()
             .map(SettingsForm::parse)
-            .unwrap_or_else(|| Err("Nothing to save yet.".to_owned()))
+            .unwrap_or_else(|| Err(tr("Nothing to save yet.").to_owned()))
             .and_then(|settings| controldict::save(&case.dir, &settings));
         case.form_message = Some(match result {
             Ok(()) => {
                 case.summary_stale = true;
-                (true, "Saved to system/controlDict.".to_owned())
+                (true, tr("Saved to system/controlDict.").to_owned())
             }
             Err(message) => (false, message),
         });
@@ -1199,7 +1221,7 @@ fn mesh_tab(
         None => {
             ui.horizontal(|ui| {
                 ui.spinner();
-                ui.label("Reading the mesh…");
+                ui.label(tr("Reading the mesh…"));
             });
         }
         Some(Err(message)) => {

@@ -2,6 +2,7 @@
 //! start from, its dimensions to edit, and the wall they make, kept solved. The state is plain data
 //! so everything but the drawing is tested without a window.
 
+use crate::i18n::{tr, trf};
 use std::path::Path;
 
 use vortia_sketch::{Constraint, Entity, Sketch, SketchError, templates};
@@ -19,9 +20,9 @@ impl Template {
 
     pub fn title(self) -> &'static str {
         match self {
-            Template::Duct => "Straight duct",
-            Template::Nozzle => "Conical nozzle",
-            Template::RoundedNozzle => "Rounded throat",
+            Template::Duct => tr("Straight duct"),
+            Template::Nozzle => tr("Conical nozzle"),
+            Template::RoundedNozzle => tr("Rounded throat"),
         }
     }
 
@@ -93,24 +94,33 @@ impl SketchEditor {
             .iter()
             .enumerate()
             .filter_map(|(i, c)| match *c {
-                Constraint::Distance { a, b, value } => {
-                    Some(item(i, format!("Distance, point {a} to {b}"), "mm", value))
-                }
-                Constraint::DeltaX { a, b, value } => Some(item(
+                Constraint::Distance { a, b, value } => Some(item(
                     i,
-                    format!("Length along, point {a} to {b}"),
+                    trf("Distance, point {} to {}", &[&a, &b]),
                     "mm",
                     value,
                 )),
-                Constraint::DeltaY { a, b, value } => {
-                    Some(item(i, format!("Height, point {a} to {b}"), "mm", value))
-                }
+                Constraint::DeltaX { a, b, value } => Some(item(
+                    i,
+                    trf("Length along, point {} to {}", &[&a, &b]),
+                    "mm",
+                    value,
+                )),
+                Constraint::DeltaY { a, b, value } => Some(item(
+                    i,
+                    trf("Height, point {} to {}", &[&a, &b]),
+                    "mm",
+                    value,
+                )),
                 Constraint::Radius { arc, value } => {
-                    Some(item(i, format!("Radius of arc {arc}"), "mm", value))
+                    Some(item(i, trf("Radius of arc {}", &[&arc]), "mm", value))
                 }
-                Constraint::Angle { a, b, degrees } => {
-                    Some(item(i, format!("Angle, point {a} to {b}"), "°", degrees))
-                }
+                Constraint::Angle { a, b, degrees } => Some(item(
+                    i,
+                    trf("Angle, point {} to {}", &[&a, &b]),
+                    "°",
+                    degrees,
+                )),
                 Constraint::Horizontal { .. } | Constraint::Vertical { .. } => None,
             })
             .collect()

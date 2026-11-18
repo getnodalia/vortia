@@ -2,6 +2,7 @@
 //! place: only the numbers of an entry change, in the field's own file, and everything else in
 //! the file stays as it was.
 
+use crate::i18n::tr;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, channel};
 
@@ -68,7 +69,7 @@ pub struct Loaded {
 /// The values of an entry as text. A list of per-cell values is not written out.
 fn render(values: &[Value]) -> (String, bool) {
     if matches!(values.first(), Some(Value::Word(w)) if w == "nonuniform") {
-        return ("nonuniform (a value for every cell)".to_owned(), false);
+        return (tr("nonuniform (a value for every cell)").to_owned(), false);
     }
     let mut text = String::new();
     for (i, v) in values.iter().enumerate() {
@@ -132,7 +133,7 @@ fn list(dir: &Path) -> Vec<String> {
 
 pub fn read(case: &Path, time: &str, field: &str) -> Result<FieldConditions, String> {
     if !valid_name(field) || !valid_name(time) {
-        return Err("That is not a field of the case.".to_owned());
+        return Err(tr("That is not a field of the case.").to_owned());
     }
     let path = case.join(time).join(field);
     let (_, dict) = FoamFile::open(&path)
@@ -197,7 +198,7 @@ pub fn spawn(
             };
             let loaded = std::panic::catch_unwind(load).unwrap_or_else(|_| Loaded {
                 fields: Vec::new(),
-                current: Err("The field could not be read.".to_owned()),
+                current: Err(tr("The field could not be read.").to_owned()),
             });
             let _ = tx.send(loaded);
             wake();
@@ -206,7 +207,7 @@ pub fn spawn(
         let (tx, rx) = channel();
         let _ = tx.send(Loaded {
             fields: Vec::new(),
-            current: Err("The field could not be read.".to_owned()),
+            current: Err(tr("The field could not be read.").to_owned()),
         });
         return rx;
     }
@@ -503,7 +504,7 @@ pub fn apply(text: &str, conditions: &FieldConditions) -> Result<String, String>
 /// Writes the edits of `conditions` into the field's file in the `time` folder, atomically.
 pub fn save(case: &Path, time: &str, conditions: &FieldConditions) -> Result<(), String> {
     if !valid_name(time) || !valid_name(&conditions.field) {
-        return Err("That is not a field of the case.".to_owned());
+        return Err(tr("That is not a field of the case.").to_owned());
     }
     let path = case.join(time).join(&conditions.field);
     let text = std::fs::read_to_string(&path)

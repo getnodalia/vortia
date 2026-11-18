@@ -1,6 +1,7 @@
 //! The mesh viewer: the surface of a case drawn by egui, turned with the mouse. The geometry is
 //! in [`crate::surface`]; this draws it, on the CPU, so it runs wherever egui does.
 
+use crate::i18n::{tr, trf};
 use eframe::egui::{
     self, Color32, CornerRadius, Mesh, PointerButton, Pos2, Sense, Stroke, Vec2, vec2,
 };
@@ -531,13 +532,13 @@ impl Viewer {
 
     /// The choice of field and time, and the colour scale of the field read.
     fn field_choices(&mut self, ui: &mut egui::Ui, muted: Color32, source: &Source) {
-        ui.label(egui::RichText::new("Colour by").color(muted));
+        ui.label(egui::RichText::new(tr("Colour by")).color(muted));
         let current = self.field.clone();
         egui::ComboBox::from_id_salt("viewer-field")
             .width(LEGEND - 12.0)
-            .selected_text(current.as_deref().unwrap_or("Patches"))
+            .selected_text(current.as_deref().unwrap_or(tr("Patches")))
             .show_ui(ui, |ui| {
-                ui.selectable_value(&mut self.field, None, "Patches");
+                ui.selectable_value(&mut self.field, None, tr("Patches"));
                 // A file with a space in its name (a copy of another) is not a field.
                 for name in source.fields.iter().filter(|n| !n.contains(' ')) {
                     ui.selectable_value(&mut self.field, Some(name.clone()), name);
@@ -552,7 +553,7 @@ impl Viewer {
             ui.add_space(4.0);
             egui::ComboBox::from_id_salt("viewer-time")
                 .width(LEGEND - 12.0)
-                .selected_text(format!("Time {shown}"))
+                .selected_text(trf("Time {}", &[&shown]))
                 .show_ui(ui, |ui| {
                     for time in source.times.iter().rev() {
                         ui.selectable_value(&mut self.time, Some(time.clone()), time);
@@ -563,7 +564,7 @@ impl Viewer {
                 Some(Ok(values)) => {
                     scale_bar(ui, values, muted);
                     ui.add_space(6.0);
-                    ui.checkbox(&mut self.slice, "Slice");
+                    ui.checkbox(&mut self.slice, tr("Slice"));
                     if self.slice {
                         ui.horizontal(|ui| {
                             for (axis, name) in ["X", "Y", "Z"].into_iter().enumerate() {
@@ -590,15 +591,15 @@ impl Viewer {
                             None => {
                                 ui.horizontal(|ui| {
                                     ui.spinner();
-                                    ui.label(egui::RichText::new("Cutting…").color(muted));
+                                    ui.label(egui::RichText::new(tr("Cutting…")).color(muted));
                                 });
                             }
                         }
                     }
                     if values.kind == "vector" {
                         ui.add_space(6.0);
-                        ui.checkbox(&mut self.lines, "Streamlines");
-                        ui.checkbox(&mut self.arrows, "Arrows");
+                        ui.checkbox(&mut self.lines, tr("Streamlines"));
+                        ui.checkbox(&mut self.arrows, tr("Arrows"));
                         match &self.flow {
                             Some(Err(message)) => {
                                 ui.label(egui::RichText::new(message).size(11.0).color(muted));
@@ -606,7 +607,7 @@ impl Viewer {
                             None if self.lines || self.arrows => {
                                 ui.horizontal(|ui| {
                                     ui.spinner();
-                                    ui.label(egui::RichText::new("Following…").color(muted));
+                                    ui.label(egui::RichText::new(tr("Following…")).color(muted));
                                 });
                             }
                             _ => {}
@@ -619,7 +620,7 @@ impl Viewer {
                 None => {
                     ui.horizontal(|ui| {
                         ui.spinner();
-                        ui.label(egui::RichText::new("Reading…").color(muted));
+                        ui.label(egui::RichText::new(tr("Reading…")).color(muted));
                     });
                 }
             }
@@ -630,10 +631,10 @@ impl Viewer {
     fn legend(&mut self, ui: &mut egui::Ui, muted: Color32, source: &Source) {
         self.field_choices(ui, muted, source);
         if self.surface.face_count() <= MAX_OUTLINED_FACES {
-            ui.checkbox(&mut self.outlines, "Cell edges");
+            ui.checkbox(&mut self.outlines, tr("Cell edges"));
             ui.add_space(6.0);
         }
-        ui.label(egui::RichText::new("Patches").color(muted));
+        ui.label(egui::RichText::new(tr("Patches")).color(muted));
         egui::ScrollArea::vertical()
             .id_salt("viewer-patches")
             .auto_shrink([false, false])
@@ -670,7 +671,7 @@ impl Viewer {
 fn scale_bar(ui: &mut egui::Ui, values: &CellValues, muted: Color32) {
     let Some((low, high)) = values.range else {
         ui.label(
-            egui::RichText::new("No finite values.")
+            egui::RichText::new(tr("No finite values."))
                 .size(11.0)
                 .color(muted),
         );
