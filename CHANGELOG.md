@@ -8,6 +8,18 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 ## [Unreleased]
 
 ### Añadido
+- **Chorro a la atmósfera (R4):** `vortia_cases::Jet`, «Jet into the atmosphere» en Home y
+  `vortia new jet DIR` escriben el caso de `examples/nozzle-practice-2026` a partir de sus números
+  (orificio de 0,1 mm en una pared, cuña de 5°, atmósfera abierta con presión ambiente; `rhoSimpleFoam`,
+  k-ω SST, `totalPressure`, `pressureInletVelocity` y `pressureInletOutletVelocity`). Un test lo
+  resuelve en `cargo test`: velocidad en el orificio a menos del 5 % de la isentrópica (169 m/s,
+  Mach 0,50) y lo que entra por el orificio sale por la atmósfera (1e-3).
+- **Media sección de la tobera con plano de simetría (R4):** el motor compresible acepta
+  `symmetry` y `symmetryPlane` también en T, k, ω, νt y αt, y el flujo de `HbyA` en un plano de
+  simetría o deslizante ya no lleva componente normal (sin ello la media sección divergía). La
+  tobera plana de Home y de `vortia new nozzle DIR half=1` puede ser la mitad superior con el
+  plano en el eje; un test la compara con la ranura completa (mismo caudal de salida ×2 y mismos
+  U, T y p en un punto, a 1e-3) y comprueba que por el plano no pasa nada.
 - **Informe de problemas y vista de STL (R8):** «Informar de un problema» (menú, buscador de
   órdenes) abre el formulario de incidencias de GitHub con tu texto, la versión, el sistema y el
   solver; nunca una ruta ni el nombre del caso, y un texto demasiado largo para la dirección se

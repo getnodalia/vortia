@@ -379,7 +379,7 @@ impl Thermo {
             })?;
             let kind = match pf.kind.as_str() {
                 "fixedValue" => TKind::Fixed,
-                "zeroGradient" | "wedge" => TKind::ZeroGradient,
+                "zeroGradient" | "wedge" | "symmetry" | "symmetryPlane" => TKind::ZeroGradient,
                 "empty" => TKind::Empty,
                 "totalTemperature" | "inletOutletTotalTemperature" => {
                     for (key, default) in [("U", "U"), ("phi", "phi"), ("psi", "thermo:psi")] {
@@ -427,6 +427,7 @@ impl Thermo {
             };
             if (patch.kind == PatchKind::Empty) != (kind == TKind::Empty)
                 || (patch.kind == PatchKind::Wedge) != (pf.kind == "wedge")
+                || is_symmetry_condition(&pf.kind) != is_symmetry_patch(&patch.kind)
             {
                 return Err(SolverError::Setup(format!(
                     "T: patch '{}' is {} but its condition is '{}'",
@@ -713,6 +714,16 @@ impl Thermo {
         out.store_patch_values(mesh, &["totalTemperature", "inletOutlet"], &self.t_b);
         out
     }
+}
+
+/// A condition that mirrors the field across its patch: it only fits a symmetry patch.
+pub(crate) fn is_symmetry_condition(kind: &str) -> bool {
+    matches!(kind, "symmetry" | "symmetryPlane")
+}
+
+/// A patch of the mesh that is a symmetry plane.
+pub(crate) fn is_symmetry_patch(kind: &PatchKind) -> bool {
+    matches!(kind, &PatchKind::Symmetry | &PatchKind::SymmetryPlane)
 }
 
 #[cfg(test)]

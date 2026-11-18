@@ -5,10 +5,8 @@
 //! have the wall profile of a smoothstep from the inlet to the throat and on
 //! to the outlet.
 //!
-//! The Qt application's planar mesh is the half section with a symmetry plane
-//! on the axis. The engine's compressible solver has no symmetry condition
-//! for the temperature and turbulence fields yet, so the planar mesh here is
-//! the whole slot, which it does run.
+//! The planar mesh is the whole slot by default, or, with [`Nozzle::half`], the half
+//! section above the axis with a `symmetryPlane` on it, as the Qt application's is.
 
 use std::fmt::Write as _;
 
@@ -62,6 +60,9 @@ pub struct Nozzle {
     pub inlet_temperature: f64,
     /// Static pressure at the outlet, in Pa.
     pub outlet_pressure: f64,
+    /// The planar mesh is the half section above the axis, with a symmetry plane on it (the
+    /// radial cells then count across the half). Planar only.
+    pub half: bool,
     /// A wall profile drawn in a sketch, as `(x, radius)` stations in millimetres, instead of the
     /// smoothstep nozzle the dimensions above describe.
     pub profile: Option<Vec<(f64, f64)>>,
@@ -87,6 +88,7 @@ impl Nozzle {
             inlet_speed: 20.0,
             inlet_temperature: 300.0,
             outlet_pressure: 101_325.0,
+            half: false,
             profile: None,
         }
     }
@@ -135,6 +137,7 @@ impl Nozzle {
             "diverging-length" => self.diverging_length = value,
             "radial-grading" => self.radial_grading = value,
             "wedge-angle" => self.wedge_angle = value,
+            "half" => self.half = value != 0.0,
             "thickness" => self.thickness = value,
             "inlet-speed" => self.inlet_speed = value,
             "inlet-temperature" => self.inlet_temperature = value,
@@ -245,7 +248,12 @@ impl Nozzle {
         size("the inlet speed", self.inlet_speed, 1.0e5)?;
         size("the inlet temperature", self.inlet_temperature, 1.0e5)?;
         size("the outlet pressure", self.outlet_pressure, 1.0e10)?;
-        let cells = segments * self.axial_cells_per_segment as u64 * self.radial_cells as u64;
+        let across = if self.half && self.kind == NozzleKind::Planar {
+            self.radial_cells / 2
+        } else {
+            self.radial_cells
+        };
+        let cells = segments * self.axial_cells_per_segment as u64 * across as u64;
         if cells > MAX_CELLS {
             return Err(CaseError::Invalid(format!(
                 "{cells} cells is more than the {MAX_CELLS} a new case may have"
@@ -270,7 +278,7 @@ impl Nozzle {
         for &(x, r) in &stations {
             match self.kind {
                 NozzleKind::Planar => {
-                    let (t, m) = (self.thickness, -r);
+                    let (t, m) = (self.thickness, if self.half { 0.0 } else { -r });
                     let _ = writeln!(
                         s,
                         "    ({x} {m} 0)\n    ({x} {r} 0)\n    ({x} {m} {t})\n    ({x} {r} {t})"
@@ -287,16 +295,24 @@ impl Nozzle {
             let (a, b) = (per * i, per * (i + 1));
             match self.kind {
                 NozzleKind::Planar => {
+                    // The half is the upper half of the whole slot, cell for cell.
+                    let (across, grade) = if self.half {
+                        (rad / 2, format!("{}", 1.0 / grading))
+                    } else {
+                        (
+                            rad,
+                            format!("((0.5 0.5 {grading}) (0.5 0.5 {}))", 1.0 / grading),
+                        )
+                    };
                     let _ = writeln!(
                         s,
-                        "    hex ({a} {b} {} {} {} {} {} {}) ({ax} {rad} 1) simpleGrading (1 ((0.5 0.5 {grading}) (0.5 0.5 {})) 1)",
+                        "    hex ({a} {b} {} {} {} {} {} {}) ({ax} {across} 1) simpleGrading (1 {grade} 1)",
                         b + 1,
                         a + 1,
                         a + 2,
                         b + 2,
                         b + 3,
                         a + 3,
-                        1.0 / grading
                     );
                 }
                 NozzleKind::Axisymmetric => {
@@ -330,9 +346,18 @@ impl Nozzle {
             NozzleKind::Planar => {
                 patch("inlet", "patch", &[[0, 1, 3, 2]]);
                 patch("outlet", "patch", &[[last, last + 1, last + 3, last + 2]]);
-                let mut walls = each(&|a, b| [a, a + 2, b + 2, b]);
-                walls.extend(each(&|a, b| [a + 1, a + 3, b + 3, b + 1]));
-                patch("nozzleWall", "wall", &walls);
+                let mut walls = each(&|a, b| [a + 1, a + 3, b + 3, b + 1]);
+                if self.half {
+                    patch("nozzleWall", "wall", &walls);
+                    patch(
+                        "symmetry",
+                        "symmetryPlane",
+                        &each(&|a, b| [a, a + 2, b + 2, b]),
+                    );
+                } else {
+                    walls.extend(each(&|a, b| [a, a + 2, b + 2, b]));
+                    patch("nozzleWall", "wall", &walls);
+                }
                 let mut both = Vec::new();
                 for i in 0..n {
                     let (a, b) = (per * i, per * (i + 1));
@@ -361,6 +386,13 @@ impl Nozzle {
     /// The patches, with what each is.
     fn patches(&self) -> &'static [(&'static str, Role)] {
         match self.kind {
+            NozzleKind::Planar if self.half => &[
+                ("inlet", Role::Inlet),
+                ("outlet", Role::Outlet),
+                ("nozzleWall", Role::Wall),
+                ("symmetry", Role::Symmetry),
+                ("frontAndBack", Role::Empty),
+            ],
             NozzleKind::Planar => &[
                 ("inlet", Role::Inlet),
                 ("outlet", Role::Outlet),
@@ -397,6 +429,7 @@ impl Nozzle {
             let text = match role {
                 Role::Empty => "type            empty;".to_owned(),
                 Role::Wedge => "type            wedge;".to_owned(),
+                Role::Symmetry => "type            symmetryPlane;".to_owned(),
                 _ => body(role),
             };
             let _ = write!(s, "    {patch}\n    {{\n");
@@ -477,6 +510,7 @@ enum Role {
     Outlet,
     Wall,
     Wedge,
+    Symmetry,
     Empty,
 }
 
@@ -494,7 +528,7 @@ fn field_path(name: &str) -> &'static str {
 
 /// `controlDict`, schemes, solvers and the fluid: the settings of the Qt
 /// application's nozzle practice, which `rhoSimpleFoam` runs.
-fn settings() -> Vec<File> {
+pub(crate) fn settings() -> Vec<File> {
     let solver = |name: &str| {
         format!(
             "    {name}\n    {{\n        solver          smoothSolver;\n        smoother        symGaussSeidel;\n        tolerance       1e-08;\n        relTol          0;\n    }}\n"

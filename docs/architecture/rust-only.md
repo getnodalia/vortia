@@ -48,10 +48,10 @@ STL, updater, issue-report or translation code exists there).
   same cells, points and faces, and "Mesh OK", as OpenFOAM v1912's `blockMesh` and `checkMesh`
   on the same `blockMeshDict` (a test that runs when OpenFOAM is installed). Not done:
   `examples/nozzle-practice-2026` is a nozzle that discharges into an open atmosphere region,
-  which the new nozzle cases do not have; making that case from the app belongs with R4 (physics
-  setup), where the boundaries are chosen. The planar nozzle is the whole slot, not the Qt
-  application's half section: the compressible solver has no symmetry condition for T, k and
-  omega yet (an engine task for R4).
+  which the nozzle cases do not have; `Jet` (R4) makes that case from its numbers: the orifice
+  and the open atmosphere, run by the Rust engine against the isentropic speed. The planar nozzle is the whole slot by default, or, with `half`, the Qt
+  application's half section with a `symmetryPlane` on the axis (R4: the compressible solver now
+  takes symmetry planes, checked against the whole slot).
 - **R5, started on 2026-11-18:** the mass balance (`Case::mass_balance` and
   `mass_balance_history` in `rust/vortia-post`, `vortia balance`, a card in the Run tab) reads
   the written `phi`, as the Qt `nozzleMassBalance` does. The residual plot of the Run tab
@@ -83,7 +83,7 @@ STL, updater, issue-report or translation code exists there).
   of the peak and, with three meshes, observed order 1.96 and the extrapolated mid-plane speed
   within 0.01 % of the exact one; and the lid-driven cavity (a new case type, `vortia new cavity`,
   its mesh identical to OpenFOAM's) against both Ghia centre-line tables at Re = 100 within 0.9 %
-  of the lid speed. Still to do for R7: the nozzle against OpenFOAM, and a three-mesh index for the cavity, all in `cargo test`.
+  of the lid speed. The compressible engine was also run against OpenFOAM v1912 `rhoSimpleFoam` on the same meshes (jet into the atmosphere to about six digits; half planar nozzle and axisymmetric wedge nozzle, outlet flux 1.17435e-3 vs 1.17435e-3 and 2.57758e-3 vs 2.57758e-3, volume-average velocity to about six digits); the meshes of the jet and the half nozzle are checked against `blockMesh` in `cargo test`. Still to do for R7: a three-mesh index for the cavity, all in `cargo test`.
   Blasius is done (a new `vortia new plate` case, with a slip wall ahead of the plate, which
   needed `slip`/`symmetry` for vectors in the incompressible engine): mean and local friction
   coefficient within 1.5 % and the profile within 0.65 % of the stream speed, and OpenFOAM's
