@@ -1,6 +1,6 @@
 //! Starting a case: what the Home page's "New" does.
 //!
-//! A case is chosen by its geometry (a box channel, a planar nozzle or an
+//! A case is chosen by its geometry (a box channel, a cavity, a planar nozzle or an
 //! axisymmetric nozzle) and a handful of numbers. [`create`] writes the whole
 //! folder in OpenFOAM's layout: `system/blockMeshDict`, the mesh made from it
 //! by the engine's own `blockMesh`, the initial fields and the settings, so the
@@ -20,6 +20,7 @@
     clippy::indexing_slicing
 )]
 
+mod cavity;
 mod channel;
 mod error;
 mod files;
@@ -27,6 +28,7 @@ mod nozzle;
 
 use std::path::Path;
 
+pub use cavity::Cavity;
 pub use channel::Channel;
 pub use error::{CaseError, Result};
 pub use nozzle::{Nozzle, NozzleKind};
@@ -42,6 +44,8 @@ pub enum Geometry {
     Channel(Channel),
     /// A converging-diverging nozzle: compressible flow, k-ω SST.
     Nozzle(Nozzle),
+    /// A lid-driven square cavity: laminar incompressible flow, closed on every side.
+    Cavity(Cavity),
 }
 
 impl Geometry {
@@ -50,6 +54,7 @@ impl Geometry {
         match self {
             Geometry::Channel(_) => "Channel",
             Geometry::Nozzle(n) => n.kind.title(),
+            Geometry::Cavity(_) => "Cavity",
         }
     }
 }
@@ -74,6 +79,7 @@ pub fn create(dir: &Path, geometry: &Geometry) -> Result<Created> {
     let set = match geometry {
         Geometry::Channel(c) => c.files()?,
         Geometry::Nozzle(n) => n.files()?,
+        Geometry::Cavity(c) => c.files()?,
     };
     files::write_all(dir, &set.files)?;
     let mesh = files::mesh(dir, &set.block_mesh_dict)?;

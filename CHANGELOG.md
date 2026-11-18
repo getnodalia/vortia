@@ -8,6 +8,18 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 ## [Unreleased]
 
 ### Añadido
+- **Cavidad con tapa móvil como caso nuevo:** `vortia new cavity DIR [side= cells= lid-speed=
+  viscosity=]` y, en Home, «New › Cavity» escriben la cavidad cuadrada cerrada con la tapa
+  deslizante (Re = 100 por defecto, el caso de Ghia et al., `simpleFoam`). La malla de bloques sale
+  idéntica a la de `blockMesh` de OpenFOAM v1912. Comparada con las tablas I y II de Ghia et al.
+  (1982) en una malla de 32×32, el motor Rust da diferencias máximas de 4,2e-3 (u) y 8,6e-3 (v) de
+  la velocidad de la tapa (límite fijado: 5 %), en `cargo test -p vortia-cli --test verification`.
+- **Verificación con el motor Rust y GCI:** `cargo test -p vortia-cli --test verification` crea un
+  canal con `vortia-cases`, lo resuelve con `vortia-solvers` y compara el perfil con el exacto de
+  Poiseuille (L∞ 2,5e-3 del máximo, límite 3 %); con tres mallas (8, 16 y 32 filas) el orden
+  observado es 1,96, el valor extrapolado del plano medio 1,50007 frente al exacto 1,5 y el índice
+  de convergencia de malla fino 0,25 %. El cálculo del índice es `vortia_post::gci`, que
+  reproduce `benchmarks/common/gci.py`.
 - **Listas de modelos y aviso de divergencia en la aplicación Rust:** en Turbulence y Fluid, el
   tipo de simulación, el modelo RAS (kOmegaSST, kEpsilon, SpalartAllmaras) y la energía
   (sensibleInternalEnergy, sensibleEnthalpy) se eligen de una lista con lo que el motor tiene, y

@@ -64,6 +64,15 @@ STL, updater, issue-report or translation code exists there).
   `postProcessing/section/<time>/`. Still to do for R6: forces and coefficients on walls, a
   combined report and comparison between runs.
 
+- **R7, started on 2026-11-18:** `vortia_post::gci` (the three-mesh index, checked against
+  `benchmarks/common/gci.py`) and `rust/vortia-cli/tests/verification.rs`, which runs a Poiseuille
+  channel from `vortia-cases` through the engine in the normal `cargo test`: profile within 3 %
+  of the peak and, with three meshes, observed order 1.96 and the extrapolated mid-plane speed
+  within 0.01 % of the exact one; and the lid-driven cavity (a new case type, `vortia new cavity`,
+  its mesh identical to OpenFOAM's) against both Ghia centre-line tables at Re = 100 within 0.9 %
+  of the lid speed. Still to do for R7: Blasius, the turbulent flat plate with its recorded band,
+  the nozzle against OpenFOAM, and a three-mesh index for the cavity, all in `cargo test`.
+
 - **R4, started on 2026-11-18:** Setup has Fluid, Turbulence and Viscosity views that edit
   `constant/thermophysicalProperties`, `turbulenceProperties` and `transportProperties` in place,
   beside the boundary conditions, run settings, numerics and schemes that were already there.

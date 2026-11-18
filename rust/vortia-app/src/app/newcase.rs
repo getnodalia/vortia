@@ -6,22 +6,29 @@ use eframe::egui::{self, DragValue, Ui};
 use nodalia_theme::engineering::Look;
 use nodalia_theme::office;
 use nodalia_theme::{Palette, space};
-use vortia_cases::{Channel, Geometry, Nozzle, NozzleKind};
+use vortia_cases::{Cavity, Channel, Geometry, Nozzle, NozzleKind};
 
 /// Which of the cases Home offers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Kind {
     Channel,
+    Cavity,
     PlanarNozzle,
     AxisymmetricNozzle,
 }
 
 impl Kind {
-    const ALL: [Kind; 3] = [Kind::Channel, Kind::PlanarNozzle, Kind::AxisymmetricNozzle];
+    const ALL: [Kind; 4] = [
+        Kind::Channel,
+        Kind::Cavity,
+        Kind::PlanarNozzle,
+        Kind::AxisymmetricNozzle,
+    ];
 
     fn title(self) -> &'static str {
         match self {
             Kind::Channel => "Channel",
+            Kind::Cavity => "Cavity",
             Kind::PlanarNozzle => "Planar nozzle",
             Kind::AxisymmetricNozzle => "Axisymmetric nozzle",
         }
@@ -31,6 +38,9 @@ impl Kind {
         match self {
             Kind::Channel => {
                 "A straight 2D channel with the fluid coming in on the left: laminar, incompressible, steady (simpleFoam)."
+            }
+            Kind::Cavity => {
+                "A square box closed on every side whose top wall slides: laminar, incompressible, steady (simpleFoam). Reynolds number 100 by default, the case of Ghia et al. (1982)."
             }
             Kind::PlanarNozzle => {
                 "A converging-diverging slot between two walls: compressible air, k-ω SST, steady (rhoSimpleFoam)."
@@ -48,6 +58,7 @@ pub(super) struct NewCase {
     /// The folder the case is written to.
     folder: String,
     channel: Channel,
+    cavity: Cavity,
     planar: Nozzle,
     wedge: Nozzle,
 }
@@ -65,6 +76,7 @@ impl NewCase {
             kind: Kind::Channel,
             folder: String::new(),
             channel: Channel::default(),
+            cavity: Cavity::default(),
             planar: Nozzle::new(NozzleKind::Planar),
             wedge: Nozzle::new(NozzleKind::Axisymmetric),
         };
@@ -83,6 +95,7 @@ impl NewCase {
     fn propose(&mut self, base: &Path) {
         let stem = match self.kind {
             Kind::Channel => "channel",
+            Kind::Cavity => "cavity",
             Kind::PlanarNozzle => "planar-nozzle",
             Kind::AxisymmetricNozzle => "nozzle",
         };
@@ -103,6 +116,7 @@ impl NewCase {
     pub(super) fn geometry(&self) -> Geometry {
         match self.kind {
             Kind::Channel => Geometry::Channel(self.channel.clone()),
+            Kind::Cavity => Geometry::Cavity(self.cavity.clone()),
             Kind::PlanarNozzle => Geometry::Nozzle(self.planar.clone()),
             Kind::AxisymmetricNozzle => Geometry::Nozzle(self.wedge.clone()),
         }
@@ -143,6 +157,7 @@ impl NewCase {
             ui.add_space(space::SM);
             match self.kind {
                 Kind::Channel => channel_fields(ui, &mut self.channel),
+                Kind::Cavity => cavity_fields(ui, &mut self.cavity),
                 Kind::PlanarNozzle => nozzle_fields(ui, &mut self.planar),
                 Kind::AxisymmetricNozzle => nozzle_fields(ui, &mut self.wedge),
             }
@@ -193,6 +208,18 @@ fn channel_fields(ui: &mut Ui, c: &mut Channel) {
             row(ui, "Cells along", |ui| count(ui, &mut c.cells_x));
             row(ui, "Cells across", |ui| count(ui, &mut c.cells_y));
             row(ui, "Inlet speed", |ui| value(ui, &mut c.speed, "m/s"));
+            row(ui, "Viscosity", |ui| value(ui, &mut c.viscosity, "m²/s"));
+        });
+}
+
+fn cavity_fields(ui: &mut Ui, c: &mut Cavity) {
+    egui::Grid::new("new_cavity")
+        .num_columns(2)
+        .spacing([space::MD, space::SM])
+        .show(ui, |ui| {
+            row(ui, "Side", |ui| value(ui, &mut c.side, "m"));
+            row(ui, "Cells along a side", |ui| count(ui, &mut c.cells));
+            row(ui, "Lid speed", |ui| value(ui, &mut c.lid_speed, "m/s"));
             row(ui, "Viscosity", |ui| value(ui, &mut c.viscosity, "m²/s"));
         });
 }
