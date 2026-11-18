@@ -12,6 +12,10 @@ use std::fmt::Write as _;
 
 use crate::error::{CaseError, Result};
 use crate::files::{File, FileSet, header};
+use vortia_core::Vec3;
+use vortia_foamfile::RawPolyMesh;
+use vortia_mesh::tri2d::{self, Extrusion, Options, Region, Segment};
+
 use crate::{MAX_CELLS, count, size};
 
 /// Which mesh of the nozzle.
@@ -66,6 +70,9 @@ pub struct Nozzle {
     /// A wall profile drawn in a sketch, as `(x, radius)` stations in millimetres, instead of the
     /// smoothstep nozzle the dimensions above describe.
     pub profile: Option<Vec<(f64, f64)>>,
+    /// Mesh the nozzle with the unstructured mesher (triangles made into prisms) at this cell
+    /// size in millimetres, instead of the blocks the counts above describe.
+    pub cell_size: Option<f64>,
 }
 
 impl Nozzle {
@@ -90,6 +97,7 @@ impl Nozzle {
             outlet_pressure: 101_325.0,
             half: false,
             profile: None,
+            cell_size: None,
         }
     }
 
@@ -138,6 +146,7 @@ impl Nozzle {
             "radial-grading" => self.radial_grading = value,
             "wedge-angle" => self.wedge_angle = value,
             "half" => self.half = value != 0.0,
+            "cell-size" => self.cell_size = (value != 0.0).then_some(value),
             "thickness" => self.thickness = value,
             "inlet-speed" => self.inlet_speed = value,
             "inlet-temperature" => self.inlet_temperature = value,
@@ -197,6 +206,29 @@ impl Nozzle {
             return Err(CaseError::Invalid(
                 "the throat must not be wider than the inlet or the outlet".into(),
             ));
+        }
+        if let Some(h) = self.cell_size {
+            size("the cell size", h, 1.0e4)?;
+            if let Some(profile) = &self.profile {
+                count("the points of the sketched wall", profile.len(), 2, 4001)?;
+            }
+            match self.kind {
+                NozzleKind::Planar => {
+                    size("the thickness", self.thickness, 1000.0)?;
+                }
+                NozzleKind::Axisymmetric => {
+                    if !(self.wedge_angle > 0.01 && self.wedge_angle <= 5.0) {
+                        return Err(CaseError::Invalid(format!(
+                            "the wedge angle must be above 0.01° and at most 5°, not {}",
+                            self.wedge_angle
+                        )));
+                    }
+                }
+            }
+            size("the inlet speed", self.inlet_speed, 1.0e5)?;
+            size("the inlet temperature", self.inlet_temperature, 1.0e5)?;
+            size("the outlet pressure", self.outlet_pressure, 1.0e10)?;
+            return Ok(());
         }
         let segments = match &self.profile {
             Some(profile) => {
@@ -445,9 +477,80 @@ impl Nozzle {
         }
     }
 
+    /// The flow's section as a region for the unstructured mesher: the wall chain, the outlet,
+    /// then the mirrored wall (the whole slot), the symmetry plane (the half) or the axis (the
+    /// wedge), and the inlet.
+    fn region(&self) -> Region {
+        let stations = self.stations();
+        let seg = |points: Vec<[f64; 2]>, patch: &str| Segment {
+            points,
+            patch: patch.to_owned(),
+            kind: match patch {
+                "nozzleWall" => "wall",
+                "symmetry" => "symmetryPlane",
+                _ => "patch",
+            }
+            .to_owned(),
+            size: None,
+        };
+        let (first, last) = (
+            stations.first().copied().unwrap_or((0.0, 1.0)),
+            stations.last().copied().unwrap_or((1.0, 1.0)),
+        );
+        let upper: Vec<[f64; 2]> = stations.iter().map(|&(x, r)| [x, r]).collect();
+        let mut loop_ = vec![seg(upper, "nozzleWall")];
+        match (self.kind, self.half) {
+            (NozzleKind::Planar, false) => {
+                loop_.push(seg(vec![[last.0, last.1], [last.0, -last.1]], "outlet"));
+                let lower = stations.iter().rev().map(|&(x, r)| [x, -r]).collect();
+                loop_.push(seg(lower, "nozzleWall"));
+                loop_.push(seg(vec![[first.0, -first.1], [first.0, first.1]], "inlet"));
+            }
+            (kind, _) => {
+                loop_.push(seg(vec![[last.0, last.1], [last.0, 0.0]], "outlet"));
+                let axis = if kind == NozzleKind::Planar {
+                    "symmetry"
+                } else {
+                    "axis"
+                };
+                loop_.push(seg(vec![[last.0, 0.0], [first.0, 0.0]], axis));
+                loop_.push(seg(vec![[first.0, 0.0], [first.0, first.1]], "inlet"));
+            }
+        }
+        Region { loops: vec![loop_] }
+    }
+
+    /// The unstructured mesh of the nozzle, in metres.
+    fn unstructured_mesh(&self, cell_size: f64) -> Result<RawPolyMesh> {
+        let extrusion = match self.kind {
+            NozzleKind::Planar => Extrusion::Planar {
+                thickness: self.thickness,
+            },
+            NozzleKind::Axisymmetric => Extrusion::Wedge {
+                degrees: self.wedge_angle,
+            },
+        };
+        let mut options = Options::new(cell_size, extrusion);
+        options.max_cells = MAX_CELLS as usize;
+        let mut raw =
+            tri2d::mesh(&self.region(), &options).map_err(|e| CaseError::Mesh(e.to_string()))?;
+        for p in &mut raw.points {
+            *p = Vec3::new(p.x * 1e-3, p.y * 1e-3, p.z * 1e-3);
+        }
+        Ok(raw)
+    }
+
     pub(crate) fn files(&self) -> Result<FileSet> {
         self.validate()?;
-        let block_mesh_dict = self.block_mesh_dict();
+        let raw_mesh = match self.cell_size {
+            Some(h) => Some(self.unstructured_mesh(h)?),
+            None => None,
+        };
+        let block_mesh_dict = if raw_mesh.is_some() {
+            String::new()
+        } else {
+            self.block_mesh_dict()
+        };
         let (speed, t0, pb) = (
             self.inlet_speed,
             self.inlet_temperature,
@@ -456,10 +559,6 @@ impl Nozzle {
         let mixing = 0.05 * self.inlet_diameter / 1000.0;
 
         let mut files = vec![
-            File {
-                path: "system/blockMeshDict",
-                text: block_mesh_dict.clone(),
-            },
             self.field("volVectorField", "U", "[0 1 -1 0 0 0 0]", &format!("uniform ({speed} 0 0)"), |r| match r {
                 Role::Inlet => format!("type            fixedValue;\nvalue           uniform ({speed} 0 0);"),
                 Role::Outlet => "type            pressureInletOutletVelocity;\nvalue           uniform (0 0 0);".to_owned(),
@@ -495,9 +594,19 @@ impl Nozzle {
             }),
         ];
         files.extend(settings());
+        if raw_mesh.is_none() {
+            files.insert(
+                0,
+                File {
+                    path: "system/blockMeshDict",
+                    text: block_mesh_dict.clone(),
+                },
+            );
+        }
         Ok(FileSet {
             files,
             block_mesh_dict,
+            raw_mesh,
             application: "rhoSimpleFoam",
         })
     }

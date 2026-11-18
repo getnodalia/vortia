@@ -94,7 +94,10 @@ pub fn create(dir: &Path, geometry: &Geometry) -> Result<Created> {
         Geometry::Jet(j) => j.files()?,
     };
     files::write_all(dir, &set.files)?;
-    let mesh = files::mesh(dir, &set.block_mesh_dict)?;
+    let mesh = match &set.raw_mesh {
+        Some(raw) => files::write_raw(dir, raw)?,
+        None => files::mesh(dir, &set.block_mesh_dict)?,
+    };
     Ok(Created {
         cells: mesh.cells,
         points: mesh.points,

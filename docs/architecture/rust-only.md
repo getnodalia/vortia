@@ -133,8 +133,15 @@ format. A sketched wall becomes a structured block mesh through `Nozzle::from_sk
 CLI reaches it with `vortia sketch template|info` and `vortia new sketch`. Home's "New > From
 sketch" in the app starts from a template, edits its dimensions (an edit that cannot be solved is
 refused and the sketch stays as it was), draws the wall and keeps `sketch.vortia-sketch` in the
-case. Still to do: drawing new lines and arcs and dragging points on the canvas, snapping, adding
-dimensions, opening a saved sketch, and a general mesher for shapes that are not a profile of revolution or extrusion.
+case. The mesher itself, `vortia_mesh::tri2d` (done on 2026-11-18): a region of named segments
+becomes Delaunay triangles refined as Ruppert's algorithm does (no angle under 20°, sizes that
+follow the boundary's and grow with the distance from it) and then prisms, planar or in a 5° wedge
+with the axis collapsed. The nozzle and the sketched duct use it with `cell-size` (and Home's
+"Triangles (unstructured)"); OpenFOAM v1912 accepts its meshes (`checkMesh`) and `rhoSimpleFoam`
+gives the same flow on them as the Rust engine (outlet flux to 1e-5 on the half nozzle, to six
+digits on the wedge). Still to do: drawing new lines and arcs and dragging points on the canvas,
+snapping, adding dimensions, opening a saved sketch, closed sketches with several loops and named
+edges (the mesher takes them; the sketch does not yet make them), and meshing them from the app.
 
 ## What this changes in the public text
 

@@ -174,6 +174,8 @@ pub const ES: &[(&str, &str)] = &[
     ),
     ("Open a geometry", "Abrir una geometría"),
     ("Half section", "Media sección"),
+    ("Triangles (unstructured)", "Triángulos (no estructurada)"),
+    ("Cell size", "Tamaño de celda"),
     ("Symmetry plane on the axis", "Plano de simetría en el eje"),
     ("An STL file", "Un archivo STL"),
     ("Show geometry", "Ver geometría"),

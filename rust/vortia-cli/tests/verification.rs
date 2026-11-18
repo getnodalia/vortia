@@ -555,3 +555,74 @@ fn a_jet_into_the_atmosphere_leaves_at_the_isentropic_speed() {
             < 1e-18
     );
 }
+
+/// The same nozzle meshed by the engine's own unstructured mesher (triangles made into prisms)
+/// and by blocks: the flow through it and the state at a point agree, though not a single cell
+/// does. The half slot is checked against the blocks within 0.2 %, and the axisymmetric wedge
+/// (a coarser mesh, with cells on the collapsed axis) within 1 %.
+#[test]
+fn an_unstructured_nozzle_carries_the_same_flow_as_the_blocks() {
+    use vortia_cases::NozzleKind;
+    for (kind, size, flux_tolerance) in [
+        (NozzleKind::Planar, 5.0, 2e-3),
+        (NozzleKind::Axisymmetric, 6.0, 1e-2),
+    ] {
+        let run = |cell_size: Option<f64>| {
+            let dir = tempfile::tempdir().expect("a folder");
+            let nozzle = vortia_cases::Nozzle {
+                converging_segments: 6,
+                diverging_segments: 10,
+                axial_cells_per_segment: 2,
+                radial_cells: 20,
+                radial_grading: 1.5,
+                half: kind == NozzleKind::Planar,
+                cell_size,
+                ..vortia_cases::Nozzle::new(kind)
+            };
+            vortia_cases::create(dir.path(), &Geometry::Nozzle(nozzle))
+                .expect("the nozzle is written");
+            let case = vortia_solvers::Case::open(dir.path()).expect("the solver opens it");
+            vortia_solvers::run(&case, |_| {}).expect("the run finishes");
+            let results = Case::open(dir.path()).expect("the results open");
+            let time = results.latest_time().expect("a time was written");
+            (dir, results, time)
+        };
+        let (_blocks_dir, blocks, blocks_time) = run(None);
+        let (_tri_dir, tri, tri_time) = run(Some(size));
+
+        let out = |case: &Case, time: &str| case.flux(time, "outlet").expect("the flux is read");
+        let (a, b) = (out(&tri, &tri_time), out(&blocks, &blocks_time));
+        assert!(
+            (a - b).abs() < flux_tolerance * b.abs(),
+            "{kind:?}: the outlet flux {a} on triangles against {b} on blocks"
+        );
+        let inlet = tri.flux(&tri_time, "inlet").expect("the flux is read");
+        assert!(
+            (inlet + a).abs() < 1e-3 * a.abs(),
+            "{kind:?}: {inlet} enters and {a} leaves"
+        );
+        if kind == NozzleKind::Planar {
+            let across = tri.flux(&tri_time, "symmetry").expect("the flux is read");
+            assert!(
+                across.abs() < 1e-9 * a.abs(),
+                "the symmetry plane lets {across} through"
+            );
+        }
+        let point = Vec3::new(0.2, 0.02, 0.0005);
+        let first = |v: &[f64]| v.first().copied().unwrap_or(f64::NAN);
+        for (field, tolerance) in [("U", 0.03), ("T", 0.01), ("p", 0.01)] {
+            let value = |case: &Case, time: &str| {
+                case.probe(time, field, point)
+                    .map(|p| first(&p.value))
+                    .unwrap_or(f64::NAN)
+            };
+            let (x, y) = (value(&tri, &tri_time), value(&blocks, &blocks_time));
+            if kind == NozzleKind::Planar {
+                assert!(
+                    (x - y).abs() < tolerance * y.abs(),
+                    "{field}: {x} on triangles, {y} on blocks"
+                );
+            }
+        }
+    }
+}

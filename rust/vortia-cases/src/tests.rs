@@ -681,3 +681,78 @@ fn the_jet_is_an_orifice_in_a_wall_facing_an_open_atmosphere() {
     assert!(jet.set("axial-cells", 2.5).is_err());
     assert!(jet.set("nonsense", 1.0).is_err());
 }
+
+#[test]
+fn an_unstructured_nozzle_is_written_with_its_patches_and_a_mesh_openfoam_accepts() {
+    let cases = [
+        (
+            Nozzle {
+                half: true,
+                cell_size: Some(6.0),
+                ..nozzle(NozzleKind::Planar)
+            },
+            vec!["nozzleWall", "outlet", "symmetry", "inlet", "frontAndBack"],
+        ),
+        (
+            Nozzle {
+                cell_size: Some(6.0),
+                ..nozzle(NozzleKind::Planar)
+            },
+            vec!["nozzleWall", "outlet", "inlet", "frontAndBack"],
+        ),
+        (
+            Nozzle {
+                cell_size: Some(6.0),
+                ..nozzle(NozzleKind::Axisymmetric)
+            },
+            vec!["nozzleWall", "outlet", "inlet", "wedgeFront", "wedgeBack"],
+        ),
+    ];
+    let have_openfoam = Command::new("checkMesh").arg("-help").output().is_ok();
+    for (n, names) in cases {
+        let dir = tempfile::tempdir().unwrap();
+        let made = create(dir.path(), &Geometry::Nozzle(n.clone())).unwrap();
+        // No blockMeshDict: the mesh did not come from blocks.
+        assert!(!dir.path().join("system/blockMeshDict").exists());
+        let mesh = PolyMesh::read_case(dir.path()).unwrap();
+        assert_eq!(mesh.n_cells(), made.cells);
+        let got: Vec<&str> = mesh.patches().iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(got, names, "{n:?}");
+        assert_eq!(mesh.patch("nozzleWall").unwrap().kind.name(), "wall");
+        // In metres: the nozzle is 0.578 m long.
+        let geo = MeshGeometry::compute(&mesh);
+        let report = check(&mesh, &geo);
+        assert!(report.is_ok(), "{:?}", report.failed_checks());
+        assert!(
+            (report.bounds.max.x - 0.578).abs() < 1e-9,
+            "{:?}",
+            report.bounds
+        );
+        if have_openfoam {
+            let out = Command::new("checkMesh")
+                .arg("-case")
+                .arg(dir.path())
+                .env("WM_PROJECT_DIR", "/usr/share/openfoam")
+                .env("FOAM_ETC", "/usr/share/openfoam/etc")
+                .output()
+                .unwrap();
+            let log = String::from_utf8_lossy(&out.stdout);
+            assert!(log.contains("Mesh OK"), "{n:?}:\n{log}");
+            assert!(
+                log.contains(&format!("cells:            {}", made.cells)),
+                "{log}"
+            );
+        }
+    }
+    // A size that cannot be used is refused before anything is written.
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("case");
+    for bad in [-1.0, f64::NAN, 1.0e9] {
+        let n = Nozzle {
+            cell_size: Some(bad),
+            ..nozzle(NozzleKind::Planar)
+        };
+        assert!(create(&target, &Geometry::Nozzle(n)).is_err(), "{bad}");
+    }
+    assert!(!target.exists());
+}
