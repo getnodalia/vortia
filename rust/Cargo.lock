@@ -2687,6 +2687,7 @@ dependencies = [
  "vortia-foamfile",
  "vortia-mesh",
  "vortia-post",
+ "vortia-sketch",
  "vortia-solvers",
  "zbus",
 ]

@@ -430,6 +430,13 @@ impl VortiaApp {
         }
     }
 
+    /// Opens Home's "New case" form on the sketch, for a screenshot of it.
+    pub fn show_new_sketch(&mut self) {
+        let mut form = newcase::NewCase::new(&newcase::NewCase::default_base());
+        form.choose_sketch();
+        self.new_case = Some(form);
+    }
+
     /// Switches the open case to one of its tabs.
     pub fn show_tab(&mut self, tab: TabName) {
         if let Screen::Case(case) = &mut self.screen {

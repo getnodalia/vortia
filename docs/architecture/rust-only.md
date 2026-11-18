@@ -108,9 +108,11 @@ GPL and not Rust, so it is not used or bundled unless Daniel says otherwise.
 Progress: the `vortia-sketch` crate holds the dimensioned sketch (points, lines, arcs,
 constraints), its solver, the templates (duct, nozzle, rounded nozzle) and a versioned file
 format. A sketched wall becomes a structured block mesh through `Nozzle::from_sketch`, and the
-CLI reaches it with `vortia sketch template|info` and `vortia new sketch`. Still to do: the
-editor in the application (canvas, snapping, dimensions, "New > From sketch") and a general
-mesher for shapes that are not a profile of revolution or extrusion.
+CLI reaches it with `vortia sketch template|info` and `vortia new sketch`. Home's "New > From
+sketch" in the app starts from a template, edits its dimensions (an edit that cannot be solved is
+refused and the sketch stays as it was), draws the wall and keeps `sketch.vortia-sketch` in the
+case. Still to do: drawing new lines and arcs and dragging points on the canvas, snapping, adding
+dimensions, opening a saved sketch, and a general mesher for shapes that are not a profile of revolution or extrusion.
 
 ## What this changes in the public text
 
