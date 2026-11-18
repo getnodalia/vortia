@@ -67,6 +67,7 @@ enum Dialog {
     Preferences,
     Shortcuts,
     About,
+    Report,
 }
 
 /// The run of one case, and what it has reported.
@@ -314,6 +315,11 @@ pub struct VortiaApp {
     /// The command search, with what was typed, while it is open.
     search: Option<String>,
     icon: Option<egui::TextureHandle>,
+    /// The geometry file Home is showing, and the path being typed for the next one.
+    stl: Option<crate::stlview::StlView>,
+    stl_input: String,
+    /// The problem report being written: its title and its text.
+    report: (String, String),
     /// The menus in the shell's top bar, where there is one.
     #[cfg(target_os = "linux")]
     global_menu: Option<GlobalMenu>,
@@ -327,6 +333,7 @@ fn global_menus() -> Vec<Menu> {
             title: "Vortia".into(),
             entries: vec![
                 Entry::action(tr("About Vortia"), "about"),
+                Entry::action(tr("Report a problem"), "report"),
                 Entry::Separator,
                 Entry::action(tr("Preferences"), "preferences"),
                 Entry::action(tr("Keyboard shortcuts"), "shortcuts"),
@@ -391,6 +398,9 @@ impl VortiaApp {
             new_case: None,
             search: None,
             icon: None,
+            stl: None,
+            stl_input: String::new(),
+            report: (String::new(), String::new()),
             #[cfg(target_os = "linux")]
             global_menu: None,
         }
@@ -434,6 +444,22 @@ impl VortiaApp {
     }
 
     /// Opens Home's "New case" form on the sketch, for a screenshot of it.
+    /// Shows an STL file on Home. The file is read on a thread.
+    pub fn show_stl(&mut self, ctx: &Context, path: PathBuf) {
+        let wake = ctx.clone();
+        self.stl = Some(crate::stlview::StlView::open(path, move || {
+            wake.request_repaint();
+        }));
+        self.home = true;
+        self.new_case = None;
+        self.notice = None;
+    }
+
+    /// Opens the problem report, for a screenshot and for the command line.
+    pub fn show_report(&mut self) {
+        self.dialog = Some(Dialog::Report);
+    }
+
     pub fn show_new_sketch(&mut self) {
         let mut form = newcase::NewCase::new(&newcase::NewCase::default_base());
         form.choose_sketch();
@@ -527,6 +553,7 @@ impl VortiaApp {
             "about" => self.dialog = Some(Dialog::About),
             "preferences" => self.dialog = Some(Dialog::Preferences),
             "shortcuts" => self.dialog = Some(Dialog::Shortcuts),
+            "report" => self.dialog = Some(Dialog::Report),
             "quit" => ctx.send_viewport_cmd(ViewportCommand::Close),
             "run" => self.start_run(ctx),
             "pause" => self.toggle_pause(),
@@ -656,8 +683,10 @@ impl VortiaApp {
             Dialog::Preferences => tr("Preferences"),
             Dialog::Shortcuts => tr("Keyboard shortcuts"),
             Dialog::About => tr("About Vortia"),
+            Dialog::Report => tr("Report a problem"),
         };
         let mut close = false;
+        let mut open_report = false;
         let before = self.prefs.theme;
         let lang_before = self.prefs.lang;
         egui::Modal::new(Id::unique("dialog")).show(ctx, |ui| {
@@ -702,9 +731,49 @@ impl VortiaApp {
                     ui.add_space(space::SM);
                     ui.label(RichText::new("GPL-3.0-or-later").color(muted(p)));
                 }
+                Dialog::Report => {
+                    let application = match &self.screen {
+                        Screen::Case(case) => case.application.clone(),
+                        Screen::Welcome => None,
+                    };
+                    ui.label(RichText::new(tr("Title")).color(muted(p)));
+                    ui.add(egui::TextEdit::singleline(&mut self.report.0).desired_width(f32::INFINITY));
+                    ui.add_space(space::SM);
+                    ui.label(RichText::new(tr("What happened")).color(muted(p)));
+                    ui.add(
+                        egui::TextEdit::multiline(&mut self.report.1)
+                            .desired_rows(6)
+                            .desired_width(f32::INFINITY),
+                    );
+                    ui.add_space(space::SM);
+                    ui.label(
+                        RichText::new(tr(
+                            "Nothing is sent from here: GitHub opens with this text for you to review. The version, the system and the solver are added; no path or case name is.",
+                        ))
+                        .color(muted(p)),
+                    );
+                    ui.add_space(space::MD);
+                    let ready = !self.report.0.trim().is_empty();
+                    if ui
+                        .add_enabled(ready, egui::Button::new(tr("Open on GitHub")))
+                        .clicked()
+                    {
+                        let text = crate::report::body(&self.report.1, application.as_deref());
+                        let draft = crate::report::draft(self.report.0.trim(), &text);
+                        if draft.body_on_clipboard {
+                            ctx.copy_text(text);
+                            self.notice = Some(tr(
+                                "The text was too long for the address: it is on the clipboard, paste it into the issue.",
+                            )
+                            .into());
+                        }
+                        ctx.open_url(egui::OpenUrl::new_tab(draft.url));
+                        open_report = true;
+                    }
+                }
             }
         });
-        if close {
+        if close || open_report {
             self.dialog = None;
         }
         if self.prefs.theme != before {
@@ -1684,7 +1753,12 @@ mod tests {
                 None,
             );
             frame(&mut app, &ctx);
-            for dialog in [Dialog::Preferences, Dialog::Shortcuts, Dialog::About] {
+            for dialog in [
+                Dialog::Preferences,
+                Dialog::Shortcuts,
+                Dialog::About,
+                Dialog::Report,
+            ] {
                 app.dialog = Some(dialog);
                 frame(&mut app, &ctx);
             }

@@ -8,6 +8,12 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 ## [Unreleased]
 
 ### Añadido
+- **Informe de problemas y vista de STL (R8):** «Informar de un problema» (menú, buscador de
+  órdenes) abre el formulario de incidencias de GitHub con tu texto, la versión, el sistema y el
+  solver; nunca una ruta ni el nombre del caso, y un texto demasiado largo para la dirección se
+  queda en el portapapeles. Home abre un STL (`vortia-app --stl FICHERO`): `vortia_mesh::stl`
+  lo lee binario o ASCII (el tamaño decide, rechaza lo hostil) y la app muestra tamaño, área,
+  volumen si está cerrado y las aristas abiertas, con la superficie para girar con el ratón.
 - **DMG de macOS de la app Rust (R9):** `rust/packaging/macos/package.sh` monta `Vortia.app` (la app
   y la herramienta `vortia`, firmada ad hoc y sin notarizar) en la ventana de instalación de
   siempre, y `rust-packages.yml` la construye en `macos-15` y la guarda como artefacto.

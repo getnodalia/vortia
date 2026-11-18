@@ -11,7 +11,8 @@ use nodalia_theme::engineering::{
     self as eng, Document, Look, TitleAction, TitleBar, TitleLabels, TreeHit, TreeRow, layout,
 };
 use nodalia_theme::office::{self, Entry, Nav};
-use nodalia_theme::{Mode, Palette, for_egui, space, window_controls};
+use nodalia_theme::{Mode, Palette, component, font_size, for_egui, space, window_controls};
+use std::path::PathBuf;
 
 use super::conditions_tab;
 use super::newcase;
@@ -60,6 +61,7 @@ const COMMANDS: &[(&str, Cmd)] = &[
     ("Preferences", Cmd::Show(Dialog::Preferences)),
     ("Keyboard shortcuts", Cmd::Show(Dialog::Shortcuts)),
     ("About Vortia", Cmd::Show(Dialog::About)),
+    ("Report a problem", Cmd::Show(Dialog::Report)),
 ];
 
 /// A workflow step of the ribbon.
@@ -346,6 +348,7 @@ impl VortiaApp {
                 for (label, dialog) in [
                     (tr("Preferences"), Dialog::Preferences),
                     (tr("Keyboard shortcuts"), Dialog::Shortcuts),
+                    (tr("Report a problem"), Dialog::Report),
                     (tr("About Vortia"), Dialog::About),
                 ] {
                     if ui.button(label).clicked() {
@@ -453,7 +456,11 @@ impl VortiaApp {
         let mut open = false;
         let mut picked = None;
         let mut create = false;
+        let mut stl_path = None;
+        let mut close_stl = false;
         let new_case = &mut self.new_case;
+        let stl = &mut self.stl;
+        let stl_input = &mut self.stl_input;
         let nav_pick = office::file_view(ui, &home, &nav, |ui| {
             eng::home_header(ui, look, Some(icon), "Vortia", &version);
             if let Some(form) = new_case {
@@ -462,6 +469,10 @@ impl VortiaApp {
                     ui.add_space(space::SM);
                     ui.colored_label(for_egui::color(p.status_danger_fg), notice);
                 }
+                return;
+            }
+            if let Some(view) = stl {
+                close_stl = stl_page(ui, look, view);
                 return;
             }
             office::section(ui, &home, tr("Open a case"), |ui| {
@@ -483,6 +494,22 @@ impl VortiaApp {
                     ui.colored_label(for_egui::color(p.status_danger_fg), notice);
                 }
             });
+            office::section(ui, &home, tr("Open a geometry"), |ui| {
+                ui.horizontal(|ui| {
+                    let width = (ui.available_width() - 120.0).clamp(160.0, 420.0);
+                    let field = ui.add(
+                        egui::TextEdit::singleline(stl_input)
+                            .hint_text(tr("An STL file"))
+                            .desired_width(width),
+                    );
+                    let enter = field.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
+                    if (super::accent_button(ui, p, tr("Show geometry")).clicked() || enter)
+                        && !stl_input.trim().is_empty()
+                    {
+                        stl_path = Some(PathBuf::from(stl_input.trim()));
+                    }
+                });
+            });
             office::section(ui, &home, tr("Recent"), |ui| {
                 let docs: Vec<eng::RecentDocument> = recent
                     .iter()
@@ -502,9 +529,18 @@ impl VortiaApp {
                 );
             });
         });
+        if let Some(path) = stl_path {
+            self.show_stl(ctx, path);
+        }
+        if close_stl {
+            self.stl = None;
+        }
         match nav_pick.as_deref() {
             Some(office::BACK) => self.home = false,
-            Some("home") => self.new_case = None,
+            Some("home") => {
+                self.new_case = None;
+                self.stl = None;
+            }
             Some("new") if self.new_case.is_none() => {
                 self.notice = None;
                 self.new_case = Some(newcase::NewCase::new(&newcase::NewCase::default_base()));
@@ -1428,6 +1464,93 @@ fn load_icon(ctx: &Context) -> egui::TextureHandle {
 impl VortiaApp {
     fn icon(&mut self, ctx: &Context) -> &egui::TextureHandle {
         self.icon.get_or_insert_with(|| load_icon(ctx))
+    }
+}
+
+/// An STL file on Home: what it is, then the surface. True when the user closes it.
+fn stl_page(ui: &mut egui::Ui, look: &Look, view: &mut crate::stlview::StlView) -> bool {
+    let p = &look.palette;
+    view.poll();
+    let mut close = false;
+    ui.horizontal(|ui| {
+        let name = view
+            .path
+            .file_name()
+            .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+        ui.label(RichText::new(name).size(font_size::TITLE).strong());
+        if ui.button(tr("Close geometry")).clicked() {
+            close = true;
+        }
+    });
+    ui.add_space(space::SM);
+    if view.reading() {
+        ui.horizontal(|ui| {
+            ui.spinner();
+            ui.label(tr("Reading the geometry…"));
+        });
+        return close;
+    }
+    if let Some(message) = view.failure() {
+        ui.colored_label(for_egui::color(p.status_danger_fg), message);
+        return close;
+    }
+    if let Some((summary, viewer, source)) = view.loaded() {
+        for line in stl_lines(summary) {
+            ui.label(line);
+        }
+        ui.add_space(space::SM);
+        viewer.show(
+            ui,
+            for_egui::color(p.surface_sunken),
+            muted(p),
+            component::CONTROL_RADIUS.round().clamp(0.0, 255.0) as u8,
+            source,
+        );
+    }
+    close
+}
+
+/// What the geometry panel says about a surface, as sentences.
+pub(super) fn stl_lines(s: &vortia_mesh::stl::Summary) -> Vec<String> {
+    let mut lines = vec![
+        trf(
+            "{} triangles, {} vertices",
+            &[&grouped(s.triangles), &grouped(s.vertices)],
+        ),
+        trf(
+            "Size {} × {} × {}",
+            &[
+                &g4(s.high[0] - s.low[0]),
+                &g4(s.high[1] - s.low[1]),
+                &g4(s.high[2] - s.low[2]),
+            ],
+        ),
+        trf("Area {}", &[&g4(s.area)]),
+    ];
+    lines.push(match s.volume {
+        Some(v) => trf("Closed solid, volume {}", &[&g4(v)]),
+        None => trf(
+            "Not closed: {} open edges, {} edges shared by more than two triangles",
+            &[&grouped(s.open_edges), &grouped(s.non_manifold_edges)],
+        ),
+    });
+    if s.degenerate > 0 {
+        lines.push(trf("{} triangles have no area", &[&grouped(s.degenerate)]));
+    }
+    lines
+}
+
+/// Four significant figures, in the units of the file (an STL has none).
+fn g4(v: f64) -> String {
+    if v == 0.0 || !v.is_finite() {
+        return "0".to_owned();
+    }
+    let digits = 3 - v.abs().log10().floor() as i32;
+    let decimals = digits.clamp(0, 9) as usize;
+    if v.abs() >= 1e6 || v.abs() < 1e-3 {
+        format!("{v:.3e}")
+    } else {
+        format!("{v:.decimals$}")
     }
 }
 
