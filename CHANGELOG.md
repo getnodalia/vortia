@@ -8,6 +8,13 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 ## [Unreleased]
 
 ### Añadido
+- **Listas de modelos y aviso de divergencia en la aplicación Rust:** en Turbulence y Fluid, el
+  tipo de simulación, el modelo RAS (kOmegaSST, kEpsilon, SpalartAllmaras) y la energía
+  (sensibleInternalEnergy, sensibleEnthalpy) se eligen de una lista con lo que el motor tiene, y
+  junto al modelo se dice qué campos necesita en la carpeta de tiempo. Una palabra que el caso ya
+  tenga y no esté en la lista se conserva. La tarjeta de residuos avisa mientras corre la
+  simulación si un residuo deja de ser un número o si, tras haber bajado, vuelve a 1 o por encima
+  (mil veces su valor más bajo, o más de 10⁶): qué ecuación, en qué paso, y qué revisar.
 - **Crear casos en la aplicación Rust:** en Home, «New» (o `File › New case`) crea un caso nuevo
   sin salir de la aplicación: un canal 2D laminar (`simpleFoam`), una tobera plana (rendija entre
   dos paredes) o una tobera axisimétrica (cuña de 5°), ambas compresibles con k-ω SST

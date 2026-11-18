@@ -56,7 +56,8 @@ STL, updater, issue-report or translation code exists there).
   `mass_balance_history` in `rust/vortia-post`, `vortia balance`, a card in the Run tab) reads
   the written `phi`, as the Qt `nozzleMassBalance` does. The residual plot of the Run tab
   (initial residuals by field from the solver log, logarithmic) is done. Still to do for R5: the
-  run monitor's divergence check and the pause/resume of a job.
+  run monitor's pause/resume of a job. The residual card warns while a run goes wrong (a residual
+  that is not a number, or that is back at 1 or above after falling by three decades or more).
 - **R6, on 2026-11-18:** the section analysis (`Case::section` in `rust/vortia-post`, `vortia
   section`, a card in the Results tab) integrates the stored fields over a plane cut through the
   cells and the report is written as JSON (with SHA-256), CSV or HTML in
@@ -66,8 +67,10 @@ STL, updater, issue-report or translation code exists there).
 - **R4, started on 2026-11-18:** Setup has Fluid, Turbulence and Viscosity views that edit
   `constant/thermophysicalProperties`, `turbulenceProperties` and `transportProperties` in place,
   beside the boundary conditions, run settings, numerics and schemes that were already there.
-  Still to do for R4: pick-lists for the known models and boundary types instead of free text,
-  a symmetry condition in the compressible engine, and a jet-into-atmosphere nozzle case.
+  The turbulence model, simulation type and energy variable are pick-lists of what the engine
+  has. Still to do for R4: a pick-list for boundary types (a type change has to add or remove the
+  entries it needs, such as `value`), a symmetry condition in the compressible engine, and a
+  jet-into-atmosphere nozzle case.
 
 ## Order
 

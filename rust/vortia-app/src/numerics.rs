@@ -48,6 +48,33 @@ impl File {
     }
 }
 
+/// The words the engine has for an entry that is one of a few names, for a pick-list instead of
+/// free text. Only what `vortia-solvers` accepts is listed (it refuses the rest by name, so a
+/// word that is not here would not run), and only where there is more than one choice.
+/// An entry that is not here, or whose current word is not in its list, stays as text.
+pub fn choices(file: File, path: &[String], key: &str) -> &'static [&'static str] {
+    let path: Vec<&str> = path.iter().map(String::as_str).collect();
+    match (file, path.as_slice(), key) {
+        (File::Turbulence, [], "simulationType") => &["laminar", "RAS"],
+        (File::Turbulence, ["RAS"], "model" | "RASModel") => {
+            &["kOmegaSST", "kEpsilon", "SpalartAllmaras"]
+        }
+        (File::Fluid, ["thermoType"], "energy") => &["sensibleInternalEnergy", "sensibleEnthalpy"],
+        _ => &[],
+    }
+}
+
+/// What a turbulence model needs in the time folder, to show beside its pick-list: choosing a
+/// model does not make the fields it solves for.
+pub fn model_fields(model: &str) -> Option<&'static str> {
+    match model {
+        "kOmegaSST" => Some("k, omega and nut"),
+        "kEpsilon" => Some("k, epsilon and nut"),
+        "SpalartAllmaras" => Some("nuTilda and nut"),
+        _ => None,
+    }
+}
+
 const MAX_DEPTH: usize = 6;
 const MAX_ITEMS: usize = 500;
 
@@ -164,6 +191,26 @@ pub fn save(case: &Path, file: File, groups: &[Group]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_models_the_engine_has_are_offered_where_a_name_is_expected() {
+        let path = |p: &[&str]| p.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+        assert_eq!(
+            choices(File::Turbulence, &path(&["RAS"]), "model"),
+            choices(File::Turbulence, &path(&["RAS"]), "RASModel")
+        );
+        assert!(choices(File::Turbulence, &path(&["RAS"]), "model").contains(&"kOmegaSST"));
+        assert!(choices(File::Turbulence, &path(&[]), "simulationType").contains(&"laminar"));
+        assert!(
+            choices(File::Fluid, &path(&["thermoType"]), "energy").contains(&"sensibleEnthalpy")
+        );
+        // A number, a property or an entry of another file is not a pick-list.
+        assert!(choices(File::Fluid, &path(&["mixture", "transport"]), "mu").is_empty());
+        assert!(choices(File::Schemes, &path(&["RAS"]), "model").is_empty());
+        for model in choices(File::Turbulence, &path(&["RAS"]), "model") {
+            assert!(model_fields(model).is_some(), "{model} says what it needs");
+        }
+    }
 
     const SOLUTION: &str = "\
 FoamFile
