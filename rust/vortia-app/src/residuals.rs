@@ -147,10 +147,10 @@ impl Residuals {
             text.push_str(&step.to_string());
             for s in &self.series {
                 text.push(',');
-                if let Ok(i) = s.points.binary_search_by(|(t, _)| t.total_cmp(&step)) {
-                    if let Some((_, r)) = s.points.get(i) {
-                        text.push_str(&format!("{r:e}"));
-                    }
+                if let Ok(i) = s.points.binary_search_by(|(t, _)| t.total_cmp(&step))
+                    && let Some((_, r)) = s.points.get(i)
+                {
+                    text.push_str(&format!("{r:e}"));
                 }
             }
             text.push('\n');
