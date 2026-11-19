@@ -2979,6 +2979,7 @@ dependencies = [
  "vortia-core",
  "vortia-fields",
  "vortia-foamfile",
+ "vortia-fv",
  "vortia-mesh",
  "vortia-post",
  "vortia-sketch",

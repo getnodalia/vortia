@@ -23,7 +23,7 @@ fn main() -> eframe::Result {
         "Vortia",
         options,
         Box::new(|cc| {
-            // `vortia-app CASE [--run] [--mesh] [--field NAME] [--results] [--conditions] [--numerics] [--schemes] [--settings] [--fluid] [--turbulence] [--viscosity] [--new-sketch]`: open a case,
+            // `vortia-app CASE [--run] [--mesh] [--field NAME] [--results] [--conditions] [--numerics] [--schemes] [--settings] [--fluid] [--turbulence] [--viscosity] [--new-sketch] [--preferences [SECTION]]`: open a case,
             // start it at once, or show its mesh (coloured with a field), conditions or settings.
             let mut args: Vec<_> = std::env::args_os().skip(1).collect();
             let case = if args
@@ -42,6 +42,9 @@ fn main() -> eframe::Result {
                 && let Some(file) = flags.get(at + 1)
             {
                 app.show_stl(&cc.egui_ctx, PathBuf::from(file));
+            } else if let Some(at) = flags.iter().position(|a| a == "--preferences") {
+                let section = flags.get(at + 1).map(|s| s.to_string_lossy().into_owned());
+                app.show_preferences(section.as_deref().unwrap_or("general"));
             } else if has("--report") {
                 app.show_report();
             } else if has("--new-sketch") {

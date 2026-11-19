@@ -19,6 +19,7 @@
 //! be split over the same blocks.
 
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rayon::{ThreadPool, ThreadPoolBuilder};
@@ -30,9 +31,19 @@ use crate::solve::{Controls, Performance, smooth_sym_gauss_seidel, sum_mag};
 /// Most blocks a solve is cut into.
 pub const MAX_BLOCKS: usize = 1024;
 
-/// How many threads a solve may use: `VORTIA_THREADS` when it is a positive
-/// number, else what the machine offers.
-pub fn thread_count() -> usize {
+/// The cap the app sets from its Preferences; 0 means none was set.
+static LIMIT: AtomicUsize = AtomicUsize::new(0);
+
+/// Caps the threads of the solves that start from now on; 0 takes the cap away.
+///
+/// The blocks a matrix is cut into never depend on the threads that run them, so this changes
+/// the time a solve takes and nothing in its numbers.
+pub fn set_thread_limit(threads: usize) {
+    LIMIT.store(threads.min(256), Ordering::Relaxed);
+}
+
+/// How many threads the machine offers or `VORTIA_THREADS` names, before any cap.
+pub fn available_threads() -> usize {
     static COUNT: OnceLock<usize> = OnceLock::new();
     *COUNT.get_or_init(|| {
         std::env::var("VORTIA_THREADS")
@@ -43,6 +54,15 @@ pub fn thread_count() -> usize {
             .unwrap_or(1)
             .min(256)
     })
+}
+
+/// How many threads a solve may use: what [`available_threads`] says, or less when the app
+/// set a cap with [`set_thread_limit`].
+pub fn thread_count() -> usize {
+    match LIMIT.load(Ordering::Relaxed) {
+        0 => available_threads(),
+        cap => cap.min(available_threads()),
+    }
 }
 
 /// `smoothSolver` with `symGaussSeidel` on `n_blocks` blocks of cells.
@@ -456,6 +476,17 @@ mod tests {
                 .map(|v| v.to_bits())
                 .collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn the_cap_lowers_the_threads_and_zero_takes_it_away() {
+        let all = available_threads();
+        set_thread_limit(1);
+        assert_eq!(thread_count(), 1);
+        set_thread_limit(100_000);
+        assert_eq!(thread_count(), all);
+        set_thread_limit(0);
+        assert_eq!(thread_count(), all);
     }
 
     #[test]

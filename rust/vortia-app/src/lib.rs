@@ -16,6 +16,7 @@
 )]
 
 pub mod app;
+pub mod casefs;
 pub mod conditions;
 pub mod controldict;
 pub mod convergence;
@@ -25,6 +26,7 @@ pub mod flowlines;
 pub mod globalmenu;
 pub mod i18n;
 pub mod numerics;
+pub mod picture;
 pub mod prefs;
 pub mod region_editor;
 pub mod report;

@@ -3,7 +3,9 @@
 //! the numbers, and a colour scale to turn them into colours.
 
 use crate::i18n::tr;
+use crate::prefs::ColourScale;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::mpsc::{Receiver, channel};
 
 use vortia_core::Vec3;
@@ -127,8 +129,8 @@ pub fn spawn(
     rx
 }
 
-/// The colour scale, from low to high: deep blue, blue, teal, green, yellow, orange, red.
-const STOPS: [[u8; 3]; 7] = [
+/// The rainbow, from low to high: deep blue, blue, teal, green, yellow, orange, red.
+const RAINBOW: [[u8; 3]; 7] = [
     [0x26, 0x2a, 0x7a],
     [0x2c, 0x6b, 0xc9],
     [0x22, 0xa7, 0xa8],
@@ -138,17 +140,54 @@ const STOPS: [[u8; 3]; 7] = [
     [0xc9, 0x2e, 0x2e],
 ];
 
+/// Viridis (CC0), which reads in grey scale and for the common colour-vision deficiencies.
+const VIRIDIS: [[u8; 3]; 7] = [
+    [0x44, 0x01, 0x54],
+    [0x41, 0x44, 0x87],
+    [0x2a, 0x78, 0x8e],
+    [0x22, 0xa8, 0x84],
+    [0x7a, 0xd1, 0x51],
+    [0xbd, 0xdf, 0x26],
+    [0xfd, 0xe7, 0x25],
+];
+
+/// Dark to light, for a picture that is printed in black and white.
+const GREYS: [[u8; 3]; 2] = [[0x1c, 0x1f, 0x26], [0xf0, 0xf2, 0xf5]];
+
+/// The scale and the digits the pictures are drawn with, set from the Preferences.
+static SCALE: AtomicU8 = AtomicU8::new(0);
+static DIGITS: AtomicU8 = AtomicU8::new(DEFAULT_DIGITS);
+
+/// Digits of a number on the scale's labels when the user chose none.
+pub const DEFAULT_DIGITS: u8 = 4;
+
+/// Makes `scale` and `digits` what every picture of fields uses from now on.
+pub fn configure(scale: ColourScale, digits: u8) {
+    SCALE.store(scale.index(), Ordering::Relaxed);
+    DIGITS.store(digits.clamp(2, 9), Ordering::Relaxed);
+}
+
 /// The colour for a place on the scale, 0 to 1; a place outside it is the nearest end.
 pub fn scale(t: f32) -> [u8; 3] {
-    let t = if t.is_finite() {
-        t.clamp(0.0, 1.0)
-    } else {
-        0.0
-    };
-    let position = t * (STOPS.len() - 1) as f32;
-    let index = (position.floor() as usize).min(STOPS.len() - 2);
+    scale_of(ColourScale::from_index(SCALE.load(Ordering::Relaxed)), t)
+}
+
+/// [`scale`] for a chosen colour scale.
+pub fn scale_of(kind: ColourScale, t: f32) -> [u8; 3] {
+    match kind {
+        ColourScale::Rainbow => along(&RAINBOW, t),
+        ColourScale::Viridis => along(&VIRIDIS, t),
+        ColourScale::Greys => along(&GREYS, t),
+    }
+}
+
+fn along(stops: &[[u8; 3]], t: f32) -> [u8; 3] {
+    // An infinite place is the nearest end; one that is not a number is the low end.
+    let t = if t.is_nan() { 0.0 } else { t.clamp(0.0, 1.0) };
+    let position = t * stops.len().saturating_sub(1) as f32;
+    let index = (position.floor() as usize).min(stops.len().saturating_sub(2));
     let along = position - index as f32;
-    let (Some(a), Some(b)) = (STOPS.get(index), STOPS.get(index + 1)) else {
+    let (Some(a), Some(b)) = (stops.get(index), stops.get(index + 1)) else {
         return [0; 3];
     };
     let mix = |i: usize| -> u8 {
@@ -163,13 +202,19 @@ pub fn scale(t: f32) -> [u8; 3] {
 
 /// A number for a label of the scale: few digits, scientific when it is very small or large.
 pub fn label(value: f32) -> String {
+    label_with(DIGITS.load(Ordering::Relaxed), value)
+}
+
+/// [`label`] with `digits` significant digits (decimals in the plain form).
+pub fn label_with(digits: u8, value: f32) -> String {
+    let digits = usize::from(digits.clamp(2, 9));
     let magnitude = value.abs();
     if value == 0.0 || (1e-3..1e5).contains(&magnitude) {
-        let text = format!("{value:.4}");
+        let text = format!("{value:.digits$}");
         let text = text.trim_end_matches('0').trim_end_matches('.');
         text.to_owned()
     } else {
-        format!("{value:.3e}")
+        format!("{value:.prec$e}", prec = digits - 1)
     }
 }
 
@@ -273,20 +318,42 @@ mod tests {
 
     #[test]
     fn the_scale_runs_from_the_first_stop_to_the_last_and_never_leaves_them() {
-        assert_eq!(scale(0.0), STOPS[0]);
-        assert_eq!(scale(1.0), STOPS[6]);
-        assert_eq!(scale(-5.0), STOPS[0]);
-        assert_eq!(scale(5.0), STOPS[6]);
-        assert_eq!(scale(f32::NAN), STOPS[0]);
-        assert_eq!(scale(0.5), STOPS[3]);
+        assert_eq!(scale_of(ColourScale::Rainbow, 0.0), RAINBOW[0]);
+        assert_eq!(scale_of(ColourScale::Rainbow, 1.0), RAINBOW[6]);
+        assert_eq!(scale_of(ColourScale::Rainbow, -5.0), RAINBOW[0]);
+        assert_eq!(scale_of(ColourScale::Rainbow, 5.0), RAINBOW[6]);
+        assert_eq!(scale_of(ColourScale::Rainbow, f32::NAN), RAINBOW[0]);
+        assert_eq!(scale_of(ColourScale::Rainbow, 0.5), RAINBOW[3]);
     }
 
     #[test]
     fn labels_are_short() {
-        assert_eq!(label(0.0), "0");
-        assert_eq!(label(101325.0), "1.013e5");
-        assert_eq!(label(300.5), "300.5");
-        assert_eq!(label(-0.25), "-0.25");
-        assert_eq!(label(2.5e-6), "2.500e-6");
+        assert_eq!(label_with(DEFAULT_DIGITS, 0.0), "0");
+        assert_eq!(label_with(DEFAULT_DIGITS, 101325.0), "1.013e5");
+        assert_eq!(label_with(DEFAULT_DIGITS, 300.5), "300.5");
+        assert_eq!(label_with(DEFAULT_DIGITS, -0.25), "-0.25");
+        assert_eq!(label_with(DEFAULT_DIGITS, 2.5e-6), "2.500e-6");
+    }
+
+    #[test]
+    fn every_colour_scale_has_its_own_ends_and_survives_hostile_places() {
+        for kind in ColourScale::ALL {
+            let (low, high) = (scale_of(kind, 0.0), scale_of(kind, 1.0));
+            assert_ne!(low, high, "{kind:?}");
+            assert_eq!(scale_of(kind, f32::INFINITY), high);
+            assert_eq!(scale_of(kind, f32::NEG_INFINITY), low);
+        }
+        assert_eq!(scale_of(ColourScale::Viridis, 0.0), VIRIDIS[0]);
+        assert_eq!(scale_of(ColourScale::Greys, 1.0), GREYS[1]);
+    }
+
+    #[test]
+    fn the_digits_of_a_label_follow_the_choice_and_stay_in_range() {
+        assert_eq!(label_with(2, 300.567), "300.57");
+        assert_eq!(label_with(6, 300.5), "300.5");
+        assert_eq!(label_with(6, 101325.0), "1.01325e5");
+        // Nonsense digits are clamped rather than panicking in the formatter.
+        assert!(!label_with(0, 1.234_567).is_empty());
+        assert!(!label_with(200, 1.234_567).is_empty());
     }
 }

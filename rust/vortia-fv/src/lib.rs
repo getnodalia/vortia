@@ -39,7 +39,9 @@ pub mod surface;
 pub mod vector;
 
 pub use bc::{Boundary, ScalarBc};
-pub use block::{smooth_sym_gauss_seidel_blocks, thread_count};
+pub use block::{
+    available_threads, set_thread_limit, smooth_sym_gauss_seidel_blocks, thread_count,
+};
 pub use error::{FvError, Result};
 pub use fvgeom::FvGeometry;
 pub use ldu::LduMatrix;

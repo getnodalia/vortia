@@ -132,6 +132,89 @@ fn spanish() -> &'static HashMap<&'static str, &'static str> {
 
 /// English → Spanish. The wording follows the other Nodalia apps ("Caso", "Ejecutar").
 pub const ES: &[(&str, &str)] = &[
+    ("Duplicate case", "Duplicar caso"),
+    (
+        "'{}' is not a case: it has no system/controlDict.",
+        "'{}' no es un caso: no tiene system/controlDict.",
+    ),
+    ("Copy of the case opened: {}", "Copia del caso abierta: {}"),
+    ("Open a case first.", "Abre primero un caso."),
+    (
+        "The case has no folder name.",
+        "El caso no tiene nombre de carpeta.",
+    ),
+    (
+        "There are too many copies of this case.",
+        "Hay demasiadas copias de este caso.",
+    ),
+    (
+        "The case could not be copied: {}",
+        "No se pudo copiar el caso: {}",
+    ),
+    ("Save picture", "Guardar imagen"),
+    (
+        "The picture could not be taken.",
+        "No se pudo tomar la imagen.",
+    ),
+    ("General", "General"),
+    ("Units and precision", "Unidades y precisión"),
+    ("View", "Vista"),
+    ("Performance", "Rendimiento"),
+    ("Updates", "Actualizaciones"),
+    ("Rainbow", "Arcoíris"),
+    ("Viridis", "Viridis"),
+    ("Greys", "Grises"),
+    ("Interface language", "Idioma de la interfaz"),
+    (
+        "The menu bar the desktop owns changes language at the next start.",
+        "La barra de menús que gestiona el escritorio cambia de idioma en el próximo arranque.",
+    ),
+    ("Cases", "Casos"),
+    (
+        "Open the last case when Vortia starts",
+        "Abrir el último caso al iniciar Vortia",
+    ),
+    ("Clear the recent cases", "Vaciar los casos recientes"),
+    ("Theme", "Tema"),
+    ("Colours", "Colores"),
+    ("Size", "Tamaño"),
+    ("Interface size", "Tamaño de la interfaz"),
+    (
+        "Makes text and controls larger or smaller, for a screen that is far or dense.",
+        "Agranda o reduce el texto y los controles, para una pantalla lejana o muy densa.",
+    ),
+    ("Numbers", "Números"),
+    ("Significant digits", "Cifras significativas"),
+    ("Units", "Unidades"),
+    (
+        "A case is kept in SI units (metres, kilograms, seconds, kelvin, pascals) and every value is shown in them.",
+        "Un caso se guarda en unidades SI (metros, kilogramos, segundos, kelvin, pascales) y todos los valores se muestran en ellas.",
+    ),
+    ("Colour scale", "Escala de color"),
+    ("Preview", "Vista previa"),
+    (
+        "Viridis and Greys stay readable in black and white and for colour-vision deficiencies.",
+        "Viridis y Grises se leen en blanco y negro y con deficiencias de visión del color.",
+    ),
+    (
+        "Draw the cell edges when a mesh opens",
+        "Dibujar las aristas de las celdas al abrir una malla",
+    ),
+    ("Threads for a run", "Hilos de una ejecución"),
+    (
+        "The answer of a run is the same with any number of threads; only the time changes. It applies to the runs that start from now on.",
+        "El resultado de una ejecución es el mismo con cualquier número de hilos; solo cambia el tiempo. Se aplica a las ejecuciones que empiecen a partir de ahora.",
+    ),
+    (
+        "Look for a new version when Vortia starts",
+        "Buscar una versión nueva al iniciar Vortia",
+    ),
+    ("{} on the list", "{} en la lista"),
+    (
+        "On the labels of the colour scale: {}, {}, {}.",
+        "En las etiquetas de la escala de color: {}, {}, {}.",
+    ),
+    ("All ({})", "Todos ({})"),
     ("About Vortia", "Acerca de Vortia"),
     ("Report a problem", "Informar de un problema"),
     ("Jet into the atmosphere", "Chorro a la atmósfera"),
