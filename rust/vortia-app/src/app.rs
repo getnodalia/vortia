@@ -592,7 +592,8 @@ impl VortiaApp {
         }
     }
 
-    /// Copies the open case next to itself and opens the copy.
+    /// Copies the open case next to itself and opens the copy. Only the Linux menu reaches it so far.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     fn duplicate_case(&mut self) {
         let Screen::Case(case) = &self.screen else {
             self.notice = Some(tr("Open a case first.").into());
