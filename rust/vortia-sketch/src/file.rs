@@ -8,7 +8,7 @@ use crate::error::{Result, SketchError};
 use crate::model::{Constraint, Entity, Point, Sketch};
 
 pub const FORMAT: &str = "vortia-sketch";
-pub const VERSION: u64 = 1;
+pub const VERSION: u64 = 2;
 /// The largest sketch file read, in bytes.
 pub const MAX_BYTES: u64 = 2 * 1024 * 1024;
 
@@ -32,6 +32,9 @@ impl Sketch {
                     Entity::Line { a, b } => json!({"type": "line", "a": a, "b": b}),
                     Entity::Arc { start, end, center } => {
                         json!({"type": "arc", "start": start, "end": end, "center": center})
+                    }
+                    Entity::Circle { center, rim } => {
+                        json!({"type": "circle", "center": center, "rim": rim})
                     }
                 };
                 if let (Some(name), Some(map)) = (self.names.get(&i), v.as_object_mut()) {
@@ -60,6 +63,15 @@ impl Sketch {
                 }
                 Constraint::Angle { a, b, degrees } => {
                     json!({"type": "angle", "a": a, "b": b, "degrees": degrees})
+                }
+                Constraint::Coincident { a, b } => json!({"type": "coincident", "a": a, "b": b}),
+                Constraint::Parallel { a, b } => json!({"type": "parallel", "a": a, "b": b}),
+                Constraint::Perpendicular { a, b } => {
+                    json!({"type": "perpendicular", "a": a, "b": b})
+                }
+                Constraint::Equal { a, b } => json!({"type": "equal", "a": a, "b": b}),
+                Constraint::Tangent { line, round } => {
+                    json!({"type": "tangent", "line": line, "round": round})
                 }
             })
             .collect();
@@ -132,6 +144,10 @@ impl Sketch {
                         end: id(e, "end")?,
                         center: id(e, "center")?,
                     },
+                    Some("circle") => Entity::Circle {
+                        center: id(e, "center")?,
+                        rim: id(e, "rim")?,
+                    },
                     other => {
                         return Err(invalid(format!("an entity of type {other:?} is not known")));
                     }
@@ -171,6 +187,26 @@ impl Sketch {
                         a: id(c, "a")?,
                         b: id(c, "b")?,
                         degrees: num(c, "degrees")?,
+                    },
+                    Some("coincident") => Constraint::Coincident {
+                        a: id(c, "a")?,
+                        b: id(c, "b")?,
+                    },
+                    Some("parallel") => Constraint::Parallel {
+                        a: id(c, "a")?,
+                        b: id(c, "b")?,
+                    },
+                    Some("perpendicular") => Constraint::Perpendicular {
+                        a: id(c, "a")?,
+                        b: id(c, "b")?,
+                    },
+                    Some("equal") => Constraint::Equal {
+                        a: id(c, "a")?,
+                        b: id(c, "b")?,
+                    },
+                    Some("tangent") => Constraint::Tangent {
+                        line: id(c, "line")?,
+                        round: id(c, "round")?,
                     },
                     other => {
                         return Err(invalid(format!(

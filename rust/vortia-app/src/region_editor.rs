@@ -406,10 +406,8 @@ impl RegionEditor {
         self.sketch
             .entities
             .iter()
-            .map(|e| match *e {
-                Entity::Line { a, b } => [a, b].iter().filter(|p| **p == id).count(),
-                Entity::Arc { start, end, .. } => [start, end].iter().filter(|p| **p == id).count(),
-            })
+            .filter_map(Entity::ends)
+            .map(|(a, b)| [a, b].iter().filter(|p| **p == id).count())
             .sum()
     }
 

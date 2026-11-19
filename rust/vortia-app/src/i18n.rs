@@ -796,7 +796,7 @@ pub const ES: &[(&str, &str)] = &[
         "Longitud a lo largo, punto {} a {}",
     ),
     ("Height, point {} to {}", "Altura, punto {} a {}"),
-    ("Radius of arc {}", "Radio del arco {}"),
+    ("Radius of edge {}", "Radio del borde {}"),
     ("Angle, point {} to {}", "Ángulo, punto {} a {}"),
     ("Warming up", "Calentando"),
     ("Wedge angle", "Ángulo de la cuña"),

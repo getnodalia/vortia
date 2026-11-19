@@ -13,6 +13,7 @@
     clippy::indexing_slicing
 )]
 
+mod draw;
 mod edit;
 mod error;
 mod file;
@@ -22,6 +23,7 @@ mod region;
 mod solve;
 pub mod templates;
 
+pub use draw::MAX_SIDES;
 pub use edit::Measure;
 pub use error::{Result, SketchError};
 pub use file::{FORMAT, MAX_BYTES, VERSION};
