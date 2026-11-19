@@ -7,6 +7,9 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 
 ## [Unreleased]
 
+### Cambiado
+- **Iconos NDL de ingeniería en la cinta:** Ejecutar, Pausar, Parar, Abrir, Cerrar, Malla, Condiciones, Fluido, Turbulencia, Viscosidad, Ajustes, Numéricos, Esquemas y Sondas se dibujan con los iconos en volumen de NDL, los mismos que Torno y Forja. Los iconos nuevos (caso, malla, condiciones, fluido, turbulencia, viscosidad, esquemas, sondas, resultados, residuos) viven en nodalia-design. El árbol del Browser conserva sus iconos planos pequeños.
+
 ## [0.11.0] — 2026-11-19
 
 ### Añadido

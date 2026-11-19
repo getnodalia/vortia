@@ -706,9 +706,11 @@ fn ribbon(ui: &mut egui::Ui, look: &Look, case: &mut CaseView) -> Option<Cmd> {
     let mut go = None;
     ui.horizontal(|ui| {
         let tool = |ui: &mut egui::Ui, icon: &str, text: &str, active: bool, enabled: bool| {
-            ui.add_enabled_ui(enabled, |ui| eng::ribbon_tool(ui, look, icon, text, active))
-                .inner
-                .clicked()
+            ui.add_enabled_ui(enabled, |ui| {
+                eng::ribbon_tool_3d(ui, look, volume(icon), text, active)
+            })
+            .inner
+            .clicked()
         };
         match step {
             Step::Case => {
@@ -808,6 +810,29 @@ struct Row {
     selected: bool,
     muted: bool,
     pick: Pick,
+}
+
+/// The volumetric NDL icon a tool is drawn with in the ribbon; the Browser's small rows keep the
+/// flat icon of the same concept.
+fn volume(flat: &str) -> &str {
+    match flat {
+        "run" => "run",
+        "pause" => "pause",
+        "play" => "play",
+        "stop" => "stop",
+        "folder" => "folder",
+        "close" => "close-case",
+        "mesh" => "cfd-mesh",
+        "boundary" => "cfd-boundary",
+        "material" => "cfd-fluid",
+        "waveform" => "cfd-turbulence",
+        "droplet" => "cfd-viscosity",
+        "settings" => "properties",
+        "solver" => "cfd-numerics",
+        "parameters" => "cfd-schemes",
+        "probe" => "cfd-probe",
+        other => other,
+    }
 }
 
 /// The dictionaries of `constant` that describe the physics, with the view that edits each.
