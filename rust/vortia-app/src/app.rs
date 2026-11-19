@@ -342,6 +342,21 @@ const UPDATE_APP: nodalia_update::App = nodalia_update::App {
     edition: None,
 };
 
+/// The views of a case the View menu goes to: label, action and view.
+#[cfg(target_os = "linux")]
+const VIEWS: &[(&str, &str, Tab)] = &[
+    ("Run", "go:run", Tab::Run),
+    ("Mesh", "go:mesh", Tab::Mesh),
+    ("Results", "go:results", Tab::Results),
+    ("Boundary conditions", "go:conditions", Tab::Conditions),
+    ("Fluid", "go:fluid", Tab::Fluid),
+    ("Turbulence", "go:turbulence", Tab::Turbulence),
+    ("Viscosity", "go:transport", Tab::Transport),
+    ("Run settings", "go:settings", Tab::Settings),
+    ("Solver numbers", "go:numerics", Tab::Numerics),
+    ("Schemes", "go:schemes", Tab::Schemes),
+];
+
 /// The menus the shell shows for the app, each action named for [`VortiaApp::act`].
 #[cfg(target_os = "linux")]
 fn global_menus() -> Vec<Menu> {
@@ -366,6 +381,7 @@ fn global_menus() -> Vec<Menu> {
                 Entry::action(tr("Pause or resume"), "pause"),
                 Entry::action(tr("Stop"), "stop"),
                 Entry::Separator,
+                Entry::action(tr("Duplicate case"), "duplicate"),
                 Entry::action(tr("Close case"), "close"),
             ],
         },
@@ -576,6 +592,22 @@ impl VortiaApp {
         }
     }
 
+    /// Copies the open case next to itself and opens the copy.
+    fn duplicate_case(&mut self) {
+        let Screen::Case(case) = &self.screen else {
+            self.notice = Some(tr("Open a case first.").into());
+            return;
+        };
+        let copied = crate::casefs::duplicate(&case.dir.clone());
+        self.notice = Some(match copied {
+            Ok(copy) => match self.open_case(&copy) {
+                Ok(()) => trf("Copy of the case opened: {}", &[&copy.display()]),
+                Err(message) => message,
+            },
+            Err(message) => message,
+        });
+    }
+
     fn close_case(&mut self) {
         if matches!(&self.screen, Screen::Case(case) if !case.running()) {
             self.screen = Screen::Welcome;
@@ -596,7 +628,12 @@ impl VortiaApp {
             "pause" => self.toggle_pause(),
             "stop" => self.stop_run(),
             "close" => self.close_case(),
-            _ => {}
+            "duplicate" => self.duplicate_case(),
+            other => {
+                if let Some((_, _, tab)) = VIEWS.iter().find(|(_, action, _)| *action == other) {
+                    self.perform(ctx, shell::Cmd::Go(*tab));
+                }
+            }
         }
     }
 
@@ -615,6 +652,10 @@ impl VortiaApp {
         menu.set_enabled("pause", running && !stopping);
         menu.set_enabled("stop", running && !stopping);
         menu.set_enabled("close", open && !running);
+        menu.set_enabled("duplicate", open);
+        for (_, action, _) in VIEWS {
+            menu.set_enabled(action, open);
+        }
         for action in clicks {
             self.act(ctx, &action);
         }

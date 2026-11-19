@@ -132,6 +132,25 @@ fn spanish() -> &'static HashMap<&'static str, &'static str> {
 
 /// English → Spanish. The wording follows the other Nodalia apps ("Caso", "Ejecutar").
 pub const ES: &[(&str, &str)] = &[
+    ("Duplicate case", "Duplicar caso"),
+    (
+        "'{}' is not a case: it has no system/controlDict.",
+        "'{}' no es un caso: no tiene system/controlDict.",
+    ),
+    ("Copy of the case opened: {}", "Copia del caso abierta: {}"),
+    ("Open a case first.", "Abre primero un caso."),
+    (
+        "The case has no folder name.",
+        "El caso no tiene nombre de carpeta.",
+    ),
+    (
+        "There are too many copies of this case.",
+        "Hay demasiadas copias de este caso.",
+    ),
+    (
+        "The case could not be copied: {}",
+        "No se pudo copiar el caso: {}",
+    ),
     ("Save picture", "Guardar imagen"),
     (
         "The picture could not be taken.",
