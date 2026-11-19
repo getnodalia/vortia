@@ -48,6 +48,8 @@ jobs:
 
   macos:
     name: DMG (macos-15)
+    # macOS slots are kept for releases (release-rust.yml builds the DMG): by hand only.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v7
