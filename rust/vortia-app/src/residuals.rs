@@ -120,6 +120,44 @@ impl Residuals {
         })
     }
 
+    /// The residuals as a table: one row per step, one column per field, empty where a field
+    /// was not solved in that step. A field name that could break the header is not a name
+    /// the solver prints, but it comes from a log, so commas and line breaks are made spaces.
+    pub fn csv(&self) -> String {
+        let mut steps: Vec<f64> = self
+            .series
+            .iter()
+            .flat_map(|s| s.points.iter().map(|(t, _)| *t))
+            .collect();
+        steps.sort_by(f64::total_cmp);
+        steps.dedup();
+        let mut text = String::from("step");
+        for s in &self.series {
+            text.push(',');
+            text.extend(s.field.chars().map(|c| {
+                if matches!(c, ',' | '\n' | '\r' | '"') {
+                    ' '
+                } else {
+                    c
+                }
+            }));
+        }
+        text.push('\n');
+        for step in steps {
+            text.push_str(&step.to_string());
+            for s in &self.series {
+                text.push(',');
+                if let Ok(i) = s.points.binary_search_by(|(t, _)| t.total_cmp(&step)) {
+                    if let Some((_, r)) = s.points.get(i) {
+                        text.push_str(&format!("{r:e}"));
+                    }
+                }
+            }
+            text.push('\n');
+        }
+        text
+    }
+
     /// The step range and the residual range of everything kept.
     pub fn bounds(&self) -> Option<([f64; 2], [f64; 2])> {
         let mut points = self.series.iter().flat_map(|s| s.points.iter());
@@ -154,6 +192,19 @@ mod tests {
             r.push(l);
         }
         r
+    }
+
+    #[test]
+    fn the_table_has_a_column_per_field_and_a_row_per_step() {
+        let r = feed(&[
+            "Time = 1",
+            "smoothSolver:  Solving for Ux, Initial residual = 1e0, Final residual = 8.8e-2, No Iterations 1",
+            "Time = 2",
+            "smoothSolver:  Solving for Ux, Initial residual = 2.5e-1, Final residual = 6.6e-3, No Iterations 2",
+            "DICPCG:  Solving for p, Initial residual = 1.8e-2, Final residual = 6.5e-4, No Iterations 65",
+        ]);
+        assert_eq!(r.csv(), "step,Ux,p\n1,1e0,\n2,2.5e-1,1.8e-2\n");
+        assert_eq!(Residuals::default().csv(), "step\n");
     }
 
     #[test]

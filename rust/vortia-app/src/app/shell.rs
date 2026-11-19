@@ -12,7 +12,7 @@ use nodalia_theme::engineering::{
 };
 use nodalia_theme::office::{self, Entry, Nav};
 use nodalia_theme::{Mode, Palette, component, font_size, for_egui, space, window_controls};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use super::conditions_tab;
 use super::newcase;
@@ -1192,14 +1192,38 @@ fn trouble_message(trouble: &Trouble) -> String {
 }
 
 /// How the residuals have fallen, one line per equation, on a logarithmic axis.
-fn residual_card(ui: &mut egui::Ui, p: &Palette, residuals: &Residuals) {
+fn residual_card(ui: &mut egui::Ui, p: &Palette, residuals: &Residuals, case: &Path) {
     Frame::NONE
         .fill(for_egui::color(p.surface_sunken))
         .corner_radius(super::corner(nodalia_theme::component::CONTROL_RADIUS))
         .inner_margin(Margin::same(space::MD as i8))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.label(RichText::new(tr("Residuals")).strong());
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(tr("Residuals")).strong());
+                let note_id = egui::Id::unique(("residuals-saved", case));
+                if !residuals.is_empty() && ui.small_button(tr("Save CSV")).clicked() {
+                    let relative = Path::new("postProcessing")
+                        .join("residuals")
+                        .join("residuals.csv");
+                    let note = match vortia_foamfile::write::atomic(
+                        &case.join(&relative),
+                        residuals.csv().as_bytes(),
+                    ) {
+                        Ok(()) => (true, trf("Saved to {}.", &[&relative.display()])),
+                        Err(e) => (false, e.to_string()),
+                    };
+                    ui.data_mut(|d| d.insert_temp(note_id, note));
+                }
+                if let Some((ok, message)) = ui.data(|d| d.get_temp::<(bool, String)>(note_id)) {
+                    let tone = if ok {
+                        p.status_success_fg
+                    } else {
+                        p.status_danger_fg
+                    };
+                    ui.colored_label(for_egui::color(tone), message);
+                }
+            });
             if let Some(trouble) = residuals.trouble() {
                 ui.colored_label(
                     for_egui::color(p.status_danger_fg),
@@ -1351,7 +1375,7 @@ fn run_view(ui: &mut egui::Ui, p: &Palette, case: &CaseView) {
         .show(ui, |ui| {
             convergence_card(ui, p, case.report.as_ref());
             ui.add_space(space::MD);
-            residual_card(ui, p, &case.residuals);
+            residual_card(ui, p, &case.residuals, &case.dir);
             ui.add_space(space::MD);
             balance_card(
                 ui,
