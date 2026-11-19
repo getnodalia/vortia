@@ -88,4 +88,3 @@ solver. Importing a case or visualizing 3D data is not implementing these models
 No working-looking controls are supplied for unavailable physics.
 
 Reference for the comparison: [official Fluent capabilities](https://ansyshelp.ansys.com/public/Views/Secured/corp/v252/en/flu_ug/flu_gs_sec_gs_capabilities.html).
-
