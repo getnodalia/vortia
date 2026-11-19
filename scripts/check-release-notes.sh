@@ -17,14 +17,15 @@ set -euo pipefail
 # What differs between apps: the packages' file prefix, as named in the downloads table
 # (APP-X.Y.Z-…), and the file that holds the version, read from stdin by read_version.
 app=Vortia
-manifest=CMakeLists.txt
+manifest=rust/Cargo.toml
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 self="$root/scripts/check-release-notes.sh"
 
-# project(VERSION X.Y.Z) of CMakeLists.txt.
+# The version of [workspace.package] in rust/Cargo.toml (a -dev suffix is kept).
 read_version() {
-  sed -nE 's/^[[:space:]]*VERSION[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+).*$/\1/p' | head -n 1
+  awk '/^\[/ { in_pkg = ($0 == "[workspace.package]"); next }
+       in_pkg && $1 == "version" { gsub(/"/, "", $3); print $3; exit }'
 }
 
 if [[ "${1:-}" == "--changed" ]]; then
