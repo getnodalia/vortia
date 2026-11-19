@@ -412,7 +412,8 @@ impl VortiaApp {
             new_case: None,
             search: None,
             icon: None,
-            updater: nodalia_update::egui::Updater::new(UPDATE_APP),
+            updater: nodalia_update::egui::Updater::new(UPDATE_APP)
+                .with_style(nodalia_update::egui::Style::Engineering),
             check_updates_at_start: false,
             stl: None,
             stl_input: String::new(),
