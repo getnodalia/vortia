@@ -72,10 +72,11 @@ plutil -lint "$APP/Contents/Info.plist"
 printf 'APPL????' >"$APP/Contents/PkgInfo"
 cp "$REPO/LICENSE" "$APP/Contents/Resources/LICENSE"
 
-# The icon: macOS applies its own mask, so it gets the full-bleed artwork.
+# The icon: macOS does not mask an app icon, so it gets the same rounded tile with its margin and
+# shadow as the Nodalia icon family, not the full-bleed artwork.
 ICONSET="$WORK/Vortia.iconset"
 mkdir -p "$ICONSET"
-ART="$REPO/resources/icons/vortia-macos.png"
+ART="$REPO/resources/icons/vortia-macos-icon.png"
 [[ -f "$ART" ]] || { echo "error: $ART is missing" >&2; exit 1; }
 for size in 16 32 128 256 512; do
   retina=$((size * 2))

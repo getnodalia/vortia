@@ -43,6 +43,10 @@ trap 'rm -rf "$(dirname "$stage")" "$(dirname "$rw")" >/dev/null 2>&1 || true' E
 ditto "$app" "$stage/$bundle"
 ln -s /Applications "$stage/Applications"
 cp "$bg" "$stage/.background/background.tiff"
+# The mounted volume wears the app's icon (the custom-icon flag is set after it is mounted).
+volume_icon="$app/Contents/Resources/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$app/Contents/Info.plist" 2>/dev/null || true)"
+[[ "$volume_icon" == *.icns ]] || volume_icon="$volume_icon.icns"
+[[ -f "$volume_icon" ]] && cp "$volume_icon" "$stage/.VolumeIcon.icns"
 
 # Room for the app plus file-system overhead, whatever the bundle weighs.
 stage_mb="$(du -sm "$stage" | cut -f1)"
@@ -53,6 +57,10 @@ hdiutil attach -readwrite -noverify -noautoopen "$rw" >/dev/null
 mount="/Volumes/${volname}"
 for _ in $(seq 1 50); do [[ -d "$mount" ]] && break; sleep 0.1; done
 [[ -d "$mount" ]] || { echo "Failed to mount $rw" >&2; exit 1; }
+
+if [[ -f "$mount/.VolumeIcon.icns" ]]; then
+  SetFile -a C "$mount" 2>/dev/null || echo "warning: could not set the volume icon (SetFile is missing)" >&2
+fi
 
 # The window layout is cosmetic. Finder scripting can be unavailable (CI
 # runners, missing Automation permission): the DMG is still valid without it.
