@@ -8,6 +8,7 @@ use eframe::egui::{
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Receiver;
 
 use vortia_post::Case;
@@ -20,6 +21,14 @@ use crate::surface::{Camera, Cut, Surface};
 /// Outlines are drawn for surfaces up to this many faces; beyond it they would cost more than
 /// they show.
 const MAX_OUTLINED_FACES: usize = 8_000;
+/// Whether a viewer starts with the cell edges drawn, set from the Preferences.
+static DEFAULT_CELL_EDGES: AtomicBool = AtomicBool::new(true);
+
+/// Makes the viewers opened from now on start with the cell edges drawn, or not.
+pub fn set_default_cell_edges(on: bool) {
+    DEFAULT_CELL_EDGES.store(on, Ordering::Relaxed);
+}
+
 /// The width of the list of patches beside the picture.
 const LEGEND: f32 = 220.0;
 
@@ -106,7 +115,7 @@ impl Viewer {
             surface,
             camera,
             visible,
-            outlines: true,
+            outlines: DEFAULT_CELL_EDGES.load(Ordering::Relaxed),
             field: None,
             time: None,
             values: None,

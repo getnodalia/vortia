@@ -1,7 +1,7 @@
 //! The window: Nodalia islands on the window surface, a header with the hamburger menu, and
 //! two screens, the welcome and the case.
 
-use crate::i18n::{Choice, tr, trf};
+use crate::i18n::{tr, trf};
 use std::collections::{HashSet, VecDeque};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -29,6 +29,7 @@ use crate::surface;
 use crate::viewer::{Source, Viewer};
 
 mod newcase;
+mod preferences;
 mod results;
 mod shell;
 use results::{Results, results_tab};
@@ -307,6 +308,8 @@ pub struct VortiaApp {
     notice: Option<String>,
     screen: Screen,
     dialog: Option<Dialog>,
+    /// The section the Preferences window is on.
+    pref_section: preferences::Section,
     /// Home is showing over the open case (it always shows when there is none).
     home: bool,
     /// The Open field of Home takes the keyboard on the next frame.
@@ -388,6 +391,13 @@ impl VortiaApp {
         // The suite's engineering type (IBM Plex), shared with Forja and Torno.
         engineering::install_fonts(ctx);
         app.apply_theme(ctx);
+        app.apply_display(ctx);
+        let case = case.or_else(|| {
+            let last = app.prefs.recent.first()?;
+            // A case that moved is not an error at start: the Home screen shows instead.
+            (app.prefs.reopen_last && last.join("system").join("controlDict").is_file())
+                .then(|| last.clone().into_os_string())
+        });
         if let Some(case) = case {
             let case = PathBuf::from(case);
             match app.open_case(&case) {
@@ -408,6 +418,7 @@ impl VortiaApp {
             notice: None,
             screen: Screen::Welcome,
             dialog: None,
+            pref_section: preferences::Section::default(),
             home: false,
             focus_open: false,
             new_case: None,
@@ -471,6 +482,13 @@ impl VortiaApp {
         self.home = true;
         self.new_case = None;
         self.notice = None;
+    }
+
+    /// Opens the Preferences on a section named by its key (`general`, `view`…), for the
+    /// command line and for screenshots.
+    pub fn show_preferences(&mut self, section: &str) {
+        self.pref_section = preferences::Section::from_key(section).unwrap_or_default();
+        self.dialog = Some(Dialog::Preferences);
     }
 
     /// Opens the problem report, for a screenshot and for the command line.
@@ -702,7 +720,7 @@ impl VortiaApp {
     /// Looks for a new version when asked (and once a day after starting, when the app says so),
     /// and shows the windows of the update.
     fn updates(&mut self, ctx: &Context) {
-        if self.check_updates_at_start {
+        if self.check_updates_at_start && self.prefs.check_updates {
             self.updater.check_at_start(ctx);
         }
         // Closing is safe while no run is going and no dialog or search is open.
@@ -731,6 +749,12 @@ impl VortiaApp {
         let Some(dialog) = self.dialog else {
             return;
         };
+        if dialog == Dialog::Preferences {
+            if self.preferences_window(ctx) {
+                self.dialog = None;
+            }
+            return;
+        }
         let title = match dialog {
             Dialog::Preferences => tr("Preferences"),
             Dialog::Shortcuts => tr("Keyboard shortcuts"),
@@ -739,8 +763,6 @@ impl VortiaApp {
         };
         let mut close = false;
         let mut open_report = false;
-        let before = self.prefs.theme;
-        let lang_before = self.prefs.lang;
         egui::Modal::new(Id::unique("dialog")).show(ctx, |ui| {
             ui.set_width(component_dialog_width());
             ui.horizontal(|ui| {
@@ -751,17 +773,7 @@ impl VortiaApp {
             });
             ui.add_space(space::MD);
             match dialog {
-                Dialog::Preferences => {
-                    ui.label(RichText::new(tr("Appearance")).color(muted(p)));
-                    for theme in Theme::ALL {
-                        ui.selectable_value(&mut self.prefs.theme, theme, theme_label(theme));
-                    }
-                    ui.add_space(space::MD);
-                    ui.label(RichText::new(tr("Language")).color(muted(p)));
-                    for lang in Choice::ALL {
-                        ui.selectable_value(&mut self.prefs.lang, lang, lang.label());
-                    }
-                }
+                Dialog::Preferences => {}
                 Dialog::Shortcuts => {
                     egui::Grid::new("shortcuts")
                         .num_columns(2)
@@ -827,14 +839,6 @@ impl VortiaApp {
         });
         if close || open_report {
             self.dialog = None;
-        }
-        if self.prefs.theme != before {
-            self.apply_theme(ctx);
-            self.save_prefs();
-        }
-        if self.prefs.lang != lang_before {
-            crate::i18n::apply(self.prefs.lang);
-            self.save_prefs();
         }
     }
 }

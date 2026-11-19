@@ -36,13 +36,96 @@ impl Theme {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+/// The colours a field is drawn with in the viewer.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ColourScale {
+    #[default]
+    Rainbow,
+    Viridis,
+    Greys,
+}
+
+impl ColourScale {
+    pub const ALL: [ColourScale; 3] = [
+        ColourScale::Rainbow,
+        ColourScale::Viridis,
+        ColourScale::Greys,
+    ];
+
+    fn key(self) -> &'static str {
+        match self {
+            ColourScale::Rainbow => "rainbow",
+            ColourScale::Viridis => "viridis",
+            ColourScale::Greys => "greys",
+        }
+    }
+
+    fn from_key(key: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|c| c.key() == key)
+    }
+
+    pub(crate) fn index(self) -> u8 {
+        match self {
+            ColourScale::Rainbow => 0,
+            ColourScale::Viridis => 1,
+            ColourScale::Greys => 2,
+        }
+    }
+
+    pub(crate) fn from_index(index: u8) -> Self {
+        Self::ALL
+            .into_iter()
+            .find(|c| c.index() == index)
+            .unwrap_or_default()
+    }
+}
+
+/// The interface scale, in percent, and the steps the Preferences offer.
+pub const SCALE_MIN: u8 = 80;
+pub const SCALE_MAX: u8 = 150;
+pub const SCALE_STEP: u8 = 10;
+/// The range of significant digits on the labels of the scale.
+pub const DIGITS_MIN: u8 = 3;
+pub const DIGITS_MAX: u8 = 8;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Prefs {
     pub theme: Theme,
     /// The language of the interface.
     pub lang: Choice,
     /// The cases opened last, the newest first.
     pub recent: Vec<PathBuf>,
+    /// Opens the case that was open when the app closed, at start.
+    pub reopen_last: bool,
+    /// The size of the interface, in percent.
+    pub ui_scale: u8,
+    /// The colours of a field in the viewer.
+    pub colours: ColourScale,
+    /// Significant digits on the labels of the colour scale.
+    pub digits: u8,
+    /// Whether the viewer starts with the cell edges drawn.
+    pub cell_edges: bool,
+    /// Looks for a new version when the app starts.
+    pub check_updates: bool,
+    /// The most threads a run uses; 0 is all the machine offers.
+    pub threads: u8,
+}
+
+impl Default for Prefs {
+    fn default() -> Self {
+        Self {
+            theme: Theme::default(),
+            lang: Choice::default(),
+            recent: Vec::new(),
+            reopen_last: false,
+            ui_scale: 100,
+            colours: ColourScale::default(),
+            digits: crate::fieldview::DEFAULT_DIGITS,
+            cell_edges: true,
+            check_updates: true,
+            threads: 0,
+        }
+    }
 }
 
 impl Prefs {
@@ -63,6 +146,29 @@ impl Prefs {
                         prefs.lang = lang;
                     }
                 }
+                "reopen_last" => prefs.reopen_last = value.trim() == "true",
+                "cell_edges" => prefs.cell_edges = value.trim() != "false",
+                "check_updates" => prefs.check_updates = value.trim() != "false",
+                "ui_scale" => {
+                    if let Ok(n) = value.trim().parse::<u8>() {
+                        prefs.ui_scale = n.clamp(SCALE_MIN, SCALE_MAX);
+                    }
+                }
+                "threads" => {
+                    if let Ok(n) = value.trim().parse::<u8>() {
+                        prefs.threads = n;
+                    }
+                }
+                "digits" => {
+                    if let Ok(n) = value.trim().parse::<u8>() {
+                        prefs.digits = n.clamp(DIGITS_MIN, DIGITS_MAX);
+                    }
+                }
+                "colours" => {
+                    if let Some(colours) = ColourScale::from_key(value.trim()) {
+                        prefs.colours = colours;
+                    }
+                }
                 "recent" if !value.is_empty() => {
                     prefs.remember(Path::new(value));
                 }
@@ -75,7 +181,18 @@ impl Prefs {
     }
 
     pub fn to_text(&self) -> String {
-        let mut text = format!("theme={}\nlang={}\n", self.theme.key(), self.lang.key());
+        let mut text = format!(
+            "theme={}\nlang={}\nreopen_last={}\nui_scale={}\ncolours={}\ndigits={}\ncell_edges={}\ncheck_updates={}\nthreads={}\n",
+            self.theme.key(),
+            self.lang.key(),
+            self.reopen_last,
+            self.ui_scale,
+            self.colours.key(),
+            self.digits,
+            self.cell_edges,
+            self.check_updates,
+            self.threads,
+        );
         for path in &self.recent {
             // A path with a line break could not be read back as one line.
             if let Some(path) = path.to_str().filter(|p| !p.contains(['\n', '\r'])) {
@@ -144,6 +261,31 @@ mod tests {
             [PathBuf::from("/cases/a"), PathBuf::from("/cases/b")]
         );
         assert_eq!(Prefs::parse(&prefs.to_text()), prefs);
+    }
+
+    #[test]
+    fn every_choice_survives_the_file() {
+        let prefs = Prefs {
+            reopen_last: true,
+            ui_scale: 120,
+            colours: ColourScale::Viridis,
+            digits: 6,
+            cell_edges: false,
+            check_updates: false,
+            threads: 4,
+            ..Prefs::default()
+        };
+        assert_eq!(Prefs::parse(&prefs.to_text()), prefs);
+    }
+
+    #[test]
+    fn numbers_out_of_range_are_brought_back_into_it() {
+        let prefs = Prefs::parse("ui_scale=255\ndigits=0\n");
+        assert_eq!((prefs.ui_scale, prefs.digits), (SCALE_MAX, DIGITS_MIN));
+        let prefs = Prefs::parse("ui_scale=1\ndigits=99\n");
+        assert_eq!((prefs.ui_scale, prefs.digits), (SCALE_MIN, DIGITS_MAX));
+        // What is not a number leaves the default.
+        assert_eq!(Prefs::parse("ui_scale=big\n").ui_scale, 100);
     }
 
     #[test]
