@@ -3,9 +3,9 @@
 Status: proposed 2026-11-13, in progress. This extends
 [rust-engine.md](rust-engine.md), which moves Vortia to its own engine, with
 the physics Vortia is missing to be a general fluid and heat simulation tool.
-[CAPABILITY_MATRIX.md](../CAPABILITY_MATRIX.md) is the honest list of what
-exists today: heat transfer, LES, multiphase and conjugate heat transfer are
-all "no" there, and this plan is the order in which that changes.
+[KNOWN_LIMITATIONS.md](../KNOWN_LIMITATIONS.md) is the honest list of what
+is missing today: heat transfer, LES, multiphase and conjugate heat transfer are
+not there, and this plan is the order in which that changes.
 
 ## How the work is ordered
 

@@ -357,7 +357,7 @@ cambian.
 - **`vortia-engine`:** el flujo de un caso sin interfaz (proyectos, validación,
   escritor y ejecutor del caso de OpenFOAM con residuales en vivo, análisis de
   resultados VTK, croquis, toberas y flujo compresible), con protocolo JSON por
-  línea en stdin/stdout ([`docs/architecture/native-engine.md`](docs/architecture/native-engine.md)).
+  línea en stdin/stdout.
 - **Segundo instalador de macOS:** `Vortia-<versión>-native-macos-arm64.dmg`
   junto al DMG de Qt, con la ventana de instalación de las apps de Nodalia.
 - **Motor propio en Rust** (todavía no integrado en la aplicación): solucionadores

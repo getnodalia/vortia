@@ -10,13 +10,13 @@
 
 1. Abre un issue describiendo el cambio (o referencia el hito del roadmap).
 2. Rama descriptiva (`feature/openfoam-detector`, `fix/stl-ascii-crlf`…).
-3. Código con pruebas: unitarias (GoogleTest), de integración y GUI (Qt Test) según corresponda.
-4. `ctest` verde y sin regresiones antes del PR.
+3. Código con pruebas: unitarias y de integración (`cargo test`) según corresponda.
+4. `cargo fmt`, `cargo clippy -- -D warnings` y `cargo test` verdes (desde `rust/`) antes del PR.
 5. Actualiza los documentos de seguimiento si tu cambio afecta a estado, limitaciones o arquitectura.
 
 ## Estilo
 
-- C++20, `clang-format` (config en raíz), warnings activados (`-Wall -Wextra -Wpedantic`).
+- Rust estable, `cargo fmt` y `clippy` sin avisos; sin `unwrap`/`expect`/`panic`/`unsafe` fuera de los tests.
 - Manejo de errores explícito con `vortia::Expected`; excepciones solo para errores de programador.
 - RAII siempre; nada de `new`/`delete` crudos en código nuevo.
 - API pública documentada (qué hace, pre/postcondiciones, unidades).

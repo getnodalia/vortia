@@ -38,7 +38,7 @@ STL, updater, issue-report or translation code exists there).
 | R8 | Application services | `AppUpdater`, `IssueReport`, translations (en/es), `STL` import, Fluent `.cas.h5`/`.dat.h5` viewing | None | In-app update (the shared `nodalia-update` crate), bug reports, en/es, STL viewing |
 | R9 | Packaging and release | AppImage and DMG with OpenFOAM and mesher inside (`packaging/`), release workflow reading the version from `CMakeLists.txt` | None | AppImage and DMG of the Rust app (no OpenFOAM inside), the release workflow reading `rust/Cargo.toml`, the website download pointing at them |
 | R10 | The macOS edition | Vortia Native (SwiftUI) and the C++ `vortia-engine` | None | Retired together with the rest; the Rust app's macOS DMG replaces it |
-| R11 | Remove | `src/`, `platforms/apple`, `CMakeLists.txt`, `cmake/`, `tests/` (C++), C++ workflows, README and website text, old releases marked as superseded | | Only after R1 to R10 |
+| R11 | Remove | `src/`, `platforms/apple`, `CMakeLists.txt`, `cmake/`, `tests/` (C++), C++ workflows, README and website text, old releases marked as superseded | Removed on 2026-11-19 | Only after R1 to R10 (done) |
 
 ## Progress
 
@@ -170,5 +170,6 @@ added (`RegionEditor`); the case needs an `inlet` and an `outlet` edge.
 
 ## What this changes in the public text
 
-Until R11, the README, the website and the releases keep describing what the
-published installers are. They are not edited to say the C++ application is gone.
+R11 is done: the C++/Qt source, `platforms/apple` and their workflows were removed on
+2026-11-19 (Daniel's approval), and the README says the Rust app is the only one. The
+code stays in the git history (the last commit with it is the one before the removal).

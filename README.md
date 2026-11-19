@@ -44,12 +44,13 @@ MPI, Python or Gmsh: the engine, the 2D mesher and the interface are Rust.
 
 Since 0.11.0 this is the application the releases ship. The earlier C++/Qt
 application and the macOS edition Vortia Native (SwiftUI), which drove OpenFOAM,
-are superseded; their source stays in the repository until it is removed
+were removed from the repository once the Rust version covered everything they did;
+their source stays in the git history
 ([`docs/architecture/rust-only.md`](docs/architecture/rust-only.md)).
 
 Vortia is a Nodalia app maintained by one person. It does not have parity with commercial CFD suites, and it says so: every
-capability is listed with the evidence behind it in
-[`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md).
+limit is listed in
+[`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md).
 
 > [!IMPORTANT]
 > **Vortia is experimental.** Always check convergence, mass balance and mesh
@@ -127,8 +128,7 @@ cargo test --manifest-path rust/Cargo.toml
 ```
 
 `rust/packaging/linux/package.sh` and `rust/packaging/macos/package.sh` make the
-AppImage, the tarball and the DMG the releases carry. The earlier C++/Qt source
-(`src/`, `CMakeLists.txt`) is kept until it is removed and is not part of a release.
+AppImage, the tarball and the DMG the releases carry.
 
 ### Application icon
 
@@ -144,12 +144,9 @@ domain (ETH-Bibliothek, Wikimedia Commons, `ETH-BIB-Bernoulli, Daniel (1700-1782
 
 ## Project status
 
-Version **0.7.1**, experimental. What works, with which evidence, and what
-does not:
+Version **0.11.0**, experimental. What does not work yet:
 
-- [`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md) — capabilities by area
-- [`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md) — installers, engine and general restrictions
-- [`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md) — implementation status
+- [`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md) — engine and application restrictions
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — what comes next
 - [`CHANGELOG.md`](CHANGELOG.md) — changes by version; the release notes of each version are in [`docs/release-notes/`](docs/release-notes/README.md)
 
@@ -157,12 +154,10 @@ does not:
 
 The project documentation is written in Spanish.
 
-- Interface design (Nodalia Design Language): [`docs/DESIGN.md`](docs/DESIGN.md)
-- Architecture and ADRs: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- Architecture: [`docs/architecture/`](docs/architecture/)
 - Technical research and licences: [`docs/architecture/research.md`](docs/architecture/research.md)
 - Validation: [`docs/VALIDATION.md`](docs/VALIDATION.md)
 - Fluent interoperability: [`docs/FLUENT_COMPATIBILITY.md`](docs/FLUENT_COMPATIBILITY.md)
-- macOS setup: [`docs/MACOS_SETUP.md`](docs/MACOS_SETUP.md)
 
 ## Contributing
 

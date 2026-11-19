@@ -5,12 +5,12 @@ text of the GitHub release, so people reading the release page see exactly this 
 
 ## Rules, enforced by CI
 
-- Bumping `project(VERSION)` in `CMakeLists.txt` needs `docs/release-notes/vX.Y.Z.md`
+- Bumping `version` under `[workspace.package]` in `rust/Cargo.toml` needs `docs/release-notes/vX.Y.Z.md`
   in the same pull request, or the **Release notes are written** check fails
   (`scripts/check-release-notes.sh`, also run by `release-auto.yml` before it tags).
 - Merging the version bump releases it: **Release from main** (`release-auto.yml`) tags the
   merge, creates the release with this file as its text, builds the Linux AppImage and the macOS
-  DMGs (`release-appimage.yml`) and publishes the release once all of them are attached. Nobody pushes a tag by hand.
+  DMGs (`release-rust.yml`) and publishes the release once all of them are attached. Nobody pushes a tag by hand.
 - When a file here changes later on `main`, the **Release notes** workflow copies it into the
   release of the same tag. It can also be run by hand with a tag.
 - No generated lists ("What's Changed", "Full Changelog"), no placeholders, no mentions of forks,

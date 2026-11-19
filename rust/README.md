@@ -2,15 +2,15 @@
 
 Vortia is written in Rust, together with a CFD engine of its own built from
 OpenFOAM's methods. Since 0.11.0 this is the application the releases ship; the
-C++20/Qt 6 application in `src/` is superseded and kept only until it is removed. The plan, stages and principles are
+earlier C++20/Qt 6 application was removed from the repository (it stays in the git history). The plan, stages and principles are
 in [`docs/architecture/rust-engine.md`](../docs/architecture/rust-engine.md).
 
 ## Crates
 
 - `vortia-core`: error type, physical units checked at compile time, vectors
-  and bounding boxes, version parsing, project manifest (same schema as the C++
+  and bounding boxes, version parsing, project manifest (same schema as the earlier C++
   application, atomic write) and process runner (no shell, timeout). Its tests
-  are the cases of `tests/unit/test_{units,version,project}.cpp`.
+  are the cases of the earlier C++ unit tests (units, version, project).
 - `vortia-foamfile`: reader for the case format: dictionaries, lists,
   dimension sets, the `polyMesh` files (faces as `faceList` or
   `faceCompactList`); ASCII or binary, optionally gzip-compressed.
