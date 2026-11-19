@@ -518,6 +518,17 @@ pub const ES: &[(&str, &str)] = &[
     ("Open", "Abrir"),
     ("Open a case", "Abrir un caso"),
     ("Open recent", "Abrir reciente"),
+    ("Save report", "Guardar informe"),
+    ("Case report", "Informe del caso"),
+    (
+        "Flux out of all patches",
+        "Flujo de salida de todos los patches",
+    ),
+    ("Total", "Total"),
+    (
+        "Per unit density: give a density to have them in newtons.",
+        "Por unidad de densidad: da una densidad para tenerlas en newtons.",
+    ),
     ("Duplicate the case", "Duplicar el caso"),
     ("Open case", "Abrir un caso"),
     ("Outlet diameter", "Diámetro de salida"),

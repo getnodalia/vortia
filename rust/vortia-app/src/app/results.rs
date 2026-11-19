@@ -20,6 +20,7 @@ use vortia_post::{Case, FieldReport, FieldValues, ForceReport, Sample, SectionRe
 mod analysis;
 mod compare;
 mod forces;
+mod summary;
 
 use super::{accent_button, corner, muted};
 use analysis::{SectionForm, section_card};
@@ -260,6 +261,7 @@ pub struct Results {
     forces_form: ForcesForm,
     forces: Slot<ForceReport>,
     saved_forces: Option<(bool, String)>,
+    saved_report: Option<(bool, String)>,
     compare_form: CompareForm,
     /// The case was read and the forms filled in once.
     started: bool,
@@ -356,6 +358,7 @@ impl Results {
         self.saved = None;
         self.forces = Slot::Idle;
         self.saved_forces = None;
+        self.saved_report = None;
     }
 
     /// Reads the case again, for a run that wrote more times.
@@ -432,6 +435,8 @@ pub(super) fn results_tab(ui: &mut egui::Ui, p: &Palette, dir: &Path, results: &
         .auto_shrink([false, false])
         .show(ui, |ui| {
             overview(ui, p, results);
+            ui.add_space(space::SM);
+            report_row(ui, p, &case, results);
             ui.add_space(space::MD);
             walls_card(ui, p, &results.walls);
             ui.add_space(space::MD);
@@ -445,6 +450,58 @@ pub(super) fn results_tab(ui: &mut egui::Ui, p: &Palette, dir: &Path, results: &
             ui.add_space(space::MD);
             compare_card(ui, p, dir, results);
         });
+}
+
+/// The button that writes what the tab shows as a Markdown report in the case.
+fn report_row(ui: &mut egui::Ui, p: &Palette, case: &Arc<Case>, results: &mut Results) {
+    let Slot::Done(Ok(report)) = &results.report else {
+        return;
+    };
+    ui.horizontal(|ui| {
+        if ui.button(tr("Save report")).clicked() {
+            let walls = match &results.walls {
+                Slot::Done(Ok(walls)) => walls.as_slice(),
+                _ => &[],
+            };
+            let forces = match &results.forces {
+                Slot::Done(Ok(forces)) => Some(forces),
+                _ => None,
+            };
+            let name = case
+                .path()
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let body = summary::markdown(&name, report, walls, forces);
+            let field: String = report
+                .field
+                .chars()
+                .map(|c| {
+                    if c.is_ascii_alphanumeric() || c == '_' {
+                        c
+                    } else {
+                        '_'
+                    }
+                })
+                .collect();
+            let file = format!("report-{field}.md");
+            results.saved_report = Some(analysis::write_report(
+                case.path(),
+                "report",
+                &report.time,
+                &file,
+                &body,
+            ));
+        }
+        if let Some((ok, message)) = &results.saved_report {
+            let tone = if *ok {
+                p.status_success_fg
+            } else {
+                p.status_danger_fg
+            };
+            ui.colored_label(for_egui::color(tone), message.as_str());
+        }
+    });
 }
 
 /// What the flow does to each wall patch; the reason when there is nothing to show.
