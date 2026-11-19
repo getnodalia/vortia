@@ -139,8 +139,8 @@ by `tools/nodalia-app-icon.py` in nodalix-icon-theme. `resources/icons/vortia-ma
 for the macOS bundle, where the system applies its own icon mask.
 
 The icon is a black-and-white portrait of Daniel Bernoulli over blue, part of
-the Nodalia icon family. The source is an 18th-century engraving in the public
-domain (Wikimedia Commons, `Daniel Bernoulli 001.jpg`).
+the Nodalia icon family. The source is an 18th-century portrait in the public
+domain (ETH-Bibliothek, Wikimedia Commons, `ETH-BIB-Bernoulli, Daniel (1700-1782)-Portrait-Portr 10971.jpg`).
 
 ## Project status
 
