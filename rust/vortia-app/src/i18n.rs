@@ -517,6 +517,8 @@ pub const ES: &[(&str, &str)] = &[
     ("Numerics", "Numérica"),
     ("Open", "Abrir"),
     ("Open a case", "Abrir un caso"),
+    ("Open recent", "Abrir reciente"),
+    ("Duplicate the case", "Duplicar el caso"),
     ("Open case", "Abrir un caso"),
     ("Outlet diameter", "Diámetro de salida"),
     ("Outlet pressure", "Presión de salida"),
