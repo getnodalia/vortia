@@ -218,11 +218,16 @@ impl VortiaApp {
                 modified: false,
             })
             .collect();
-        let controls_width = if own_controls() {
+        // Nodalia's controls lead the bar when the desktop keeps its buttons at the left, and end
+        // it otherwise.
+        let side = nodalia_theme::titlebar::system_side();
+        let controls_left = own_controls() && side == nodalia_theme::titlebar::Side::Left;
+        let controls_room = if own_controls() {
             window_controls::WIDTH + 2.0 * space::SM
         } else {
             0.0
         };
+        let controls_width = if controls_left { 0.0 } else { controls_room };
         let icon = self.icon(ctx).id();
         let bar = TitleBar {
             app: "Vortia",
@@ -242,7 +247,7 @@ impl VortiaApp {
             },
             quick_access: &[],
             controls_width,
-            leading_width: 0.0,
+            leading_width: if controls_left { controls_room } else { 0.0 },
         };
         let out = eng::title_bar(ui, look, &bar);
         if own_controls() {
@@ -264,9 +269,21 @@ impl VortiaApp {
                 restore: tr("Restore"),
                 close: tr("Close"),
             };
-            let action = window_controls::show(
+            let controls = if controls_left {
+                let bar = ui.max_rect();
+                nodalia_theme::titlebar::Placement::nodalia(side).controls_rect(
+                    egui::Rect::from_min_max(
+                        Pos2::new(bar.left(), out.controls.top()),
+                        Pos2::new(bar.right(), out.controls.bottom()),
+                    ),
+                )
+            } else {
+                out.controls
+            };
+            let action = window_controls::show_on(
                 ui,
-                out.controls,
+                controls,
+                side,
                 &look.palette,
                 mode,
                 focused,
