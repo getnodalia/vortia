@@ -105,6 +105,11 @@ pub struct Viewer {
     section_rx: Option<Receiver<Result<Section, String>>>,
     /// The axis and position (in thousandths) the section shown, or the one in flight, is of.
     section_asked: Option<(usize, i32)>,
+    /// Where the picture was drawn on the last frame, in points.
+    picture_rect: egui::Rect,
+    /// A saved picture in flight, and what came of the last one.
+    picture_rx: Option<Receiver<(bool, String)>>,
+    picture_note: Option<(bool, String)>,
 }
 
 impl Viewer {
@@ -134,6 +139,9 @@ impl Viewer {
             section: None,
             section_rx: None,
             section_asked: None,
+            picture_rect: egui::Rect::NOTHING,
+            picture_rx: None,
+            picture_note: None,
         }
     }
 
@@ -427,6 +435,7 @@ impl Viewer {
         radius: u8,
     ) {
         let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
+        self.picture_rect = rect;
         let painter = ui.painter_at(rect);
         painter.rect_filled(rect, CornerRadius::same(radius), background);
 
@@ -530,13 +539,16 @@ impl Viewer {
         if self.surface.truncated {
             note.push_str("  ·  the mesh is larger than the viewer shows");
         }
-        painter.text(
-            Pos2::new(rect.min.x + 12.0, rect.max.y - 10.0),
-            egui::Align2::LEFT_BOTTOM,
-            note,
-            egui::FontId::proportional(11.0),
-            muted,
-        );
+        // The hint is for the person at the screen, not for the saved picture.
+        if self.picture_rx.is_none() {
+            painter.text(
+                Pos2::new(rect.min.x + 12.0, rect.max.y - 10.0),
+                egui::Align2::LEFT_BOTTOM,
+                note,
+                egui::FontId::proportional(11.0),
+                muted,
+            );
+        }
     }
 
     /// The choice of field and time, and the colour scale of the field read.
@@ -637,12 +649,58 @@ impl Viewer {
         ui.add_space(10.0);
     }
 
+    /// "Save picture" and what came of the last one.
+    fn picture_button(&mut self, ui: &mut egui::Ui, muted: Color32, source: &Source) {
+        if let Some(rx) = &self.picture_rx
+            && let Ok(done) = rx.try_recv()
+        {
+            self.picture_note = Some(done);
+            self.picture_rx = None;
+        }
+        let waiting = self.picture_rx.is_some();
+        let ready = !waiting && !source.dir.as_os_str().is_empty();
+        if ui
+            .add_enabled(ready, egui::Button::new(tr("Save picture")))
+            .clicked()
+        {
+            let time = self
+                .time
+                .clone()
+                .or_else(|| source.times.last().cloned())
+                .unwrap_or_else(|| "mesh".to_owned());
+            let what = self.field.clone().unwrap_or_else(|| "patches".to_owned());
+            let path = crate::picture::path_for(&source.dir, &what, &time);
+            self.picture_note = None;
+            // Repaint first: the picture is taken from the frame after this one, without the hint.
+            self.picture_rx = Some(crate::picture::request(
+                ui.ctx(),
+                self.picture_rect,
+                path,
+                source.dir.clone(),
+            ));
+        }
+        if let Some((ok, message)) = &self.picture_note {
+            let color = if *ok {
+                muted
+            } else {
+                Color32::from_rgb(0xe0, 0x5b, 0x5b)
+            };
+            ui.label(
+                egui::RichText::new(message.as_str())
+                    .size(11.0)
+                    .color(color),
+            );
+        }
+        ui.add_space(6.0);
+    }
+
     fn legend(&mut self, ui: &mut egui::Ui, muted: Color32, source: &Source) {
         self.field_choices(ui, muted, source);
         if self.surface.face_count() <= MAX_OUTLINED_FACES {
             ui.checkbox(&mut self.outlines, tr("Cell edges"));
             ui.add_space(6.0);
         }
+        self.picture_button(ui, muted, source);
         ui.label(egui::RichText::new(tr("Patches")).color(muted));
         egui::ScrollArea::vertical()
             .id_salt("viewer-patches")

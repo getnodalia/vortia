@@ -132,6 +132,11 @@ fn spanish() -> &'static HashMap<&'static str, &'static str> {
 
 /// English → Spanish. The wording follows the other Nodalia apps ("Caso", "Ejecutar").
 pub const ES: &[(&str, &str)] = &[
+    ("Save picture", "Guardar imagen"),
+    (
+        "The picture could not be taken.",
+        "No se pudo tomar la imagen.",
+    ),
     ("General", "General"),
     ("Units and precision", "Unidades y precisión"),
     ("View", "Vista"),
