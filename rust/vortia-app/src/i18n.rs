@@ -363,7 +363,6 @@ pub const ES: &[(&str, &str)] = &[
     ("Forces on plate", "Fuerzas sobre la placa"),
     ("From", "Desde"),
     ("From sketch", "Desde un croquis"),
-    ("Compare", "Comparar"),
     (
         "One number of saved reports side by side, against the baseline.",
         "Un número de los informes guardados, uno junto a otro, frente al de referencia.",
@@ -373,7 +372,6 @@ pub const ES: &[(&str, &str)] = &[
         "Guarda un informe de Sección o de Fuerzas, o añade un archivo de informe, para comparar ejecuciones.",
     ),
     ("Baseline", "Referencia"),
-    ("Report", "Informe"),
     ("{} at {}", "{} en {}"),
     ("Number", "Número"),
     (
@@ -489,7 +487,6 @@ pub const ES: &[(&str, &str)] = &[
     ("Length", "Longitud"),
     ("Lid speed", "Velocidad de la tapa"),
     ("Light", "Claro"),
-    ("Line", "Línea"),
     ("Local mass", "Masa local"),
     ("Log", "Registro"),
     ("Look again", "Mirar de nuevo"),
@@ -519,6 +516,11 @@ pub const ES: &[(&str, &str)] = &[
     ("Open a case", "Abrir un caso"),
     ("Open recent", "Abrir reciente"),
     ("Save report", "Guardar informe"),
+    ("Overview", "Resumen"),
+    ("Sampling", "Muestreo"),
+    ("Report", "Informe"),
+    ("Line", "Línea"),
+    ("Compare", "Comparar"),
     ("Case report", "Informe del caso"),
     (
         "Flux out of all patches",

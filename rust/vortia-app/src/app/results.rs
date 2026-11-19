@@ -34,6 +34,18 @@ const LINE_POINTS: usize = 100;
 /// The height of the plot.
 const PLOT_HEIGHT: f32 = 220.0;
 
+/// A card of the tab the ribbon can take the reader to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Card {
+    Overview,
+    Walls,
+    Probe,
+    Line,
+    Section,
+    Forces,
+    Compare,
+}
+
 /// A calculation on a thread: not asked for, running, or done.
 #[derive(Default)]
 enum Slot<T> {
@@ -262,12 +274,34 @@ pub struct Results {
     forces: Slot<ForceReport>,
     saved_forces: Option<(bool, String)>,
     saved_report: Option<(bool, String)>,
+    /// The card the ribbon asked to be scrolled to.
+    jump: Option<Card>,
+    /// The ribbon asked for the report to be saved.
+    save_report: bool,
     compare_form: CompareForm,
     /// The case was read and the forms filled in once.
     started: bool,
 }
 
 impl Results {
+    /// Has the tab scroll to `card` the next time it is drawn.
+    pub(super) fn show(&mut self, card: Card) {
+        self.jump = Some(card);
+    }
+
+    /// Has the tab write the report the next time it is drawn.
+    pub(super) fn ask_for_report(&mut self) {
+        self.save_report = true;
+    }
+
+    /// Scrolls to `card` when it is the one asked for, once.
+    fn scroll_to(&mut self, ui: &egui::Ui, card: Card) {
+        if self.jump == Some(card) {
+            self.jump = None;
+            ui.scroll_to_cursor(Some(egui::Align::TOP));
+        }
+    }
+
     /// Takes what the threads finished and starts what is wanted.
     fn update(&mut self, dir: &Path, ctx: &Context) {
         self.case.poll();
@@ -434,20 +468,27 @@ pub(super) fn results_tab(ui: &mut egui::Ui, p: &Palette, dir: &Path, results: &
         .id_salt("results")
         .auto_shrink([false, false])
         .show(ui, |ui| {
+            results.scroll_to(ui, Card::Overview);
             overview(ui, p, results);
             ui.add_space(space::SM);
             report_row(ui, p, &case, results);
             ui.add_space(space::MD);
+            results.scroll_to(ui, Card::Walls);
             walls_card(ui, p, &results.walls);
             ui.add_space(space::MD);
+            results.scroll_to(ui, Card::Probe);
             probe_card(ui, p, &case, results);
             ui.add_space(space::MD);
+            results.scroll_to(ui, Card::Line);
             line_card(ui, p, &case, results);
             ui.add_space(space::MD);
+            results.scroll_to(ui, Card::Section);
             section_card(ui, p, &case, results);
             ui.add_space(space::MD);
+            results.scroll_to(ui, Card::Forces);
             forces_card(ui, p, &case, results);
             ui.add_space(space::MD);
+            results.scroll_to(ui, Card::Compare);
             compare_card(ui, p, dir, results);
         });
 }
@@ -457,8 +498,9 @@ fn report_row(ui: &mut egui::Ui, p: &Palette, case: &Arc<Case>, results: &mut Re
     let Slot::Done(Ok(report)) = &results.report else {
         return;
     };
+    let asked = std::mem::take(&mut results.save_report);
     ui.horizontal(|ui| {
-        if ui.button(tr("Save report")).clicked() {
+        if ui.button(tr("Save report")).clicked() || asked {
             let walls = match &results.walls {
                 Slot::Done(Ok(walls)) => walls.as_slice(),
                 _ => &[],
@@ -593,34 +635,40 @@ fn overview(ui: &mut egui::Ui, p: &Palette, results: &Results) {
             });
             ui.add_space(space::MD);
             ui.label(RichText::new(tr("Patches")).color(muted(p)));
-            egui::Grid::new("results-patches")
-                .num_columns(7)
-                .spacing([space::LG, space::XS])
-                .striped(true)
+            egui::ScrollArea::horizontal()
+                .id_salt("results-patches-scroll")
                 .show(ui, |ui| {
-                    for head in [
-                        tr("Patch"),
-                        tr("Type"),
-                        tr("Area"),
-                        tr("Average"),
-                        tr("Minimum"),
-                        tr("Maximum"),
-                        tr("Flux out"),
-                    ] {
-                        ui.label(RichText::new(head).size(font_size::SMALL).color(muted(p)));
-                    }
-                    ui.end_row();
-                    for patch in &report.patches {
-                        let s = &patch.stats;
-                        ui.label(&patch.name);
-                        ui.label(RichText::new(&patch.kind).color(muted(p)));
-                        ui.label(plain(s.area));
-                        ui.label(shown(&s.average));
-                        ui.label(shown(&s.min));
-                        ui.label(shown(&s.max));
-                        ui.label(patch.flux.map_or_else(|| "–".to_owned(), plain));
-                        ui.end_row();
-                    }
+                    egui::Grid::new("results-patches")
+                        .num_columns(7)
+                        .spacing([space::LG, space::XS])
+                        .striped(true)
+                        .show(ui, |ui| {
+                            for head in [
+                                tr("Patch"),
+                                tr("Type"),
+                                tr("Area"),
+                                tr("Average"),
+                                tr("Minimum"),
+                                tr("Maximum"),
+                                tr("Flux out"),
+                            ] {
+                                ui.label(
+                                    RichText::new(head).size(font_size::SMALL).color(muted(p)),
+                                );
+                            }
+                            ui.end_row();
+                            for patch in &report.patches {
+                                let s = &patch.stats;
+                                ui.label(&patch.name);
+                                ui.label(RichText::new(&patch.kind).color(muted(p)));
+                                ui.label(plain(s.area));
+                                ui.label(shown(&s.average));
+                                ui.label(shown(&s.min));
+                                ui.label(shown(&s.max));
+                                ui.label(patch.flux.map_or_else(|| "–".to_owned(), plain));
+                                ui.end_row();
+                            }
+                        });
                 });
             let fluxes: Vec<f64> = report.patches.iter().filter_map(|p| p.flux).collect();
             if !fluxes.is_empty() {
