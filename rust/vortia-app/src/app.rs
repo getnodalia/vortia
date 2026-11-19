@@ -50,7 +50,8 @@ pub fn viewport() -> ViewportBuilder {
         .with_title("Vortia")
         .with_app_id("dev.danielmiguelt.Vortia")
         .with_inner_size([1100.0, 720.0])
-        .with_min_inner_size([760.0, 520.0]);
+        .with_min_inner_size([760.0, 520.0])
+        .with_icon(shell::window_icon());
     if own_controls() {
         builder.with_decorations(false).with_transparent(true)
     } else {
@@ -1458,6 +1459,21 @@ impl eframe::App for VortiaApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_window_never_gets_eframes_default_icon() {
+        // A viewport without an icon makes eframe use its own egui logo, which on macOS hides
+        // the bundle's icon in the Dock. macOS asks for none; the others carry the portrait.
+        let icon = viewport()
+            .icon
+            .expect("the viewport sets an icon explicitly");
+        if cfg!(target_os = "macos") {
+            assert_eq!(*icon, egui::IconData::default());
+        } else {
+            assert!(icon.width > 0 && icon.height > 0);
+            assert_eq!(icon.rgba.len(), (icon.width * icon.height * 4) as usize);
+        }
+    }
 
     fn frame(app: &mut VortiaApp, ctx: &Context) {
         let mut output = ctx.run_ui(egui::RawInput::default(), |ui| app.ui(ui));

@@ -1466,6 +1466,27 @@ const ICON: &[u8] = include_bytes!("../../../../resources/icons/vortia.png");
 /// The side the icon is kept at: it is drawn at 24 and 52 points, so 128 serves both at 2x.
 const ICON_SIDE: u32 = 128;
 
+/// The icon the window manager gets. eframe puts its own black egui logo there when a viewport
+/// has none, and on macOS that replaces the bundle's icon in the Dock. macOS therefore passes an
+/// empty icon, which eframe leaves alone, so the Dock keeps the `Vortia.icns` of the bundle; the
+/// other systems get the portrait.
+pub(super) fn window_icon() -> egui::IconData {
+    if cfg!(target_os = "macos") {
+        return egui::IconData::default();
+    }
+    image::load_from_memory_with_format(ICON, image::ImageFormat::Png)
+        .map(|img| {
+            let rgba = img.to_rgba8();
+            egui::IconData {
+                width: rgba.width(),
+                height: rgba.height(),
+                rgba: rgba.into_raw(),
+            }
+        })
+        // A broken icon is the same as none: the window still opens.
+        .unwrap_or_default()
+}
+
 fn load_icon(ctx: &Context) -> egui::TextureHandle {
     let image = image::load_from_memory_with_format(ICON, image::ImageFormat::Png)
         .map(|img| {

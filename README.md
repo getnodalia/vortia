@@ -135,8 +135,9 @@ AppImage, the tarball and the DMG the releases carry.
 `resources/icons/vortia.png` (512 px) is the application icon, so the window and the
 Dock use the same design. It sits on the Nodalix app grid, like the Colloid icons around it: a
 tile of 224/256 with a 16 px margin, a 51.5 px radius and a soft shadow, made
-by `tools/nodalia-app-icon.py` in nodalix-icon-theme. `resources/icons/vortia-macos.png` is the same artwork at full bleed
-for the macOS bundle, where the system applies its own icon mask.
+by `tools/nodalia-app-icon.py` in nodalix-icon-theme. `resources/icons/vortia-macos.png` is the same artwork at full bleed, and
+`resources/icons/vortia-macos-icon.png` (1024 px) the same tile at that size, which the macOS
+bundle's `Vortia.icns` and the DMG volume use because macOS does not mask app icons.
 
 The icon is a black-and-white portrait of Daniel Bernoulli over blue, part of
 the Nodalia icon family. The source is an 18th-century portrait in the public
