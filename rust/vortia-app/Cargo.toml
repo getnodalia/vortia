@@ -25,7 +25,7 @@ vortia-solvers = { path = "../vortia-solvers" }
 serde_json = "1"
 image = { version = "0.25", default-features = false, features = ["png"] }
 eframe = { version = "0.37", default-features = false, features = ["glow", "default_fonts", "x11", "wayland"] }
-nodalia-theme = { git = "https://github.com/getnodalia/nodalia-design", rev = "126042823fa444112a114368d90a41d78a3620b1", features = ["egui", "engineering"] }
+nodalia-theme = { git = "https://github.com/getnodalia/nodalia-design", rev = "cce41233f76e84f740fcb7fea1197f918302d381", features = ["egui", "engineering"] }
 nodalia-update = { git = "https://github.com/getnodalia/nodalia-design", rev = "1713bdd6de43db49306a92ee192f2ee01d77cd95", features = ["egui"] }
 
 [dev-dependencies]
