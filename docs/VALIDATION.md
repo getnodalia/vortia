@@ -23,9 +23,8 @@ Distinguimos tres niveles (no intercambiables):
 Definición física → hipótesis → parámetros (con unidades) → geometría → malla → modelo → esquemas → solución de referencia → métricas de error (L2/L∞) → límites de validez. Todo bajo `benchmarks/<caso>/` con `README.md` reproducible.
 
 ## Registro
-Plan técnico 0.2.0: [`docs/VORTIA_0.2.0.md`](VORTIA_0.2.0.md). Las ejecuciones nativas
-las hace el job `native-verification` del workflow `Release packages`, con el
-mismo motor que va en la AppImage; un caso omitido cuenta como fallo.
+Las comprobaciones numéricas corren como pruebas de Rust (`cargo test`, workflow
+`rust.yml`); un caso omitido cuenta como fallo.
 
 Lo que estos registros **no** demuestran: independencia de malla (solo hay un
 GCI registrado, el de Poiseuille), validez fuera de los casos listados, ni validación frente a

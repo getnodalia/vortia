@@ -2,8 +2,8 @@ name: Rust packages
 
 # Builds the Linux AppImage and tarball of the Rust app (R9 of docs/architecture/rust-only.md) on
 # an old distro so they run on newer ones, and its macOS DMG (the installer window of the existing
-# app), checks what is inside and keeps them as workflow artifacts. It does not attach anything to a release: the release flow still ships the C++
-# application until the Rust app replaces it.
+# app), checks what is inside and keeps them as workflow artifacts. It does not attach anything to a
+# release: release-rust.yml builds and attaches the release packages.
 
 on:
   pull_request:

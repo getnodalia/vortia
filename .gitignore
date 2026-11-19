@@ -8,19 +8,6 @@ out/
 *.dylib
 *.so
 
-# CMake
-CMakeCache.txt
-CMakeFiles/
-cmake_install.cmake
-compile_commands.json
-.ninja*
-
-# Qt
-*.pro.user
-moc_*.cpp
-ui_*.h
-qrc_*.cpp
-
 # IDE
 .idea/
 .vscode/

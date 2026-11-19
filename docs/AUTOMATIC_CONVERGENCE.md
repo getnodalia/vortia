@@ -89,4 +89,3 @@ No working-looking controls are supplied for unavailable physics.
 
 Reference for the comparison: [official Fluent capabilities](https://ansyshelp.ansys.com/public/Views/Secured/corp/v252/en/flu_ug/flu_gs_sec_gs_capabilities.html).
 
-See [workspace and performance changes](WORKSPACE_AND_PERFORMANCE.md) for preferences, CPU sizing, deferred visualization and the native A/B evidence.
