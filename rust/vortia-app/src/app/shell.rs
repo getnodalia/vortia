@@ -35,6 +35,7 @@ pub(super) enum Cmd {
     Pause,
     Stop,
     CloseCase,
+    Duplicate,
     Quit,
     Go(Tab),
     Show(Dialog),
@@ -49,6 +50,7 @@ const COMMANDS: &[(&str, Cmd)] = &[
     ("New case", Cmd::New),
     ("Open a case", Cmd::Open),
     ("Close the case", Cmd::CloseCase),
+    ("Duplicate the case", Cmd::Duplicate),
     ("Go to the run", Cmd::Go(Tab::Run)),
     ("Go to the mesh", Cmd::Go(Tab::Mesh)),
     ("Go to the results", Cmd::Go(Tab::Results)),
@@ -192,6 +194,7 @@ impl VortiaApp {
                 self.close_case();
                 self.home = matches!(self.screen, Screen::Welcome) || self.home;
             }
+            Cmd::Duplicate => self.duplicate_case(),
             Cmd::Quit => ctx.send_viewport_cmd(ViewportCommand::Close),
             Cmd::Go(tab) => {
                 if let Screen::Case(case) = &mut self.screen {
@@ -329,6 +332,7 @@ impl VortiaApp {
     /// The File menu and the app's menu, opened from the title bar.
     fn title_menus(&mut self, ui: &egui::Ui, ctx: &Context) {
         let mut chosen = None;
+        let mut recent: Option<PathBuf> = None;
         let at = |id: Id| {
             ctx.data(|d| d.get_temp::<Pos2>(id.with("at")))
                 .unwrap_or_default()
@@ -348,9 +352,28 @@ impl VortiaApp {
                 };
                 item(ui, tr("New case"), true, Cmd::New);
                 item(ui, tr("Open a case"), true, Cmd::Open);
+                ui.add_enabled_ui(!self.prefs.recent.is_empty(), |ui| {
+                    ui.menu_button(tr("Open recent"), |ui| {
+                        for dir in &self.prefs.recent {
+                            let name = dir.file_name().map_or_else(
+                                || dir.display().to_string(),
+                                |n| n.to_string_lossy().into_owned(),
+                            );
+                            if ui
+                                .button(name)
+                                .on_hover_text(dir.display().to_string())
+                                .clicked()
+                            {
+                                recent = Some(dir.clone());
+                                ui.close();
+                            }
+                        }
+                    });
+                });
                 item(ui, tr("Run"), case_open && !running, Cmd::Run);
                 item(ui, tr("Pause or resume"), running, Cmd::Pause);
                 item(ui, tr("Stop"), running, Cmd::Stop);
+                item(ui, tr("Duplicate the case"), case_open, Cmd::Duplicate);
                 item(
                     ui,
                     tr("Close the case"),
@@ -383,6 +406,11 @@ impl VortiaApp {
             });
         if let Some(command) = chosen {
             self.perform(ctx, command);
+        }
+        if let Some(dir) = recent
+            && let Err(message) = self.open_case(&dir)
+        {
+            self.notice = Some(message);
         }
     }
 
