@@ -5,7 +5,6 @@
 
 use crate::error::{Result, SketchError};
 use crate::model::{Constraint, Entity, MAX_ENTITIES, MAX_POINTS, PointId, Sketch};
-use crate::profile::ends;
 use crate::region::{DEFAULT_PATCH, Edge};
 
 fn invalid(message: impl Into<String>) -> SketchError {
@@ -56,7 +55,10 @@ impl Sketch {
     }
 
     /// Runs `edit` on a copy and keeps it only when it works and the sketch is still valid.
-    fn transaction<T>(&mut self, edit: impl FnOnce(&mut Sketch) -> Result<T>) -> Result<T> {
+    pub(crate) fn transaction<T>(
+        &mut self,
+        edit: impl FnOnce(&mut Sketch) -> Result<T>,
+    ) -> Result<T> {
         let mut next = self.clone();
         let out = edit(&mut next)?;
         next.validate()?;
@@ -205,15 +207,15 @@ impl Sketch {
                 .filter(|(i, _)| *i != entity)
                 .map(|(i, name)| (if i > entity { i - 1 } else { i }, name))
                 .collect();
+            // What named the edge goes with it, and the edges after it are one place nearer.
             s.constraints = std::mem::take(&mut s.constraints)
                 .into_iter()
-                .filter_map(|c| match c {
-                    Constraint::Radius { arc, .. } if arc == entity => None,
-                    Constraint::Radius { arc, value } if arc > entity => Some(Constraint::Radius {
-                        arc: arc - 1,
-                        value,
-                    }),
-                    other => Some(other),
+                .filter_map(|c| {
+                    c.map_edges(|i| match i.cmp(&entity) {
+                        std::cmp::Ordering::Less => Some(i),
+                        std::cmp::Ordering::Equal => None,
+                        std::cmp::Ordering::Greater => Some(i - 1),
+                    })
                 })
                 .collect();
             s.prune();
@@ -223,15 +225,10 @@ impl Sketch {
 
     /// Takes out the points no line or arc uses, with the dimensions that touch them, and
     /// renumbers the rest.
-    fn prune(&mut self) {
+    pub(crate) fn prune(&mut self) {
         let mut used = vec![false; self.points.len()];
         for e in &self.entities {
-            let (a, b) = ends(e);
-            let center = match *e {
-                Entity::Arc { center, .. } => Some(center),
-                Entity::Line { .. } => None,
-            };
-            for id in [Some(a), Some(b), center].into_iter().flatten() {
+            for id in e.points() {
                 if let Some(u) = used.get_mut(id) {
                     *u = true;
                 }
@@ -266,41 +263,15 @@ impl Sketch {
                     *end = new_id(*end).unwrap_or(*end);
                     *center = new_id(*center).unwrap_or(*center);
                 }
+                Entity::Circle { center, rim } => {
+                    *center = new_id(*center).unwrap_or(*center);
+                    *rim = new_id(*rim).unwrap_or(*rim);
+                }
             }
         }
         self.constraints = std::mem::take(&mut self.constraints)
             .into_iter()
-            .filter_map(|c| match c {
-                Constraint::Horizontal { a, b } => Some(Constraint::Horizontal {
-                    a: new_id(a)?,
-                    b: new_id(b)?,
-                }),
-                Constraint::Vertical { a, b } => Some(Constraint::Vertical {
-                    a: new_id(a)?,
-                    b: new_id(b)?,
-                }),
-                Constraint::Distance { a, b, value } => Some(Constraint::Distance {
-                    a: new_id(a)?,
-                    b: new_id(b)?,
-                    value,
-                }),
-                Constraint::DeltaX { a, b, value } => Some(Constraint::DeltaX {
-                    a: new_id(a)?,
-                    b: new_id(b)?,
-                    value,
-                }),
-                Constraint::DeltaY { a, b, value } => Some(Constraint::DeltaY {
-                    a: new_id(a)?,
-                    b: new_id(b)?,
-                    value,
-                }),
-                Constraint::Angle { a, b, degrees } => Some(Constraint::Angle {
-                    a: new_id(a)?,
-                    b: new_id(b)?,
-                    degrees,
-                }),
-                radius @ Constraint::Radius { .. } => Some(radius),
-            })
+            .filter_map(|c| c.map_points(new_id))
             .collect();
     }
 

@@ -4,8 +4,7 @@
 use std::collections::HashMap;
 
 use crate::error::{Result, SketchError};
-use crate::model::{PointId, Sketch};
-use crate::profile::ends;
+use crate::model::{Entity, PointId, Sketch};
 
 /// The patch an unnamed edge belongs to.
 pub const DEFAULT_PATCH: &str = "wall";
@@ -66,7 +65,7 @@ impl Sketch {
         }
         let mut at: HashMap<PointId, Vec<usize>> = HashMap::new();
         for (i, e) in self.entities.iter().enumerate() {
-            let (a, b) = ends(e);
+            let Some((a, b)) = e.ends() else { continue };
             at.entry(a).or_default().push(i);
             at.entry(b).or_default().push(i);
         }
@@ -81,12 +80,30 @@ impl Sketch {
             if seen.get(start).copied().unwrap_or(true) {
                 continue;
             }
+            // A circle is a closed loop by itself.
+            if let Some(circle @ Entity::Circle { .. }) = self.entities.get(start) {
+                if let Some(s) = seen.get_mut(start) {
+                    *s = true;
+                }
+                let patch = self
+                    .names
+                    .get(&start)
+                    .cloned()
+                    .unwrap_or_else(|| DEFAULT_PATCH.to_owned());
+                loops.push(vec![Edge {
+                    points: self.sample(circle, step_degrees)?,
+                    patch,
+                }]);
+                continue;
+            }
             let mut edges: Vec<Edge> = Vec::new();
             let mut current = start;
             let Some(first) = self.entities.get(start) else {
                 continue;
             };
-            let origin = ends(first).0;
+            let Some((origin, _)) = first.ends() else {
+                continue;
+            };
             let mut here = origin;
             loop {
                 if let Some(s) = seen.get_mut(current) {
@@ -95,7 +112,9 @@ impl Sketch {
                 let Some(entity) = self.entities.get(current) else {
                     break;
                 };
-                let (a, b) = ends(entity);
+                let Some((a, b)) = entity.ends() else {
+                    break;
+                };
                 let forward = a == here;
                 let mut points = self.sample(entity, step_degrees)?;
                 if !forward {

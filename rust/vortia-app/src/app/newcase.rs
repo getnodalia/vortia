@@ -238,7 +238,7 @@ impl NewCase {
         let home = nodalia_theme::engineering::home_look(look);
         let mut ask = Ask::Nothing;
         office::section(ui, &home, tr("New case"), |ui| {
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 for kind in Kind::ALL {
                     if ui
                         .selectable_label(self.kind == kind, kind.title())
@@ -285,7 +285,7 @@ impl NewCase {
 
 impl NewCase {
     fn region_fields(&mut self, ui: &mut Ui) {
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label(tr("Start from"));
             for outline in region_editor::Outline::ALL {
                 if ui
@@ -309,46 +309,7 @@ impl NewCase {
                     .open(std::path::Path::new(self.region_file.trim()));
             }
         });
-        ui.horizontal_wrapped(|ui| {
-            for tool in region_editor::Tool::ALL {
-                if ui
-                    .selectable_label(self.region.tool == tool, tool.title())
-                    .clicked()
-                    && self.region.tool != tool
-                {
-                    self.region.set_tool(tool);
-                }
-            }
-            ui.add_space(space::MD);
-            if self.region.tool == region_editor::Tool::Dimension {
-                for (measure, label) in [
-                    (Measure::Distance, tr("Distance")),
-                    (Measure::Along, tr("Along x")),
-                    (Measure::Height, tr("Height")),
-                ] {
-                    ui.selectable_value(&mut self.region.measure, measure, label);
-                }
-                ui.add_space(space::MD);
-            }
-            ui.label(tr("Grid"));
-            ui.add(
-                DragValue::new(&mut self.region.grid)
-                    .speed(0.5)
-                    .range(0.0..=1000.0)
-                    .suffix(" mm"),
-            );
-            if ui.button(tr("Fit view")).clicked() {
-                self.region.fit();
-            }
-        });
-        ui.label(
-            egui::RichText::new(
-                self.region
-                    .tool
-                    .hint(self.region.picked().len().max(self.region.pending_points())),
-            )
-            .weak(),
-        );
+        self.region_toolbar(ui);
         region_canvas(ui, &mut self.region);
         if let Some(problem) = &self.region.problem {
             ui.colored_label(ui.visuals().error_fg_color, problem);
@@ -356,6 +317,17 @@ impl NewCase {
             ui.colored_label(ui.visuals().warn_fg_color, why);
         } else if let Some(missing) = self.region.missing() {
             ui.colored_label(ui.visuals().warn_fg_color, missing);
+        }
+        if let Some(free) = self.region.freedom() {
+            let text = if free == 0 {
+                tr("Fully defined: nothing can move.").to_owned()
+            } else {
+                trf(
+                    "{} degrees of freedom: dimension or constrain more.",
+                    &[&free],
+                )
+            };
+            ui.label(egui::RichText::new(text).weak());
         }
         ui.add_space(space::SM);
         let mut edit = None;
@@ -416,6 +388,106 @@ impl NewCase {
         if let Some((entity, name)) = rename {
             let _ = self.region.rename(entity, &name);
         }
+    }
+
+    /// The tools, in the three groups a CAD sketch has: draw, modify and hold. What a tool needs
+    /// beside the clicks (sides, radius, distance, a relation) is set on the line under them.
+    fn region_toolbar(&mut self, ui: &mut Ui) {
+        use region_editor::Tool;
+        let editor = &mut self.region;
+        ui.horizontal_wrapped(|ui| {
+            for (title, tools) in [
+                (tr("Draw"), &Tool::DRAW[..]),
+                (tr("Modify"), &Tool::MODIFY[..]),
+                (tr("Hold"), &Tool::HOLD[..]),
+            ] {
+                ui.label(egui::RichText::new(title).weak());
+                for &tool in tools {
+                    if tool_button(ui, tool.icon(), tool.title(), editor.tool == tool).clicked()
+                        && editor.tool != tool
+                    {
+                        editor.set_tool(tool);
+                    }
+                }
+                ui.add_space(space::MD);
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            match editor.tool {
+                Tool::Polygon => {
+                    ui.label(tr("Sides"));
+                    ui.add(DragValue::new(&mut editor.sides).range(3..=vortia_sketch::MAX_SIDES));
+                }
+                Tool::Fillet => {
+                    ui.label(tr("Radius"));
+                    ui.add(
+                        DragValue::new(&mut editor.radius)
+                            .speed(0.5)
+                            .range(0.1..=10000.0)
+                            .suffix(" mm"),
+                    );
+                }
+                Tool::Chamfer => {
+                    ui.label(tr("Distance"));
+                    ui.add(
+                        DragValue::new(&mut editor.distance)
+                            .speed(0.5)
+                            .range(0.1..=10000.0)
+                            .suffix(" mm"),
+                    );
+                }
+                Tool::Dimension => {
+                    for (measure, label) in [
+                        (Measure::Distance, tr("Distance")),
+                        (Measure::Along, tr("Along x")),
+                        (Measure::Height, tr("Height")),
+                    ] {
+                        ui.selectable_value(&mut editor.measure, measure, label);
+                    }
+                }
+                Tool::Constrain => {
+                    for relation in region_editor::Relation::ALL {
+                        if tool_button(
+                            ui,
+                            Some(relation.icon()),
+                            relation.title(),
+                            editor.relation == relation,
+                        )
+                        .clicked()
+                            && editor.relation != relation
+                        {
+                            editor.relation = relation;
+                            editor.cancel();
+                        }
+                    }
+                }
+                _ => {}
+            }
+            ui.add_space(space::MD);
+            ui.label(tr("Grid"));
+            ui.add(
+                DragValue::new(&mut editor.grid)
+                    .speed(0.5)
+                    .range(0.0..=1000.0)
+                    .suffix(" mm"),
+            );
+            if ui.button(tr("Fit view")).clicked() {
+                editor.fit();
+            }
+            if ui
+                .add_enabled(editor.can_undo(), egui::Button::new(tr("Undo")))
+                .clicked()
+            {
+                editor.undo();
+            }
+            if ui
+                .add_enabled(editor.can_redo(), egui::Button::new(tr("Redo")))
+                .clicked()
+            {
+                editor.redo();
+            }
+        });
+        ui.label(egui::RichText::new(editor.tool.hint(editor.progress(), editor.relation)).weak());
     }
 
     fn sketch_fields(&mut self, ui: &mut Ui) {
@@ -533,12 +605,51 @@ fn draw(ui: &mut Ui, outline: &Outline) {
     }
 }
 
+/// A tool or a relation: its icon (when the set has one) and name, lit when it is the one in use.
+fn tool_button(ui: &mut Ui, icon: Option<&str>, text: &str, active: bool) -> egui::Response {
+    let font = egui::TextStyle::Button.resolve(ui.style());
+    let galley = ui
+        .painter()
+        .layout_no_wrap(text.to_owned(), font, ui.visuals().text_color());
+    let icon_width = if icon.is_some() { 20.0 } else { 0.0 };
+    let size = egui::vec2(galley.size().x + icon_width + 16.0, 26.0);
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+    let visuals = ui.visuals();
+    let fill = if active {
+        visuals.selection.bg_fill
+    } else if response.hovered() {
+        visuals.widgets.hovered.weak_bg_fill
+    } else {
+        egui::Color32::TRANSPARENT
+    };
+    let ink = if active {
+        visuals.selection.stroke.color
+    } else {
+        visuals.text_color()
+    };
+    let painter = ui.painter();
+    painter.rect_filled(rect, 6.0, fill);
+    let mut x = rect.left() + 8.0;
+    if let Some(icon) = icon {
+        let square =
+            egui::Rect::from_min_size(egui::pos2(x, rect.center().y - 8.0), egui::vec2(16.0, 16.0));
+        super::paint_icon(painter, square, icon, ink);
+        x += icon_width;
+    }
+    painter.galley(
+        egui::pos2(x, rect.center().y - galley.size().y / 2.0),
+        galley,
+        ink,
+    );
+    response
+}
+
 /// The drawing of the region, which the tool in use acts on: each edge is in the colour of what
 /// its name makes it, with the name beside it.
 fn region_canvas(ui: &mut Ui, editor: &mut RegionEditor) {
-    let width = ui.available_width().clamp(240.0, 760.0);
+    let width = ui.available_width().clamp(240.0, 1100.0);
     let (rect, response) =
-        ui.allocate_exact_size(egui::vec2(width, 320.0), egui::Sense::click_and_drag());
+        ui.allocate_exact_size(egui::vec2(width, 440.0), egui::Sense::click_and_drag());
     let canvas = Canvas::new(
         f64::from(rect.left()),
         f64::from(rect.top()),
@@ -572,6 +683,19 @@ fn region_canvas(ui: &mut Ui, editor: &mut RegionEditor) {
     {
         editor.cancel();
     }
+    if response.hovered() {
+        let redo = egui::KeyboardShortcut::new(
+            egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
+            egui::Key::Z,
+        );
+        let undo = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::Z);
+        // Redo first: Ctrl+Shift+Z also satisfies a Ctrl+Z that does not mind extra modifiers.
+        if ui.input_mut(|i| i.consume_shortcut(&redo)) {
+            editor.redo();
+        } else if ui.input_mut(|i| i.consume_shortcut(&undo)) {
+            editor.undo();
+        }
+    }
     let painter = ui.painter_at(rect);
     let visuals = ui.visuals().clone();
     painter.rect_filled(rect, 6.0, visuals.extreme_bg_color);
@@ -604,9 +728,12 @@ fn region_canvas(ui: &mut Ui, editor: &mut RegionEditor) {
             line.clone(),
             egui::Stroke::new(2.0, color),
         ));
-        if let Some(&mid) = line.get(line.len() / 2) {
+        // Only an edge with a name of its own is labelled: every other one is a plain wall.
+        if edge.patch != vortia_sketch::DEFAULT_PATCH
+            && let Some((x, y)) = edge.middle()
+        {
             painter.text(
-                mid,
+                screen(x, y) + egui::vec2(0.0, -9.0),
                 egui::Align2::CENTER_CENTER,
                 &edge.patch,
                 egui::FontId::proportional(11.0),
@@ -626,18 +753,43 @@ fn region_canvas(ui: &mut Ui, editor: &mut RegionEditor) {
             painter.circle_filled(c, 3.5, visuals.selection.stroke.color);
         }
     }
-    // What the tool has been given, and a line from it to where the pointer would put the next.
-    if let (Some(&last), Some(p)) = (editor.picked().last(), response.hover_pos()) {
-        let (hx, hy) = editor.landing(world(p).0, world(p).1, tolerance);
+    // What each constraint holds, marked where it holds.
+    for marker in editor.markers() {
+        let at = screen(marker.at.0, marker.at.1);
+        let chip =
+            egui::Rect::from_center_size(at + egui::vec2(0.0, -11.0), egui::vec2(16.0, 16.0));
+        painter.rect_filled(chip, 4.0, visuals.extreme_bg_color);
+        painter.rect_stroke(
+            chip,
+            4.0,
+            egui::Stroke::new(1.0, visuals.warn_fg_color),
+            egui::StrokeKind::Inside,
+        );
+        super::paint_icon(
+            &painter,
+            chip.shrink(2.0),
+            marker.relation.icon(),
+            visuals.warn_fg_color,
+        );
+    }
+    // What the tool has been given, and the shape it would make where the pointer is.
+    for &picked in editor.picked() {
         painter.circle_stroke(
-            screen(last.0, last.1),
+            screen(picked.0, picked.1),
             5.0,
             egui::Stroke::new(1.5, visuals.warn_fg_color),
         );
-        painter.line_segment(
-            [screen(last.0, last.1), screen(hx, hy)],
-            egui::Stroke::new(1.0, visuals.weak_text_color()),
-        );
+    }
+    if let Some(p) = response.hover_pos() {
+        let (hx, hy) = editor.landing(world(p).0, world(p).1, tolerance);
+        let stroke = egui::Stroke::new(1.5, visuals.warn_fg_color.gamma_multiply(0.8));
+        for shape in editor.preview((hx, hy)) {
+            let line: Vec<_> = shape.iter().map(|&(x, y)| screen(x, y)).collect();
+            painter.add(egui::Shape::line(line, stroke));
+        }
+        if editor.tool != region_editor::Tool::Move {
+            painter.circle_stroke(screen(hx, hy), 4.0, stroke);
+        }
     }
 }
 

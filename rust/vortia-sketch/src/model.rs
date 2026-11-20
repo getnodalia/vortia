@@ -38,6 +38,12 @@ pub enum Entity {
         end: PointId,
         center: PointId,
     },
+    /// A whole circle about `center` through `rim`: a closed outline on its own, the hole a
+    /// cylinder makes in a channel.
+    Circle {
+        center: PointId,
+        rim: PointId,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -52,8 +58,20 @@ pub enum Constraint {
     DeltaX { a: PointId, b: PointId, value: f64 },
     /// `y` of `b` minus `y` of `a`.
     DeltaY { a: PointId, b: PointId, value: f64 },
-    /// The radius of the arc that is entity `arc`.
+    /// The radius of the arc or circle that is entity `arc`.
     Radius { arc: usize, value: f64 },
+    /// The two points are the same point.
+    Coincident { a: PointId, b: PointId },
+    /// Lines `a` and `b` (entities) run the same way.
+    Parallel { a: usize, b: usize },
+    /// Lines `a` and `b` (entities) meet at a right angle.
+    Perpendicular { a: usize, b: usize },
+    /// Entities `a` and `b` are the same size: two lines the same length, two arcs or circles the
+    /// same radius.
+    Equal { a: usize, b: usize },
+    /// The line `line` touches the arc or circle `round` without crossing it, at the end they
+    /// share when they share one.
+    Tangent { line: usize, round: usize },
     /// The angle of the line from `a` to `b` above the `x` direction, in degrees.
     Angle {
         a: PointId,
@@ -155,6 +173,15 @@ impl Sketch {
                         ));
                     }
                 }
+                Entity::Circle { center, rim } => {
+                    known(center)?;
+                    known(rim)?;
+                    if center == rim {
+                        return Err(SketchError::Invalid(
+                            "a circle needs a centre and a point on it, different".into(),
+                        ));
+                    }
+                }
             }
         }
         for (entity, name) in &self.names {
@@ -192,9 +219,12 @@ impl Sketch {
                     finite("a dimension", value, MAX_SIZE)?;
                 }
                 Constraint::Radius { arc, value } => {
-                    if !matches!(self.entities.get(arc), Some(Entity::Arc { .. })) {
+                    if !matches!(
+                        self.entities.get(arc),
+                        Some(Entity::Arc { .. } | Entity::Circle { .. })
+                    ) {
                         return Err(SketchError::Invalid(format!(
-                            "entity {arc} is not an arc, so it has no radius"
+                            "entity {arc} is not an arc or a circle, so it has no radius"
                         )));
                     }
                     finite("a radius", value, MAX_SIZE)?;
@@ -207,8 +237,147 @@ impl Sketch {
                     known(b)?;
                     finite("an angle", degrees, 360.0)?;
                 }
+                Constraint::Coincident { a, b } => {
+                    known(a)?;
+                    known(b)?;
+                }
+                Constraint::Parallel { a, b } | Constraint::Perpendicular { a, b } => {
+                    for entity in [a, b] {
+                        if !matches!(self.entities.get(entity), Some(Entity::Line { .. })) {
+                            return Err(SketchError::Invalid(format!(
+                                "entity {entity} is not a line, so it has no direction"
+                            )));
+                        }
+                    }
+                    if a == b {
+                        return Err(SketchError::Invalid(
+                            "a line cannot be parallel or perpendicular to itself".into(),
+                        ));
+                    }
+                }
+                Constraint::Equal { a, b } => {
+                    if a == b || self.entities.get(a).is_none() || self.entities.get(b).is_none() {
+                        return Err(SketchError::Invalid(
+                            "two different edges of the sketch can be made equal".into(),
+                        ));
+                    }
+                }
+                Constraint::Tangent { line, round } => {
+                    if !matches!(self.entities.get(line), Some(Entity::Line { .. }))
+                        || !matches!(
+                            self.entities.get(round),
+                            Some(Entity::Arc { .. } | Entity::Circle { .. })
+                        )
+                    {
+                        return Err(SketchError::Invalid(
+                            "a tangent is between a line and an arc or circle".into(),
+                        ));
+                    }
+                }
             }
         }
         Ok(())
+    }
+}
+
+impl Constraint {
+    /// The constraint with every point it names renumbered by `new`, or `None` when one of them is
+    /// gone.
+    pub fn map_points(self, new: impl Fn(PointId) -> Option<PointId>) -> Option<Constraint> {
+        Some(match self {
+            Constraint::Horizontal { a, b } => Constraint::Horizontal {
+                a: new(a)?,
+                b: new(b)?,
+            },
+            Constraint::Vertical { a, b } => Constraint::Vertical {
+                a: new(a)?,
+                b: new(b)?,
+            },
+            Constraint::Distance { a, b, value } => Constraint::Distance {
+                a: new(a)?,
+                b: new(b)?,
+                value,
+            },
+            Constraint::DeltaX { a, b, value } => Constraint::DeltaX {
+                a: new(a)?,
+                b: new(b)?,
+                value,
+            },
+            Constraint::DeltaY { a, b, value } => Constraint::DeltaY {
+                a: new(a)?,
+                b: new(b)?,
+                value,
+            },
+            Constraint::Angle { a, b, degrees } => Constraint::Angle {
+                a: new(a)?,
+                b: new(b)?,
+                degrees,
+            },
+            Constraint::Coincident { a, b } => Constraint::Coincident {
+                a: new(a)?,
+                b: new(b)?,
+            },
+            other => other,
+        })
+    }
+
+    /// The constraint with every edge it names renumbered by `new`, or `None` when one of them is
+    /// gone.
+    pub fn map_edges(self, new: impl Fn(usize) -> Option<usize>) -> Option<Constraint> {
+        Some(match self {
+            Constraint::Radius { arc, value } => Constraint::Radius {
+                arc: new(arc)?,
+                value,
+            },
+            Constraint::Parallel { a, b } => Constraint::Parallel {
+                a: new(a)?,
+                b: new(b)?,
+            },
+            Constraint::Perpendicular { a, b } => Constraint::Perpendicular {
+                a: new(a)?,
+                b: new(b)?,
+            },
+            Constraint::Equal { a, b } => Constraint::Equal {
+                a: new(a)?,
+                b: new(b)?,
+            },
+            Constraint::Tangent { line, round } => Constraint::Tangent {
+                line: new(line)?,
+                round: new(round)?,
+            },
+            other => other,
+        })
+    }
+
+    /// Whether this is a dimension with a number to edit.
+    pub fn has_value(&self) -> bool {
+        matches!(
+            self,
+            Constraint::Distance { .. }
+                | Constraint::DeltaX { .. }
+                | Constraint::DeltaY { .. }
+                | Constraint::Radius { .. }
+                | Constraint::Angle { .. }
+        )
+    }
+}
+
+impl Entity {
+    /// The points that hold the entity: its ends, and its centre when it has one.
+    pub fn points(&self) -> Vec<PointId> {
+        match *self {
+            Entity::Line { a, b } => vec![a, b],
+            Entity::Arc { start, end, center } => vec![start, end, center],
+            Entity::Circle { center, rim } => vec![center, rim],
+        }
+    }
+
+    /// The two ends of a line or arc; a circle has none.
+    pub fn ends(&self) -> Option<(PointId, PointId)> {
+        match *self {
+            Entity::Line { a, b } => Some((a, b)),
+            Entity::Arc { start, end, .. } => Some((start, end)),
+            Entity::Circle { .. } => None,
+        }
     }
 }

@@ -146,7 +146,7 @@ fn a_hostile_file_is_an_error_and_never_a_crash() {
         ("not json", "{".to_owned()),
         (
             "newer",
-            ok.to_string().replace("\"version\":1", "\"version\":9"),
+            ok.to_string().replace("\"version\":2", "\"version\":9"),
         ),
         (
             "unknown entity",
@@ -394,14 +394,11 @@ mod editing {
             s.remove_edge(i).unwrap();
         }
         assert!(s.points.iter().all(|p| p.x <= 400.0));
-        assert!(s.constraints.iter().all(|c| match *c {
-            Constraint::Horizontal { a, b }
-            | Constraint::Vertical { a, b }
-            | Constraint::Distance { a, b, .. }
-            | Constraint::DeltaX { a, b, .. }
-            | Constraint::DeltaY { a, b, .. }
-            | Constraint::Angle { a, b, .. } => a < s.points.len() && b < s.points.len(),
-            Constraint::Radius { arc, .. } => arc < s.entities.len(),
+        assert!(s.constraints.iter().all(|c| {
+            c.map_points(|p| (p < s.points.len()).then_some(p))
+                .is_some()
+                && c.map_edges(|e| (e < s.entities.len()).then_some(e))
+                    .is_some()
         }));
     }
 
@@ -443,5 +440,290 @@ mod editing {
         assert_eq!(edges[1].patch, "wall");
         assert!(edges[1].points.len() > 2, "the arc is cut in steps");
         assert!(s.loops(5.0).is_err(), "but it is not a region yet");
+    }
+}
+
+mod shapes {
+    use crate::{Constraint, Entity, Measure, Sketch, templates};
+
+    fn centre_to_line(s: &Sketch, line: usize, round: usize) -> (f64, f64) {
+        let Entity::Line { a, b } = s.entities[line] else {
+            panic!("not a line")
+        };
+        let (c, r) = match s.entities[round] {
+            Entity::Arc { start, center, .. } => (center, start),
+            Entity::Circle { center, rim } => (center, rim),
+            Entity::Line { .. } => panic!("not round"),
+        };
+        let p = |i: usize| (s.points[i].x, s.points[i].y);
+        let (pa, pb, pc, pr) = (p(a), p(b), p(c), p(r));
+        let (dx, dy) = (pb.0 - pa.0, pb.1 - pa.1);
+        let across = (dx * (pc.1 - pa.1) - dy * (pc.0 - pa.0)).abs() / dx.hypot(dy);
+        (across, (pc.0 - pr.0).hypot(pc.1 - pr.1))
+    }
+
+    #[test]
+    fn a_circle_in_a_channel_is_a_hole_and_has_a_radius_to_dimension() {
+        let mut s = Sketch::default();
+        s.draw_rectangle((0.0, 0.0), (400.0, 100.0), 1.0).unwrap();
+        let circle = s.draw_circle((100.0, 50.0), (120.0, 50.0), 1.0).unwrap();
+        s.name(circle, "cylinder");
+        let loops = s.loops(10.0).unwrap();
+        assert_eq!(loops.len(), 2);
+        assert_eq!(loops[1].len(), 1);
+        assert_eq!(loops[1][0].patch, "cylinder");
+        let ring = &loops[1][0].points;
+        assert_eq!(ring.first(), ring.last(), "a circle's outline closes");
+        // Its radius is a dimension the solver holds.
+        s.add_constraint(Constraint::Radius {
+            arc: circle,
+            value: 12.0,
+        })
+        .unwrap();
+        let (cx, rim) = (
+            s.points[s.entities[circle].points()[0]],
+            s.points[s.entities[circle].points()[1]],
+        );
+        assert!(((rim.x - cx.x).hypot(rim.y - cx.y) - 12.0).abs() < 1e-6);
+        // A circle is not part of an axisymmetric wall.
+        assert!(s.profile(5.0).is_err());
+    }
+
+    #[test]
+    fn a_rectangle_stays_a_rectangle_when_a_corner_is_dragged() {
+        let mut s = Sketch::default();
+        let edges = s.draw_rectangle((10.0, 20.0), (110.0, 70.0), 1.0).unwrap();
+        assert_eq!(edges.len(), 4);
+        assert_eq!(s.loops(10.0).unwrap().len(), 1);
+        let corner = s.point_near(110.0, 70.0, 1.0).unwrap();
+        s.move_point(corner, 150.0, 90.0).unwrap();
+        let (x0, y0) = (s.points[0].x, s.points[0].y);
+        assert!((x0 - 10.0).abs() < 1e-6 && (y0 - 20.0).abs() < 1e-6);
+        assert!(
+            (s.points[1].y - s.points[0].y).abs() < 1e-6,
+            "the bottom stays level"
+        );
+        assert!(
+            (s.points[2].x - s.points[1].x).abs() < 1e-6,
+            "the right side stays upright"
+        );
+        assert!(s.draw_rectangle((5.0, 5.0), (5.0, 50.0), 1.0).is_err());
+    }
+
+    #[test]
+    fn a_slot_keeps_its_ends_round_and_its_sides_tangent_as_it_is_dragged() {
+        let mut s = Sketch::default();
+        let slot = s.draw_slot((0.0, 0.0), (100.0, 0.0), 10.0, 1.0).unwrap();
+        assert_eq!(slot.len(), 4);
+        assert_eq!(s.loops(10.0).unwrap().len(), 1);
+        let end = s.point_near(100.0, 0.0, 1.0).unwrap();
+        s.move_point(end, 80.0, 40.0).unwrap();
+        for (line, arc) in [(0, 1), (0, 2), (3, 1), (3, 2)] {
+            let (across, radius) = centre_to_line(&s, line, arc);
+            assert!(
+                (across - radius).abs() < 1e-5,
+                "{line} {arc}: {across} {radius}"
+            );
+        }
+        let radii: Vec<f64> = [1, 2].iter().map(|&a| centre_to_line(&s, 0, a).1).collect();
+        assert!((radii[0] - radii[1]).abs() < 1e-5, "{radii:?}");
+        assert!(s.draw_slot((0.0, 0.0), (0.0, 0.0), 5.0, 1.0).is_err());
+    }
+
+    #[test]
+    fn a_polygon_has_as_many_sides_as_asked_and_no_more_than_it_may() {
+        let mut s = Sketch::default();
+        let edges = s.draw_polygon((0.0, 0.0), (10.0, 0.0), 6, 0.5).unwrap();
+        assert_eq!(edges.len(), 6);
+        assert_eq!(s.points.len(), 6);
+        assert_eq!(s.loops(10.0).unwrap().len(), 1);
+        for bad in [0, 2, 65, usize::MAX] {
+            assert!(
+                s.draw_polygon((0.0, 0.0), (10.0, 0.0), bad, 0.5).is_err(),
+                "{bad}"
+            );
+        }
+        assert!(s.draw_polygon((0.0, 0.0), (f64::NAN, 0.0), 5, 0.5).is_err());
+    }
+
+    #[test]
+    fn a_corner_is_rounded_with_an_arc_that_touches_both_lines() {
+        let mut s = Sketch::default();
+        s.draw_rectangle((0.0, 0.0), (100.0, 60.0), 1.0).unwrap();
+        let corner = s.point_near(100.0, 60.0, 1.0).unwrap();
+        let arc = s.fillet(corner, 8.0).unwrap();
+        assert!(matches!(s.entities[arc], Entity::Arc { .. }));
+        assert_eq!(s.entities.len(), 5);
+        assert_eq!(s.loops(10.0).unwrap().len(), 1, "still one closed outline");
+        let tangents: Vec<(usize, usize)> = s
+            .constraints
+            .iter()
+            .filter_map(|c| match *c {
+                Constraint::Tangent { line, round } => Some((line, round)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(tangents.len(), 2);
+        for (line, round) in tangents {
+            let (across, radius) = centre_to_line(&s, line, round);
+            assert!((across - 8.0).abs() < 1e-5 && (radius - 8.0).abs() < 1e-5);
+        }
+        // The radius is a dimension that can be edited afterwards.
+        let at = s
+            .constraints
+            .iter()
+            .position(|c| matches!(c, Constraint::Radius { .. }))
+            .unwrap();
+        let Constraint::Radius { value, .. } = &mut s.constraints[at] else {
+            panic!()
+        };
+        *value = 12.0;
+        s.solve().unwrap();
+        let (_, radius) = centre_to_line(&s, 1, arc);
+        assert!((radius - 12.0).abs() < 1e-5, "{radius}");
+    }
+
+    #[test]
+    fn a_corner_is_chamfered_and_what_cannot_be_is_refused() {
+        let mut s = Sketch::default();
+        s.draw_rectangle((0.0, 0.0), (100.0, 60.0), 1.0).unwrap();
+        let corner = s.point_near(0.0, 0.0, 1.0).unwrap();
+        let line = s.chamfer(corner, 10.0).unwrap();
+        let Entity::Line { a, b } = s.entities[line] else {
+            panic!("not a line")
+        };
+        let (pa, pb) = (s.points[a], s.points[b]);
+        assert!(((pa.x - pb.x).hypot(pa.y - pb.y) - 10.0 * 2f64.sqrt()).abs() < 1e-6);
+        assert_eq!(s.loops(10.0).unwrap().len(), 1);
+        // More than the lines are long, a negative, a NaN, a point that is no corner.
+        let before = s.clone();
+        let other = s.point_near(100.0, 60.0, 1.0).unwrap();
+        assert!(s.chamfer(other, 80.0).is_err());
+        assert!(s.fillet(other, -1.0).is_err());
+        assert!(s.fillet(other, f64::NAN).is_err());
+        assert!(s.fillet(999, 1.0).is_err());
+        assert_eq!(s, before, "a refused edit leaves the sketch alone");
+    }
+
+    #[test]
+    fn constraints_are_held_and_one_that_cannot_hold_is_refused() {
+        let mut s = Sketch::default();
+        let l0 = s.draw_line((0.0, 0.0), (100.0, 10.0), 1.0).unwrap();
+        let l1 = s.draw_line((0.0, 50.0), (80.0, 70.0), 1.0).unwrap();
+        s.add_constraint(Constraint::Parallel { a: l0, b: l1 })
+            .unwrap();
+        let dir = |s: &Sketch, e: usize| {
+            let Entity::Line { a, b } = s.entities[e] else {
+                panic!()
+            };
+            (s.points[b].x - s.points[a].x, s.points[b].y - s.points[a].y)
+        };
+        let (u, v) = (dir(&s, l0), dir(&s, l1));
+        assert!((u.0 * v.1 - u.1 * v.0).abs() / (u.0.hypot(u.1) * v.0.hypot(v.1)) < 1e-6);
+        // Perpendicular to something already parallel to it cannot be.
+        let before = s.clone();
+        assert!(
+            s.add_constraint(Constraint::Perpendicular { a: l0, b: l1 })
+                .is_err()
+        );
+        assert_eq!(s, before);
+        // Constraints on what is not there are refused, not crashed on.
+        assert!(
+            s.add_constraint(Constraint::Parallel { a: 0, b: 99 })
+                .is_err()
+        );
+        assert!(
+            s.add_constraint(Constraint::Tangent { line: 0, round: 1 })
+                .is_err()
+        );
+        assert!(s.add_constraint(Constraint::Equal { a: 0, b: 0 }).is_err());
+    }
+
+    #[test]
+    fn two_lines_made_equal_and_two_points_made_one() {
+        let mut s = Sketch::default();
+        let l0 = s.draw_line((0.0, 0.0), (100.0, 0.0), 1.0).unwrap();
+        let l1 = s.draw_line((0.0, 20.0), (60.0, 20.0), 1.0).unwrap();
+        s.add_constraint(Constraint::Equal { a: l0, b: l1 })
+            .unwrap();
+        let len = |s: &Sketch, e: usize| {
+            let Entity::Line { a, b } = s.entities[e] else {
+                panic!()
+            };
+            (s.points[b].x - s.points[a].x).hypot(s.points[b].y - s.points[a].y)
+        };
+        assert!((len(&s, l0) - len(&s, l1)).abs() < 1e-6);
+        let (a, b) = (s.entities[l0].points()[0], s.entities[l1].points()[0]);
+        s.add_constraint(Constraint::Coincident { a, b }).unwrap();
+        assert!((s.points[a].x - s.points[b].x).abs() < 1e-6);
+        assert!((s.points[a].y - s.points[b].y).abs() < 1e-6);
+    }
+
+    #[test]
+    fn the_degrees_of_freedom_fall_as_the_sketch_is_held() {
+        let mut s = Sketch::default();
+        s.draw_rectangle((0.0, 0.0), (100.0, 50.0), 1.0).unwrap();
+        // Four free corners, eight numbers, four of them held by horizontal and vertical.
+        assert_eq!(s.degrees_of_freedom().unwrap(), 4);
+        let (a, c) = (0, 2);
+        s.dimension_points(a, c, Measure::Along).unwrap();
+        s.dimension_points(a, c, Measure::Height).unwrap();
+        assert_eq!(
+            s.degrees_of_freedom().unwrap(),
+            2,
+            "the size is held, the place is not"
+        );
+        s.set_fixed(a, true).unwrap();
+        assert_eq!(s.degrees_of_freedom().unwrap(), 0);
+        // A hostile sketch has no degrees, only an error.
+        let mut bad = s.clone();
+        bad.points[0].x = f64::NAN;
+        assert!(bad.degrees_of_freedom().is_err());
+    }
+
+    #[test]
+    fn the_new_things_survive_a_file_and_removing_an_edge() {
+        let mut s = templates::channel_with_block(400.0, 100.0, 30.0, 120.0, 35.0);
+        let circle = s.draw_circle((300.0, 50.0), (310.0, 50.0), 1.0).unwrap();
+        let slot = s.draw_slot((50.0, 20.0), (90.0, 20.0), 5.0, 1.0).unwrap();
+        s.add_constraint(Constraint::Radius {
+            arc: circle,
+            value: 9.0,
+        })
+        .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("s.vortia-sketch");
+        s.save(&path).unwrap();
+        assert_eq!(Sketch::open(&path).unwrap(), s);
+        // Taking an edge out renumbers what refers to the ones after it, and drops what
+        // referred to it.
+        s.remove_edge(slot[0]).unwrap();
+        assert!(s.validate().is_ok());
+        // The two tangents that touched the removed side are gone; the other side's stay.
+        let tangents = s
+            .constraints
+            .iter()
+            .filter(|c| matches!(c, Constraint::Tangent { .. }))
+            .count();
+        assert_eq!(tangents, 2);
+        s.remove_edge(s.entities.len() - 1 - 2).ok();
+        assert!(s.validate().is_ok());
+    }
+
+    #[test]
+    fn a_hostile_file_cannot_name_a_circle_that_is_not_there() {
+        let s = templates::duct(10.0, 1.0);
+        let mut json = s.to_json();
+        json["entities"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!({"type": "circle", "center": 0, "rim": 0}));
+        assert!(Sketch::from_json(&json).is_err());
+        let mut json = s.to_json();
+        json["constraints"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!({"type": "tangent", "line": 0, "round": 7}));
+        assert!(Sketch::from_json(&json).is_err());
     }
 }
