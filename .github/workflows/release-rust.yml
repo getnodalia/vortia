@@ -80,7 +80,7 @@ jobs:
   macos:
     name: DMG (macos-15)
     needs: version
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v7
       - name: Toolchain
