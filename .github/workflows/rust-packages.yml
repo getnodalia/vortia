@@ -40,7 +40,7 @@ jobs:
           "$RUNNER_TEMP"/check/Vortia-*-linux-x86_64/bin/vortia help
       - name: The AppImage is there and is not empty
         run: test -s "$(ls "$RUNNER_TEMP"/dist/Vortia-*-linux-x86_64.AppImage)"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: vortia-rust-linux
           path: ${{ runner.temp }}/dist/*
@@ -70,7 +70,7 @@ jobs:
           test -f "$RUNNER_TEMP/mnt/.background/background.tiff"
           test -f "$RUNNER_TEMP/mnt/Vortia.app/Contents/Resources/Vortia.icns"
           codesign --verify --strict "$RUNNER_TEMP/mnt/Vortia.app"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: vortia-rust-macos
           path: ${{ runner.temp }}/dist/*
