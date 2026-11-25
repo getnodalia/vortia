@@ -915,6 +915,136 @@ pub const ES: &[(&str, &str)] = &[
     ("Write interval", "Intervalo de escritura"),
     ("Writes every", "Escribe cada"),
     ("Written up to", "Escrito hasta"),
+    ("{} has no internalField.", "{} no tiene internalField."),
+    ("{} has no boundaryField.", "{} no tiene boundaryField."),
+    (
+        "{} is not in the {} folder.",
+        "{} no está en la carpeta {}.",
+    ),
+    (
+        "The {} folder holds no fields.",
+        "La carpeta {} no contiene campos.",
+    ),
+    ("'{}' is not a number.", "«{}» no es un número."),
+    (
+        "{} must keep its form, like '{}'.",
+        "{} debe conservar su forma, como «{}».",
+    ),
+    (
+        "'{}' of {} is not written the way the editor reads; edit it in the file.",
+        "«{}» en {} no está escrito como lo lee el editor; edítalo en el archivo.",
+    ),
+    ("the file", "el archivo"),
+    (
+        "'{}' cannot be set for {}.",
+        "«{}» no se puede aplicar a {}.",
+    ),
+    (
+        "The block of {} is not written the way the editor reads; edit it in the file.",
+        "El bloque de {} no está escrito como lo lee el editor; edítalo en el archivo.",
+    ),
+    (
+        "The condition type of {} is decided by the mesh.",
+        "El tipo de condición de {} lo decide la malla.",
+    ),
+    ("Could not read {}: {}", "No se pudo leer {}: {}"),
+    (
+        "'{}' is written over several lines; edit it in the file.",
+        "«{}» está escrito en varias líneas; edítalo en el archivo.",
+    ),
+    (
+        "'{}' has no value to replace.",
+        "«{}» no tiene un valor que reemplazar.",
+    ),
+    ("'{}' could not be edited.", "«{}» no se pudo editar."),
+    ("{} needs a scheme.", "{} necesita un esquema."),
+    (
+        "{}: '{}' cannot be part of a scheme.",
+        "{}: «{}» no puede formar parte de un esquema.",
+    ),
+    (
+        "'{}/{}' is not a field of the case.",
+        "«{}/{}» no es un campo del caso.",
+    ),
+    (
+        "{} has {} values, but the mesh has {} cells.",
+        "{} tiene {} valores, pero la malla tiene {} celdas.",
+    ),
+    (
+        "{} has a value on each face, not on each cell.",
+        "{} tiene un valor en cada cara, no en cada celda.",
+    ),
+    (
+        "{} cannot be shown on the mesh: {}",
+        "{} no se puede mostrar en la malla: {}",
+    ),
+    (
+        "{} is not a vector field, so it has no flow lines.",
+        "{} no es un campo vectorial, así que no tiene líneas de flujo.",
+    ),
+    ("axis {} is not x, y or z", "el eje {} no es x, y ni z"),
+    (
+        "the position of the section is not a number",
+        "la posición de la sección no es un número",
+    ),
+    (
+        "the engine stopped unexpectedly; the case was left as it was",
+        "el motor se detuvo de forma inesperada; el caso quedó como estaba",
+    ),
+    (
+        "The engine could not start: {}",
+        "El motor no pudo arrancar: {}",
+    ),
+    (
+        "{} of {} checks in a row",
+        "{} de {} comprobaciones seguidas",
+    ),
+    (
+        "{} cannot change while the case runs.",
+        "{} no se puede cambiar mientras el caso se ejecuta.",
+    ),
+    ("{} — replaced on save", "{} — se reemplaza al guardar"),
+    (
+        "Needs {} in the time folder.",
+        "Necesita {} en la carpeta de tiempo.",
+    ),
+    (
+        "The {} needs three numbers.",
+        "El {} necesita tres números.",
+    ),
+    ("point", "punto"),
+    (
+        "The number of points is between 1 and {}.",
+        "El número de puntos está entre 1 y {}.",
+    ),
+    (
+        "Flux out of all patches: {} (zero when what comes in goes out)",
+        "Flujo de salida de todos los parches: {} (cero cuando lo que entra sale)",
+    ),
+    ("Not worked out: {}", "No se pudo calcular: {}"),
+    ("{} in cell {}", "{} en la celda {}"),
+    (
+        "({} {} {}) is outside the mesh",
+        "({} {} {}) está fuera de la malla",
+    ),
+    ("{} needs a number.", "{} necesita un número."),
+    ("Section at {} {}", "Sección en {} {}"),
+    (
+        "The report is json, csv or html, not '{}'.",
+        "El informe es json, csv o html, no «{}».",
+    ),
+    (
+        "{} is not a report this build can read.",
+        "{} no es un informe que esta versión pueda leer.",
+    ),
+    (
+        "{} faces  ·  drag to turn, right-drag to slide, wheel to zoom, double-click to reset",
+        "{} caras  ·  arrastra para girar, arrastra con el botón derecho para desplazar, rueda para ampliar, doble clic para restablecer",
+    ),
+    (
+        "  ·  the mesh is larger than the viewer shows",
+        "  ·  la malla es mayor de lo que muestra el visor",
+    ),
 ];
 
 #[cfg(test)]
@@ -959,6 +1089,154 @@ mod tests {
             .map(|(en, _)| *en)
             .collect();
         assert!(unused.is_empty(), "not in the source: {unused:?}");
+    }
+
+    /// The source of the app, one string per file, each cut where its tests begin.
+    fn app_sources() -> Vec<(String, String)> {
+        fn walk(dir: &std::path::Path, out: &mut Vec<(String, String)>) {
+            let Ok(entries) = std::fs::read_dir(dir) else {
+                return;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(&path, out);
+                } else if path.extension().is_some_and(|e| e == "rs") && !path.ends_with("i18n.rs")
+                {
+                    let text = std::fs::read_to_string(&path).unwrap_or_default();
+                    let live = text.split("#[cfg(test)]").next().unwrap_or_default();
+                    out.push((path.display().to_string(), live.to_owned()));
+                }
+            }
+        }
+        let mut out = Vec::new();
+        walk(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+            &mut out,
+        );
+        out
+    }
+
+    /// The string literal that starts at `rest` (after optional `&` and spaces), unescaped, and
+    /// what follows it. `None` when `rest` does not start one or it uses an escape not handled.
+    fn literal(rest: &str) -> Option<(String, &str)> {
+        let rest = rest.trim_start().trim_start_matches('&').trim_start();
+        let mut chars = rest.strip_prefix('"')?.char_indices();
+        let mut text = String::new();
+        while let Some((at, c)) = chars.next() {
+            match c {
+                '"' => return Some((text, rest.get(at + 2..)?)),
+                '\\' => match chars.next()?.1 {
+                    '"' => text.push('"'),
+                    '\\' => text.push('\\'),
+                    '\'' => text.push('\''),
+                    'n' => text.push('\n'),
+                    't' => text.push('\t'),
+                    '\n' => {
+                        // A line continuation swallows the next line's indentation.
+                        while chars.clone().next().is_some_and(|(_, c)| c.is_whitespace()) {
+                            chars.next();
+                        }
+                    }
+                    _ => return None,
+                },
+                c => text.push(c),
+            }
+        }
+        None
+    }
+
+    /// Every string literal given straight to `tr`/`trf`, with the file it is in.
+    fn translated_literals() -> Vec<(String, String)> {
+        let mut found = Vec::new();
+        for (file, text) in app_sources() {
+            for name in ["tr(", "trf("] {
+                for (at, _) in text.match_indices(name) {
+                    let before = text.get(..at).and_then(|t| t.chars().next_back());
+                    if before.is_some_and(|c| c.is_alphanumeric() || c == '_') {
+                        continue;
+                    }
+                    if let Some((english, _)) = text.get(at + name.len()..).and_then(literal) {
+                        found.push((file.clone(), english));
+                    }
+                }
+            }
+        }
+        found
+    }
+
+    /// A line passed to `tr` that the table does not know is shown in English to everyone who
+    /// runs the app in Spanish.
+    #[test]
+    fn every_line_given_to_tr_has_a_spanish_row() {
+        let known: std::collections::HashSet<&str> = ES.iter().map(|(en, _)| *en).collect();
+        let literals = translated_literals();
+        assert!(
+            literals.len() > 300,
+            "the scan found {} lines",
+            literals.len()
+        );
+        let missing: Vec<_> = literals
+            .iter()
+            .filter(|(_, en)| en.chars().any(char::is_alphabetic) && !known.contains(en.as_str()))
+            .map(|(file, en)| format!("{en:?} in {file}"))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "no Spanish row for:\n{}",
+            missing.join("\n")
+        );
+    }
+
+    /// Text built by `format!` and handed to a widget is English in every language: it goes
+    /// through `trf` with its `{}` holes instead.
+    #[test]
+    fn no_widget_is_given_english_prose_built_by_format() {
+        let mut offenders = Vec::new();
+        for (file, text) in app_sources() {
+            for (at, _) in text.match_indices("format!(") {
+                let Some((prose, _)) = text.get(at + "format!(".len()..).and_then(literal) else {
+                    continue;
+                };
+                let mut bare = String::new();
+                let mut depth = 0;
+                for c in prose.chars() {
+                    match c {
+                        '{' => depth += 1,
+                        '}' if depth > 0 => depth -= 1,
+                        c if depth == 0 => bare.push(c),
+                        _ => {}
+                    }
+                }
+                let words = bare
+                    .split(|c: char| !c.is_alphabetic() && c != '\'')
+                    .filter(|w| {
+                        w.chars().count() > 1
+                            && w.chars().all(|c| c.is_ascii_lowercase() || c == '\'')
+                    })
+                    .count();
+                let head = text.get(..at).unwrap_or_default().trim_end();
+                let to_a_widget = [
+                    "RichText::new(",
+                    ".label(",
+                    ".heading(",
+                    ".button(",
+                    "Err(",
+                    "Failed(",
+                    "Some(",
+                ]
+                .iter()
+                .any(|opener| head.ends_with(opener));
+                if words >= 3 && to_a_widget && !prose.contains('\n') {
+                    offenders.push(format!("{prose:?} in {file}"));
+                }
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "English prose built with format!, use trf:\n{}",
+            offenders.join("\n")
+        );
     }
 
     #[test]

@@ -88,7 +88,7 @@ fn read_report(path: &Path) -> Result<Sealed, String> {
     let shown = path.display();
     let meta = std::fs::metadata(path).map_err(|e| format!("{shown}: {e}"))?;
     if !meta.is_file() || meta.len() > MAX_REPORT_BYTES as u64 {
-        return Err(format!("{shown} is not a report this build can read."));
+        return Err(trf("{} is not a report this build can read.", &[&shown]));
     }
     let text = std::fs::read_to_string(path).map_err(|e| format!("{shown}: {e}"))?;
     Sealed::open(&text).map_err(|e| format!("{shown}: {e}"))

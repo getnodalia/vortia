@@ -532,12 +532,12 @@ impl Viewer {
 
         self.draw_flow(&painter, rect, screen);
 
-        let mut note = format!(
+        let mut note = trf(
             "{} faces  ·  drag to turn, right-drag to slide, wheel to zoom, double-click to reset",
-            self.surface.face_count()
+            &[&self.surface.face_count()],
         );
         if self.surface.truncated {
-            note.push_str("  ·  the mesh is larger than the viewer shows");
+            note.push_str(tr("  ·  the mesh is larger than the viewer shows"));
         }
         // The hint is for the person at the screen, not for the saved picture.
         if self.picture_rx.is_none() {
