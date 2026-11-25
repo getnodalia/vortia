@@ -10,7 +10,9 @@
 //! "time" step; the run stops early when every field in
 //! `SIMPLE/residualControl` starts its iteration below its tolerance. It reads `U`, `p` (and `phi` when present) and `nu`,
 //! with a turbulence model also `k`, `nut` and `epsilon` or `omega`, and
-//! writes them back with `phi`.
+//! writes them back with `phi`. With a `T` and a `Pr` in
+//! `transportProperties` it also solves the temperature the flow carries
+//! (see [`crate::heat`]).
 
 use vortia_core::Vec3;
 use vortia_foamfile::{Dictionary, Entry};
@@ -26,6 +28,7 @@ use crate::case::{Case, KINEMATIC_DIFFUSIVITY, key_matches, read_dict};
 use crate::control::{LinearSolver, RunControl, solve_line};
 use crate::error::{Result, SolverError};
 use crate::explicit;
+use crate::heat::Heat;
 use crate::ico::{
     Algorithm, FlowFields, Step, adjust_phi, constrained_boundary, extrapolated, flux_field,
     switch, write_flow,
@@ -298,6 +301,7 @@ pub fn run(case: &Case, mut log: impl FnMut(&str)) -> Result<Vec<Step>> {
         Turbulence::read(case, &mesh, &fv, &start, nu, (&u_bc, &u, &[]), |name| {
             relaxation.equation(name)
         })?;
+    let mut heat = Heat::read(case, &mesh, &start, nu, |name| relaxation.equation(name))?;
     let valid = solution_directions(&mesh, &fv);
     let names = ["Ux", "Uy", "Uz"];
     let alpha_u = relaxation.equation("U");
@@ -414,12 +418,19 @@ pub fn run(case: &Case, mut log: impl FnMut(&str)) -> Result<Vec<Step>> {
         if let Some(t) = turbulence.as_mut() {
             solves.extend(t.correct(&mesh, &fv, &u, &u_bc, &phi, &mut log)?);
         }
+        if let Some(h) = heat.as_mut() {
+            let faces = match &turbulence {
+                Some(t) => t.nu_eff(&mesh, &fv).2,
+                None => vec![nu; mesh.n_faces()],
+            };
+            solves.push(h.solve(&mesh, &fv, &phi, &faces, &mut log)?);
+        }
 
         let converged = !residuals.is_empty()
             && converged(
                 &residuals,
                 &solves,
-                &["U", "p", "epsilon", "omega", "k", "nuTilda"],
+                &["U", "p", "epsilon", "omega", "k", "nuTilda", "T"],
             );
         let written = run.writes(step) || converged;
         if written {
@@ -427,6 +438,9 @@ pub fn run(case: &Case, mut log: impl FnMut(&str)) -> Result<Vec<Step>> {
             flux_field(&mesh, &phi).write(&case.dir, &name)?;
             if let Some(t) = &turbulence {
                 t.write(&mesh, &case.dir, &name)?;
+            }
+            if let Some(h) = &heat {
+                h.write(&mesh, &case.dir, &name)?;
             }
         }
         steps.push(Step {

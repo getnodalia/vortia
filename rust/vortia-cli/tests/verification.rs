@@ -848,3 +848,120 @@ fn the_turbulent_plate_with_spalart_allmaras_is_in_the_range_of_prandtl_schlicht
         "C_D {cd} is not within 10 % of {correlation}"
     );
 }
+
+/// Heats the wall of a written plate case: a fluid of Prandtl number `pr`, the stream at 0 and
+/// the plate at 1, from its leading edge. `Prt` stays at its default, 0.85.
+fn heat_the_plate(dir: &Path, pr: f64, turbulent: bool) {
+    let patches: &[&str] = if turbulent {
+        &["inlet", "outlet", "plate", "freestream"]
+    } else {
+        &["inlet", "outlet", "slip", "plate", "top"]
+    };
+    let condition = |name: &str| match name {
+        "inlet" => "fixedValue; value uniform 0;",
+        "plate" => "fixedValue; value uniform 1;",
+        _ => "zeroGradient;",
+    };
+    let mut body = String::new();
+    for name in patches {
+        body.push_str(&format!("    {name} {{ type {} }}\n", condition(name)));
+    }
+    std::fs::write(
+        dir.join("0/T"),
+        format!(
+            "FoamFile {{ version 2.0; format ascii; class volScalarField; object T; }}\n\
+             dimensions [0 0 0 1 0 0 0];\ninternalField uniform 0;\nboundaryField\n{{\n{body}    \
+             frontAndBack {{ type empty; }}\n}}\n"
+        ),
+    )
+    .expect("T is written");
+    let edit = |file: &str, from: &str, to: &str| {
+        let path = dir.join(file);
+        let text = std::fs::read_to_string(&path).expect("the file is there");
+        assert!(text.contains(from), "{file} has no {from}");
+        std::fs::write(&path, text.replacen(from, to, 1)).expect("the file is written");
+    };
+    let path = dir.join("constant/transportProperties");
+    let text = std::fs::read_to_string(&path).expect("the properties are there");
+    std::fs::write(&path, format!("{text}\nPr              {pr};\n")).expect("Pr is written");
+    edit(
+        "system/fvSchemes",
+        "    div(phi,U)",
+        "    div(phi,T)      bounded Gauss upwind;\n    div(phi,U)",
+    );
+    edit(
+        "system/fvSolution",
+        "    U\n    {",
+        "    T\n    {\n        solver          smoothSolver;\n        smoother        symGaussSeidel;\n        tolerance       1e-10;\n        relTol          0.01;\n    }\n    U\n    {",
+    );
+    edit(
+        "system/fvSolution",
+        "        U               0.7;",
+        "        U               0.7;\n        T               0.9;",
+    );
+}
+
+/// The mean Nusselt number of the plate, `q L / (α ΔT)` with the wall at 1 and the stream at 0,
+/// from the heat the engine reports leaving the wall.
+fn plate_nusselt(dir: &Path, plate: &vortia_cases::Plate, pr: f64) -> f64 {
+    let case = vortia_solvers::Case::open(dir).expect("the solver opens it");
+    vortia_solvers::run(&case, |_| {}).expect("the run finishes");
+    let case = Case::open(dir).expect("the results open");
+    let time = case.latest_time().expect("a time was written");
+    let wall = case.wall(&time, "plate").expect("the wall is read");
+    let rate = wall.heat_rate().expect("the wall carries heat");
+    rate / wall.area * plate.length / (plate.viscosity / pr)
+}
+
+/// The laminar plate heated from its leading edge at Prandtl number 1, where the thermal layer
+/// is the velocity one and the mean Nusselt number is Blasius's: Nu_L = 0.664 √Re_L. The 5 % band
+/// was fixed before the first run, as the friction test's.
+#[test]
+fn the_heated_laminar_plate_matches_the_pohlhausen_solution() {
+    let dir = tempfile::tempdir().expect("a folder");
+    let plate = vortia_cases::Plate {
+        height: 0.3,
+        cells_x: 50,
+        cells_up: 10,
+        cells_y: 80,
+        grading: 200.0,
+        ..vortia_cases::Plate::default()
+    };
+    vortia_cases::create(dir.path(), &Geometry::Plate(plate.clone()))
+        .expect("the plate is written");
+    heat_the_plate(dir.path(), 1.0, false);
+    let nu = plate_nusselt(dir.path(), &plate, 1.0);
+    let exact = 0.664 * (plate.speed * plate.length / plate.viscosity).sqrt();
+    eprintln!(
+        "Nu_L = {nu:.2}, Pohlhausen {exact:.2} ({:+.1} %)",
+        100.0 * (nu / exact - 1.0)
+    );
+    assert!(
+        (nu - exact).abs() < 0.05 * exact,
+        "Nu_L {nu} is not within 5 % of {exact}"
+    );
+}
+
+/// The turbulent plate (k-ω SST, wall functions) heated from its leading edge at Pr = 0.71 and
+/// Prt = 0.85, against the mean Nusselt number of a turbulent flat plate, Nu_L = 0.037 Re_L^0.8
+/// Pr^(1/3) (Incropera, 0.6 < Pr < 60). A correlation is a plausibility check, not a validation,
+/// and the band, 20 %, is wider than the one of the friction test for that reason.
+#[test]
+fn the_heated_turbulent_plate_is_in_the_range_of_the_flat_plate_correlation() {
+    let dir = tempfile::tempdir().expect("a folder");
+    let plate = vortia_cases::Plate::turbulent();
+    vortia_cases::create(dir.path(), &Geometry::Plate(plate.clone()))
+        .expect("the plate is written");
+    heat_the_plate(dir.path(), 0.71, true);
+    let nu = plate_nusselt(dir.path(), &plate, 0.71);
+    let reynolds = plate.speed * plate.length / plate.viscosity;
+    let correlation = 0.037 * reynolds.powf(0.8) * 0.71_f64.powf(1.0 / 3.0);
+    eprintln!(
+        "Nu_L = {nu:.0}, correlation {correlation:.0} ({:+.1} %)",
+        100.0 * (nu / correlation - 1.0)
+    );
+    assert!(
+        (nu - correlation).abs() < 0.20 * correlation,
+        "Nu_L {nu} is not within 20 % of {correlation}"
+    );
+}

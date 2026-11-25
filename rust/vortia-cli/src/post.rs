@@ -320,8 +320,14 @@ fn wall(case: &str, patch: &str, time: Option<&str>) -> Result<String, String> {
             .fold((f64::INFINITY, f64::NEG_INFINITY), |(l, h), v| {
                 (l.min(*v), h.max(*v))
             });
+        // An incompressible flow carries heat per unit of ρ Cp.
+        let (power, flux) = if w.kinematic {
+            ("K m3/s", "K m/s")
+        } else {
+            ("W", "W/m2")
+        };
         out.push_str(&format!(
-            "    heat into fluid {rate:e} W  (flux {lo:e} to {hi:e} W/m2)\n"
+            "    heat into fluid {rate:e} {power}  (flux {lo:e} to {hi:e} {flux})\n"
         ));
     }
     Ok(out)

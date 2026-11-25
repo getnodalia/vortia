@@ -17,8 +17,10 @@ use crate::error::{PostError, Result};
 /// What the wall's flow solver means by viscosity.
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Fluid {
-    /// `nu` from `transportProperties`: stresses are per unit density.
-    Kinematic { nu: f64 },
+    /// `nu` from `transportProperties`: stresses are per unit density. With a
+    /// `Pr` there, a `T` is carried by the flow and its heat flux is per unit
+    /// of `ρ Cp` (K m/s); `prt` is the turbulent Prandtl number.
+    Kinematic { nu: f64, pr: Option<f64>, prt: f64 },
     /// `mu`, `Cp` and `Pr` of a constant-property gas, with `rho` from the fields.
     Gas { mu: f64, cp: f64, pr: f64 },
 }
@@ -38,7 +40,9 @@ pub struct WallReport {
     /// with no first cell to measure.
     pub y_plus: Vec<f64>,
     /// Heat into the fluid per area (W/m²) on each face, positive when the
-    /// wall is hotter than the fluid. Only for a gas with a temperature.
+    /// wall is hotter than the fluid. For a gas with a temperature, and for an
+    /// incompressible flow that carries one (`Pr` in `transportProperties`),
+    /// where it is per unit of `ρ Cp` (K m/s, see `kinematic`).
     pub heat_flux: Option<Vec<f64>>,
     /// The area of each face, in face order.
     pub areas: Vec<f64>,
@@ -162,7 +166,7 @@ impl Case {
             let (_, nut_w) = at(&nut);
             let (_, rho_w) = at(&rho);
             let (nu_lam, scale) = match fluid {
-                Fluid::Kinematic { nu } => (nu, 1.0),
+                Fluid::Kinematic { nu, .. } => (nu, 1.0),
                 Fluid::Gas { mu, .. } if rho_w > 0.0 => (mu / rho_w, rho_w),
                 Fluid::Gas { .. } => (f64::NAN, 0.0),
             };
@@ -186,11 +190,21 @@ impl Case {
                 let (t_c, _) = at(&temperature);
                 let (_, alphat_w) = at(&alphat);
                 heat.push(cp * (mu / pr + alphat_w) * (t_w - t_c) / d);
+            } else if let Fluid::Kinematic {
+                nu,
+                pr: Some(pr),
+                prt,
+            } = fluid
+            {
+                let (t_c, _) = at(&temperature);
+                let (_, t_w) = at(&temperature);
+                heat.push((nu / pr + nut_w / prt) * (t_w - t_c) / d);
             } else {
                 heat.push(0.0);
             }
         }
         let gas = matches!(fluid, Fluid::Gas { .. });
+        let carries_heat = gas || matches!(fluid, Fluid::Kinematic { pr: Some(_), .. });
         Ok(WallReport {
             patch: patch.name,
             kinematic: !gas,
@@ -198,7 +212,7 @@ impl Case {
             areas,
             shear,
             y_plus,
-            heat_flux: (gas && temperature.is_some()).then_some(heat),
+            heat_flux: (carries_heat && temperature.is_some()).then_some(heat),
             viscous_force: viscous,
             pressure_force: pressure.is_some().then_some(pressure_force),
         })
@@ -222,7 +236,9 @@ impl Case {
         if let Some(d) = read("transportProperties")
             && let Some(nu) = number(&d, "nu")
         {
-            return Ok(Fluid::Kinematic { nu });
+            let pr = number(&d, "Pr").filter(|p| *p > 0.0);
+            let prt = number(&d, "Prt").filter(|p| *p > 0.0).unwrap_or(0.85);
+            return Ok(Fluid::Kinematic { nu, pr, prt });
         }
         if let Some(d) = read("thermophysicalProperties")
             && let Some(m) = d.dict("mixture")
