@@ -2967,7 +2967,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vortia-app"
-version = "0.11.2"
+version = "0.12.0"
 dependencies = [
  "eframe",
  "image",
@@ -2989,7 +2989,7 @@ dependencies = [
 
 [[package]]
 name = "vortia-cases"
-version = "0.11.2"
+version = "0.12.0"
 dependencies = [
  "tempfile",
  "vortia-core",
@@ -3001,7 +3001,7 @@ dependencies = [
 
 [[package]]
 name = "vortia-cli"
-version = "0.11.2"
+version = "0.12.0"
 dependencies = [
  "tempfile",
  "vortia-cases",
@@ -3025,7 +3025,7 @@ dependencies = [
 
 [[package]]
 name = "vortia-fields"
-version = "0.11.2"
+version = "0.12.0"
 dependencies = [
  "tempfile",
  "thiserror 2.0.21",
@@ -3036,7 +3036,7 @@ dependencies = [
 
 [[package]]
 name = "vortia-foamfile"
-version = "0.11.2"
+version = "0.12.0"
 dependencies = [
  "flate2",
  "tempfile",
@@ -3046,7 +3046,7 @@ dependencies = [
 
 [[package]]
 name = "vortia-fv"
-version = "0.11.2"
+version = "0.12.0"
 dependencies = [
  "rayon",
  "thiserror 2.0.21",
@@ -3058,7 +3058,7 @@ dependencies = [
 
 [[package]]
 name = "vortia-h5"
-version = "0.11.2"
+version = "0.12.0"
 dependencies = [
  "flate2",
  "thiserror 2.0.21",
@@ -3066,7 +3066,7 @@ dependencies = [
 
 [[package]]
 name = "vortia-mesh"
-version = "0.11.2"
+version = "0.12.0"
 dependencies = [
  "thiserror 2.0.21",
  "vortia-core",
@@ -3076,7 +3076,7 @@ dependencies = [
 
 [[package]]
 name = "vortia-post"
-version = "0.11.2"
+version = "0.12.0"
 dependencies = [
  "serde_json",
  "tempfile",
@@ -3089,7 +3089,7 @@ dependencies = [
 
 [[package]]
 name = "vortia-sketch"
-version = "0.11.2"
+version = "0.12.0"
 dependencies = [
  "serde_json",
  "tempfile",
@@ -3099,7 +3099,7 @@ dependencies = [
 
 [[package]]
 name = "vortia-solvers"
-version = "0.11.2"
+version = "0.12.0"
 dependencies = [
  "tempfile",
  "thiserror 2.0.21",
