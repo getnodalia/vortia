@@ -20,7 +20,7 @@ concurrency:
 jobs:
   linux:
     name: AppImage and tarball (ubuntu-22.04)
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       - name: Toolchain
@@ -48,6 +48,8 @@ jobs:
 
   macos:
     name: DMG (macos-15)
+    # macOS slots are kept for releases (release-rust.yml builds the DMG): by hand only.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v7

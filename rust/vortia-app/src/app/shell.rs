@@ -735,8 +735,9 @@ fn ribbon(ui: &mut egui::Ui, look: &Look, case: &mut CaseView) -> Option<Cmd> {
     let mut go = None;
     ui.horizontal(|ui| {
         let tool = |ui: &mut egui::Ui, icon: &str, text: &str, active: bool, enabled: bool| {
-            ui.add_enabled_ui(enabled, |ui| {
-                eng::ribbon_tool_3d(ui, look, volume(icon), text, active)
+            ui.add_enabled_ui(enabled, |ui| match volume(icon) {
+                Some(name) => eng::ribbon_tool_3d(ui, look, name, text, active),
+                None => eng::ribbon_tool(ui, look, icon, text, active),
             })
             .inner
             .clicked()
@@ -874,25 +875,20 @@ struct Row {
 
 /// The volumetric NDL icon a tool is drawn with in the ribbon; the Browser's small rows keep the
 /// flat icon of the same concept.
-fn volume(flat: &str) -> &str {
-    match flat {
-        "run" => "run",
-        "pause" => "pause",
-        "play" => "play",
-        "stop" => "stop",
-        "folder" => "folder",
-        "close" => "close-case",
+fn volume(flat: &str) -> Option<&str> {
+    // Only the objects of a CFD case are drawn in volume. Run, pause, stop, open, close and
+    // settings are interface actions and stay flat, like in every other Nodalia app.
+    Some(match flat {
         "mesh" => "cfd-mesh",
         "boundary" => "cfd-boundary",
         "material" => "cfd-fluid",
         "waveform" => "cfd-turbulence",
         "droplet" => "cfd-viscosity",
-        "settings" => "properties",
         "solver" => "cfd-numerics",
         "parameters" => "cfd-schemes",
         "probe" => "cfd-probe",
-        other => other,
-    }
+        _ => return None,
+    })
 }
 
 /// The dictionaries of `constant` that describe the physics, with the view that edits each.
