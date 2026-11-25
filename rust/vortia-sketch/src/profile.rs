@@ -24,10 +24,19 @@ impl Sketch {
         if self.entities.is_empty() {
             return Err(bad("the sketch has no wall: draw a line or an arc"));
         }
+        if self
+            .entities
+            .iter()
+            .any(|e| matches!(e, Entity::Circle { .. }))
+        {
+            return Err(bad(
+                "a circle is not part of a wall: it is a hole in a drawn region",
+            ));
+        }
         // The entities at each point.
         let mut at: HashMap<PointId, Vec<usize>> = HashMap::new();
         for (i, e) in self.entities.iter().enumerate() {
-            let (a, b) = ends(e);
+            let Some((a, b)) = e.ends() else { continue };
             at.entry(a).or_default().push(i);
             at.entry(b).or_default().push(i);
         }
@@ -62,7 +71,7 @@ impl Sketch {
             let Some(entity) = self.entities.get(next) else {
                 break;
             };
-            let (a, b) = ends(entity);
+            let Some((a, b)) = entity.ends() else { break };
             let forward = a == here;
             let mut pts = self.sample(entity, step_degrees)?;
             if !forward {
@@ -133,14 +142,27 @@ impl Sketch {
                 }
                 Ok(pts)
             }
+            Entity::Circle { center, rim } => {
+                let (c, r) = (at(center)?, at(rim)?);
+                let radius = (r.0 - c.0).hypot(r.1 - c.1);
+                if radius <= 0.0 {
+                    return Err(bad("a circle needs a radius above zero"));
+                }
+                let a0 = (r.1 - c.1).atan2(r.0 - c.0);
+                let steps = ((360.0 / step_degrees).ceil() as usize).clamp(3, 4000);
+                // Closed: the last point is the first again.
+                Ok((0..=steps)
+                    .map(|i| {
+                        if i == steps {
+                            r
+                        } else {
+                            let a = a0 + std::f64::consts::TAU * i as f64 / steps as f64;
+                            (c.0 + radius * a.cos(), c.1 + radius * a.sin())
+                        }
+                    })
+                    .collect())
+            }
         }
-    }
-}
-
-pub(crate) fn ends(e: &Entity) -> (PointId, PointId) {
-    match *e {
-        Entity::Line { a, b } => (a, b),
-        Entity::Arc { start, end, .. } => (start, end),
     }
 }
 

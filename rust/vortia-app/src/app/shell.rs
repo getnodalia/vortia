@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 
 use super::conditions_tab;
 use super::newcase;
+use super::results::Card;
 use super::{
     CaseView, Dialog, Screen, Tab, Tone, VortiaApp, convergence_card, file_tab, grouped, mesh_tab,
     muted, own_controls, palette, results_tab, scientific, settings_tab, status_label, tone_colors,
@@ -806,11 +807,42 @@ fn ribbon(ui: &mut egui::Ui, look: &Look, case: &mut CaseView) -> Option<Cmd> {
                 });
             }
             Step::Results => {
+                let mut show = None;
                 eng::ribbon_group(ui, look, tr("Fields"), |ui| {
-                    if tool(ui, "probe", tr("Probes"), tab == Tab::Results, true) {
+                    if tool(ui, "cfd-results", tr("Overview"), false, true) {
+                        show = Some(Card::Overview);
+                    }
+                    if tool(ui, "cfd-wall", tr("Walls"), false, true) {
+                        show = Some(Card::Walls);
+                    }
+                    if tool(ui, "cfd-geometry", tr("Forces"), false, true) {
+                        show = Some(Card::Forces);
+                    }
+                });
+                eng::ribbon_group(ui, look, tr("Sampling"), |ui| {
+                    if tool(ui, "cfd-probe", tr("Probes"), false, true) {
+                        show = Some(Card::Probe);
+                    }
+                    if tool(ui, "cfd-sample-line", tr("Line"), false, true) {
+                        show = Some(Card::Line);
+                    }
+                    if tool(ui, "cfd-slice", tr("Section"), false, true) {
+                        show = Some(Card::Section);
+                    }
+                });
+                eng::ribbon_group(ui, look, tr("Report"), |ui| {
+                    if tool(ui, "cfd-residuals", tr("Compare"), false, true) {
+                        show = Some(Card::Compare);
+                    }
+                    if tool(ui, "cfd-report", tr("Save report"), false, true) {
+                        case.results.ask_for_report();
                         go = Some(Tab::Results);
                     }
                 });
+                if let Some(card) = show {
+                    case.results.show(card);
+                    go = Some(Tab::Results);
+                }
             }
         }
     });

@@ -124,6 +124,7 @@ impl SketchEditor {
                         self.sketch.points.get(start).copied()?,
                         self.sketch.points.get(end).copied()?,
                     )),
+                    Entity::Circle { .. } => None,
                 })
                 .flat_map(|(a, b)| [(a.x, a.y), (b.x, b.y)])
                 .collect::<Vec<_>>()
@@ -177,7 +178,7 @@ pub fn dimensions_of(sketch: &Sketch) -> Vec<Dimension> {
                 value,
             )),
             Constraint::Radius { arc, value } => {
-                Some(item(i, trf("Radius of arc {}", &[&arc]), "mm", value))
+                Some(item(i, trf("Radius of edge {}", &[&arc]), "mm", value))
             }
             Constraint::Angle { a, b, degrees } => Some(item(
                 i,
@@ -185,7 +186,13 @@ pub fn dimensions_of(sketch: &Sketch) -> Vec<Dimension> {
                 "°",
                 degrees,
             )),
-            Constraint::Horizontal { .. } | Constraint::Vertical { .. } => None,
+            Constraint::Horizontal { .. }
+            | Constraint::Vertical { .. }
+            | Constraint::Coincident { .. }
+            | Constraint::Parallel { .. }
+            | Constraint::Perpendicular { .. }
+            | Constraint::Equal { .. }
+            | Constraint::Tangent { .. } => None,
         })
         .collect()
 }
