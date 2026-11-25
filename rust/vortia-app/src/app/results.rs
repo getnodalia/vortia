@@ -737,10 +737,13 @@ fn walls_card(ui: &mut egui::Ui, p: &Palette, walls: &Slot<Vec<WallReport>>) {
                                     format!("{} / {} / {}", plain(lo), plain(mean), plain(hi))
                                 },
                             ));
-                            ui.label(
-                                w.heat_rate()
-                                    .map_or_else(|| "–".to_owned(), |q| format!("{} W", plain(q))),
-                            );
+                            ui.label(w.heat_rate().map_or_else(
+                                || "–".to_owned(),
+                                |q| {
+                                    let unit = if w.kinematic { "K m³/s" } else { "W" };
+                                    format!("{} {unit}", plain(q))
+                                },
+                            ));
                             ui.end_row();
                         }
                     });

@@ -114,8 +114,10 @@ pub(super) fn markdown(
                     || "–".to_owned(),
                     |(lo, mean, hi)| format!("{} / {} / {}", plain(lo), plain(mean), plain(hi)),
                 ),
-                w.heat_rate()
-                    .map_or_else(|| "–".to_owned(), |q| format!("{} W", plain(q))),
+                w.heat_rate().map_or_else(
+                    || "–".to_owned(),
+                    |q| format!("{} {}", plain(q), if w.kinematic { "K m³/s" } else { "W" }),
+                ),
             ]));
         }
         let note = if walls.iter().any(|w| w.kinematic) {

@@ -316,6 +316,43 @@ fn a_gas_wall_has_stress_in_pascals_and_heat_flux() {
 }
 
 #[test]
+fn an_incompressible_wall_with_a_prandtl_number_has_heat_flux_per_unit_of_rho_cp() {
+    let (dir, case) = case();
+    constant(
+        &dir,
+        "transportProperties",
+        "nu [0 2 -1 0 0 0 0] 0.01; Pr 0.5; Prt 0.85;",
+    );
+    write(
+        &dir,
+        "U",
+        "volVectorField",
+        "uniform (2 0 0)",
+        &[("yMin", "type noSlip;")],
+    );
+    write(
+        &dir,
+        "nut",
+        "volScalarField",
+        "uniform 0.1",
+        &[("yMin", "type calculated; value uniform 0.17;")],
+    );
+    write(
+        &dir,
+        "T",
+        "volScalarField",
+        "uniform 300",
+        &[("yMin", "type fixedValue; value uniform 310;")],
+    );
+    let w = case.wall("0", "yMin").unwrap();
+    assert!(w.kinematic);
+    // (ν/Pr + ν_t/Prt) (T_wall − T_cell) / d = (0.02 + 0.2) × 10 / 0.5, over 4 of area.
+    let q = w.heat_flux.as_ref().unwrap();
+    assert!(q.iter().all(|q| (q - 4.4).abs() < 1e-9), "{q:?}");
+    assert!((w.heat_rate().unwrap() - 17.6).abs() < 1e-9);
+}
+
+#[test]
 fn a_wall_without_a_known_viscosity_or_density_is_refused() {
     let (dir, case) = case();
     write(&dir, "U", "volVectorField", "uniform (2 0 0)", &[]);

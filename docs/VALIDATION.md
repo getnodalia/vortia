@@ -51,7 +51,8 @@ de iteraciones y el criterio de convergencia, no la tolerancia.
 | 2026-11-10 | Motor integrado | Autoprueba: malla, `checkMesh`, `simpleFoam` en serie, `decomposePar`, 2 procesos MPI, reconstrucción, `foamToVTK` | **Pasa** en Ubuntu 20.04/22.04/24.04, Debian 12/13, Fedora, Arch, openSUSE Tumbleweed, Rocky 9 (contenedores limpios), Ubuntu 22.04/24.04 (VM con FUSE) y macOS 15/26 (runners limpios) | Prueba de funcionamiento del motor, no de exactitud |
 
 *(Solo resultados reales; prohibido registrar campos inventados como validación.)*
-
+| 2026-11-25 | Placa plana laminar calentada, Pr = 1 | Nusselt medio Nu_L del calor que el motor da por la pared frente a Pohlhausen, Nu_L = 0,664 √Re_L (Re_L = 1e5, malla 50×80, esquema `upwind` para T) | Nu_L = 216,9 frente a 210,0: +3,3 % (límite 5 %, fijado antes de la primera ejecución). **Cumple** | Solo una malla y sin GCI; con Pr = 1 la capa térmica coincide con la de velocidad, así que la solución es la de Blasius. Prueba `the_heated_laminar_plate_matches_the_pohlhausen_solution` |
+| 2026-11-25 | Placa plana turbulenta calentada (k-ω SST, funciones de pared), Pr = 0,71, Prt = 0,85 | Nu_L frente a la correlación de placa turbulenta Nu_L = 0,037 Re_L^0,8 Pr^(1/3), Re_L = 1e7 | Nu_L = 11 389 frente a 13 141: −13,3 % (límite 20 %). **Cumple** | Una correlación empírica es una comprobación de plausibilidad, no una validación; sin independencia de malla ni comparación con OpenFOAM. Ley de Prt constante, sin corrección de subcapa térmica |
 
 ## Comprobaciones de rendimiento del motor experimental (25/10/2026)
 

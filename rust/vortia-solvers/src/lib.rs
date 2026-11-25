@@ -23,6 +23,7 @@ pub(crate) mod convergence;
 pub(crate) mod driven;
 pub mod error;
 pub(crate) mod explicit;
+pub(crate) mod heat;
 pub mod ico;
 pub(crate) mod kepsilon;
 pub(crate) mod komegasst;
