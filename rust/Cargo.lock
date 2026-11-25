@@ -1576,7 +1576,7 @@ dependencies = [
 [[package]]
 name = "nodalia-theme"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/getnodalia/nodalia-design?rev=b7bf798bde6505907d86881e37e9d7e271c43f63#b7bf798bde6505907d86881e37e9d7e271c43f63"
+source = "git+https://github.com/getnodalia/nodalia-design?rev=74cb143582a7e428657073db5f9a88028a60ea3a#74cb143582a7e428657073db5f9a88028a60ea3a"
 dependencies = [
  "egui",
 ]
@@ -1584,7 +1584,7 @@ dependencies = [
 [[package]]
 name = "nodalia-update"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/getnodalia/nodalia-design?rev=b7bf798bde6505907d86881e37e9d7e271c43f63#b7bf798bde6505907d86881e37e9d7e271c43f63"
+source = "git+https://github.com/getnodalia/nodalia-design?rev=74cb143582a7e428657073db5f9a88028a60ea3a#74cb143582a7e428657073db5f9a88028a60ea3a"
 dependencies = [
  "egui",
  "serde_json",
