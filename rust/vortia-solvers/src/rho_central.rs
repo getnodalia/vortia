@@ -641,7 +641,7 @@ fn run_as(case: &Case, mut log: impl FnMut(&str), vortia: bool) -> Result<Vec<St
     }
     let mut turbulence = turbulence_coeffs
         .as_ref()
-        .map(|coeffs| SpalartAllmaras::read(case, &mesh, &fv, &start, Some(coeffs), None))
+        .map(|coeffs| SpalartAllmaras::read(case, &mesh, &fv, &start, Some(coeffs), None, true))
         .transpose()?;
     let gamma = thermo.gas.cp_by_cpv();
     let n_internal = mesh.n_internal_faces();
@@ -680,7 +680,7 @@ fn run_as(case: &Case, mut log: impl FnMut(&str), vortia: bool) -> Result<Vec<St
 
     let mut steps = Vec::new();
     let mut monitor = if vortia {
-        let nu = turbulence.as_ref().map(|t| t.fields()[0]);
+        let nu = turbulence.as_ref().map(|t| t.nu_tilda());
         Some(Monitor::new(
             &case.dir,
             Limits::read(&case.control)?,
@@ -810,7 +810,7 @@ fn run_as(case: &Case, mut log: impl FnMut(&str), vortia: bool) -> Result<Vec<St
                     None => (thermo.mu.clone(), thermo.mu_b.clone()),
                 };
                 let (alpha_eff, alpha_eff_b) =
-                    alpha_eff(&thermo, turbulence.as_ref().map(|t| t.alphat()));
+                    alpha_eff(&thermo, turbulence.as_ref().and_then(|t| t.alphat()));
                 let rate = diffusion_rate(
                     &mesh,
                     &fv,
@@ -1085,7 +1085,7 @@ fn run_as(case: &Case, mut log: impl FnMut(&str), vortia: bool) -> Result<Vec<St
                         phi: &phi,
                     },
                     &r_delta_t,
-                    turbulence.as_ref().map(|t| t.alphat()),
+                    turbulence.as_ref().and_then(|t| t.alphat()),
                     &mut log,
                 );
                 match diffused {
@@ -1145,7 +1145,7 @@ fn run_as(case: &Case, mut log: impl FnMut(&str), vortia: bool) -> Result<Vec<St
                     c.as_slice(),
                 )
             });
-            let nu = turbulence.as_ref().map(|t| t.fields()[0]);
+            let nu = turbulence.as_ref().map(|t| t.nu_tilda());
             converged = m.check(
                 (&mesh, &fv),
                 &phi,

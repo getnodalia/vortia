@@ -89,7 +89,9 @@ pub(crate) struct SpalartAllmaras {
     nu_tilda_grad: GradScheme,
     nu_tilda: ModelField,
     nut: ModelField,
-    alphat: ModelField,
+    /// Only a compressible case has one: the incompressible one takes
+    /// its heat transport from `nut` and `Prt` itself.
+    alphat: Option<ModelField>,
     /// The distance to the nearest wall of every cell.
     y: Vec<f64>,
     /// The distance to the wall of each face of each wall-function patch.
@@ -154,6 +156,7 @@ impl SpalartAllmaras {
         dir: &std::path::Path,
         coeffs: Option<&Dictionary>,
         relax: Option<f64>,
+        with_alphat: bool,
     ) -> Result<Self> {
         check_wall_dist(case)?;
         let refused = std::cell::RefCell::new(None);
@@ -193,15 +196,23 @@ impl SpalartAllmaras {
                 _ => None,
             }
         })?;
-        let alphat = ModelField::read(mesh, dir, "alphat", DYNAMIC_DIFFUSIVITY, |pf| {
-            match pf.kind.as_str() {
-                "calculated" => Some(Kind::Calculated),
-                "compressible::alphatWallFunction" => Some(Kind::AlphatWall {
-                    prt: pf.settings.scalar("Prt").unwrap_or(0.85),
-                }),
-                _ => None,
-            }
-        })?;
+        let alphat = if with_alphat {
+            Some(ModelField::read(
+                mesh,
+                dir,
+                "alphat",
+                DYNAMIC_DIFFUSIVITY,
+                |pf| match pf.kind.as_str() {
+                    "calculated" => Some(Kind::Calculated),
+                    "compressible::alphatWallFunction" => Some(Kind::AlphatWall {
+                        prt: pf.settings.scalar("Prt").unwrap_or(0.85),
+                    }),
+                    _ => None,
+                },
+            )?)
+        } else {
+            None
+        };
         let y_wall = mesh
             .patches()
             .iter()
@@ -252,8 +263,12 @@ impl SpalartAllmaras {
         self.nu_tilda.follow_cells(mesh);
     }
 
-    pub(crate) fn alphat(&self) -> &ModelField {
-        &self.alphat
+    pub(crate) fn alphat(&self) -> Option<&ModelField> {
+        self.alphat.as_ref()
+    }
+
+    pub(crate) fn nu_tilda(&self) -> &ModelField {
+        &self.nu_tilda
     }
 
     /// `ν = μ/ρ` in the cells and on the boundary faces.
@@ -341,17 +356,14 @@ impl SpalartAllmaras {
 
     fn correct_alphat(&mut self, mesh: &PolyMesh, gas: &Gas) {
         let prt = self.c.prt;
-        for ((a, &nut), &rho) in self
-            .alphat
-            .cells
-            .iter_mut()
-            .zip(&self.nut.cells)
-            .zip(gas.rho)
-        {
+        let Some(alphat) = self.alphat.as_mut() else {
+            return;
+        };
+        for ((a, &nut), &rho) in alphat.cells.iter_mut().zip(&self.nut.cells).zip(gas.rho) {
             *a = rho * nut / prt;
         }
         let n_internal = mesh.n_internal_faces();
-        for (patch, kind) in mesh.patches().iter().zip(&self.alphat.kinds) {
+        for (patch, kind) in mesh.patches().iter().zip(&alphat.kinds) {
             let prt = match kind {
                 Kind::Calculated => prt,
                 Kind::AlphatWall { prt } => *prt,
@@ -361,13 +373,12 @@ impl SpalartAllmaras {
                 let b = f - n_internal;
                 let nut = self.nut.faces.get(b).copied().flatten();
                 let rho = gas.rho_b.get(b).copied().flatten();
-                if let (Some(nut), Some(rho), Some(slot)) = (nut, rho, self.alphat.faces.get_mut(b))
-                {
+                if let (Some(nut), Some(rho), Some(slot)) = (nut, rho, alphat.faces.get_mut(b)) {
                     *slot = Some(rho * nut / prt);
                 }
             }
         }
-        self.alphat.follow_cells(mesh);
+        alphat.follow_cells(mesh);
     }
 
     /// `μ_eff = ρ (ν_t + ν)` in the cells and on the boundary faces.
@@ -492,8 +503,10 @@ impl SpalartAllmaras {
         Ok(vec![solved])
     }
 
-    pub(crate) fn fields(&self) -> [&ModelField; 3] {
-        [&self.nu_tilda, &self.nut, &self.alphat]
+    pub(crate) fn fields(&self) -> Vec<&ModelField> {
+        let mut fields = vec![&self.nu_tilda, &self.nut];
+        fields.extend(self.alphat.as_ref());
+        fields
     }
 
     /// Writes ν̃, ν_t and α_t into `dir/time`.
@@ -504,5 +517,99 @@ impl SpalartAllmaras {
             out.write(dir, time)?;
         }
         Ok(())
+    }
+}
+
+/// The model in an incompressible flow, as `simpleFoam` runs it: the same
+/// equation with a density of one, a dynamic viscosity of `ν` and no time
+/// derivative, so `φ` is the volume flux.
+pub(crate) struct Incompressible {
+    sa: SpalartAllmaras,
+    rho: Vec<f64>,
+    rho_b: Vec<Option<f64>>,
+    mu: Vec<f64>,
+    mu_b: Vec<Option<f64>>,
+    zero: Vec<f64>,
+}
+
+impl Incompressible {
+    pub(crate) fn read(
+        case: &Case,
+        mesh: &PolyMesh,
+        fv: &FvGeometry,
+        dir: &std::path::Path,
+        coeffs: Option<&Dictionary>,
+        (nu, relax): (f64, Option<f64>),
+        (u_bc, u): (&VectorBoundary, &[Vec3]),
+    ) -> Result<Self> {
+        let sa = SpalartAllmaras::read(case, mesh, fv, dir, coeffs, relax, false)?;
+        let boundary = |value: f64| -> Vec<Option<f64>> {
+            let mut out = Vec::new();
+            for patch in mesh.patches() {
+                let empty = patch.kind == vortia_mesh::PatchKind::Empty;
+                out.extend(patch.faces().map(|_| (!empty).then_some(value)));
+            }
+            out
+        };
+        let mut model = Self {
+            sa,
+            rho: vec![1.0; mesh.n_cells()],
+            rho_b: boundary(1.0),
+            mu: vec![nu; mesh.n_cells()],
+            mu_b: boundary(nu),
+            zero: vec![0.0; mesh.n_cells()],
+        };
+        let u_b = u_bc.face_values(mesh, u);
+        let rho_b = model.rho_b.clone();
+        model.sa.evaluate_programmed(mesh, fv, &u_b, &rho_b);
+        let gas = Gas {
+            rho: &model.rho,
+            rho_b: &model.rho_b,
+            rho_old: &model.rho,
+            mu: &model.mu,
+            mu_b: &model.mu_b,
+            r_delta_t: &model.zero,
+        };
+        model.sa.validate(mesh, fv, (u, u_bc), &gas);
+        Ok(model)
+    }
+
+    fn gas(&self) -> Gas<'_> {
+        Gas {
+            rho: &self.rho,
+            rho_b: &self.rho_b,
+            rho_old: &self.rho,
+            mu: &self.mu,
+            mu_b: &self.mu_b,
+            r_delta_t: &self.zero,
+        }
+    }
+
+    /// `ν + ν_t` in the cells and on the boundary faces.
+    pub(crate) fn nu_eff(&self) -> (Vec<f64>, Vec<Option<f64>>) {
+        self.sa.mu_eff(&self.gas())
+    }
+
+    pub(crate) fn correct(
+        &mut self,
+        mesh: &PolyMesh,
+        fv: &FvGeometry,
+        flow: (&[Vec3], &VectorBoundary),
+        phi: &[f64],
+        log: &mut dyn FnMut(&str),
+    ) -> Result<Vec<(String, Performance)>> {
+        let gas = Gas {
+            rho: &self.rho,
+            rho_b: &self.rho_b,
+            rho_old: &self.rho,
+            mu: &self.mu,
+            mu_b: &self.mu_b,
+            r_delta_t: &self.zero,
+        };
+        self.sa.correct(mesh, fv, flow, phi, &gas, log)
+    }
+
+    pub(crate) fn fields(&self) -> Vec<&ModelField> {
+        self.sa.fields()
     }
 }

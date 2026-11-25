@@ -416,7 +416,11 @@ pub fn run(case: &Case, mut log: impl FnMut(&str)) -> Result<Vec<Step>> {
         }
 
         let converged = !residuals.is_empty()
-            && converged(&residuals, &solves, &["U", "p", "epsilon", "omega", "k"]);
+            && converged(
+                &residuals,
+                &solves,
+                &["U", "p", "epsilon", "omega", "k", "nuTilda"],
+            );
         let written = run.writes(step) || converged;
         if written {
             write_flow(&case.dir, &name, (&mut u_field, &u), (&mut p_field, &p))?;

@@ -20,6 +20,7 @@
     clippy::indexing_slicing
 )]
 
+mod airfoil;
 mod cavity;
 mod channel;
 mod drawn;
@@ -31,6 +32,7 @@ mod plate;
 
 use std::path::Path;
 
+pub use airfoil::{Airfoil, AirfoilModel};
 pub use cavity::Cavity;
 pub use channel::Channel;
 pub use drawn::Drawn;
@@ -58,6 +60,8 @@ pub enum Geometry {
     Jet(Jet),
     /// A region drawn as a closed sketch with named edges: laminar incompressible flow.
     Drawn(Drawn),
+    /// A NACA 4-digit airfoil at an angle of attack: turbulent incompressible flow on a C-grid.
+    Airfoil(Airfoil),
 }
 
 impl Geometry {
@@ -70,6 +74,7 @@ impl Geometry {
             Geometry::Plate(_) => "Flat plate",
             Geometry::Jet(_) => "Jet into the atmosphere",
             Geometry::Drawn(_) => "Drawn region",
+            Geometry::Airfoil(_) => "Airfoil",
         }
     }
 }
@@ -98,6 +103,7 @@ pub fn create(dir: &Path, geometry: &Geometry) -> Result<Created> {
         Geometry::Plate(p) => p.files()?,
         Geometry::Jet(j) => j.files()?,
         Geometry::Drawn(d) => d.files()?,
+        Geometry::Airfoil(a) => a.files()?,
     };
     files::write_all(dir, &set.files)?;
     let mesh = match &set.raw_mesh {

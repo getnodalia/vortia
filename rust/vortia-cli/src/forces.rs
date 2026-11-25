@@ -126,6 +126,69 @@ fn make_forces(args: &[&str]) -> Result<String, Failure> {
     Ok(text)
 }
 
+/// Runs `airfoil`; the arguments are those after the word.
+pub fn airfoil(args: &[&str]) -> ExitCode {
+    finish(make_airfoil(args))
+}
+
+fn make_airfoil(args: &[&str]) -> Result<String, Failure> {
+    let [case, flags @ ..] = args else {
+        return Err(Failure::Usage("airfoil needs a case".into()));
+    };
+    let (mut time, mut csv) = (None, None);
+    let mut flags = flags.iter();
+    while let Some(flag) = flags.next() {
+        let mut value = |what: &str| {
+            flags
+                .next()
+                .map(|v| (*v).to_owned())
+                .ok_or_else(|| Failure::Usage(format!("{what} needs a value")))
+        };
+        match *flag {
+            "-time" => time = Some(value("-time")?),
+            "-csv" => csv = Some(value("-csv")?),
+            other => {
+                return Err(Failure::Usage(format!("unknown option '{}'", shown(other))));
+            }
+        }
+    }
+    let failed = |e: String| Failure::Failed(e);
+    let opened = Case::open(case).map_err(|e| failed(e.to_string()))?;
+    let time = match time {
+        Some(t) => t,
+        None => opened.latest_time().map_err(|e| failed(e.to_string()))?,
+    };
+    let r = opened.airfoil(&time).map_err(|e| failed(e.to_string()))?;
+    let s = &r.settings;
+    let mut text = format!(
+        "Time {}  NACA {:04}  alpha {}°  Re {:e}\n",
+        shown(&time),
+        s.naca,
+        s.alpha,
+        s.reynolds
+    );
+    text.push_str(&format!("    Lift coefficient Cl          {:.5}\n", r.cl));
+    text.push_str(&format!(
+        "    Drag coefficient Cd          {:.5}  (pressure {:.5}, viscous {:.5})\n",
+        r.cd, r.cd_pressure, r.cd_viscous
+    ));
+    text.push_str(&format!("    Moment coefficient Cm (c/4)  {:.5}\n", r.cm));
+    if let Some(peak) = r.suction_peak() {
+        text.push_str(&format!("    Suction peak Cp              {peak:.4}\n"));
+    }
+    if let Some(file) = csv {
+        let body = r.surface_csv();
+        std::fs::write(&file, &body)
+            .map_err(|e| failed(format!("could not write {}: {e}", shown(&file))))?;
+        text.push_str(&format!(
+            "Wrote {} ({} points)\n",
+            shown(&file),
+            r.surface.len()
+        ));
+    }
+    Ok(text)
+}
+
 /// Runs `compare`; the arguments are those after the word.
 pub fn compare_reports(args: &[&str]) -> ExitCode {
     finish(make_comparison(args))

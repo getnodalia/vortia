@@ -3,7 +3,7 @@
 use std::path::Path;
 use std::process::ExitCode;
 
-use vortia_cases::{Cavity, Channel, Geometry, Jet, Nozzle, NozzleKind, Plate};
+use vortia_cases::{Airfoil, Cavity, Channel, Geometry, Jet, Nozzle, NozzleKind, Plate};
 
 /// `vortia new KIND DIR [NAME=VALUE...]`.
 pub fn run(args: &[&str]) -> ExitCode {
@@ -15,7 +15,7 @@ pub fn run(args: &[&str]) -> ExitCode {
     }
     let [kind, dir, settings @ ..] = args else {
         eprintln!(
-            "vortia: new needs a kind (channel, cavity, plate, plate-turbulent, nozzle, nozzle-wedge or jet) and a folder"
+            "vortia: new needs a kind (channel, cavity, plate, plate-turbulent, airfoil, nozzle, nozzle-wedge or jet) and a folder"
         );
         return ExitCode::from(2);
     };
@@ -56,9 +56,10 @@ fn geometry(kind: &str, settings: &[&str]) -> Result<Geometry, String> {
         "nozzle" => Geometry::Nozzle(Nozzle::new(NozzleKind::Planar)),
         "nozzle-wedge" => Geometry::Nozzle(Nozzle::new(NozzleKind::Axisymmetric)),
         "jet" => Geometry::Jet(Jet::default()),
+        "airfoil" => Geometry::Airfoil(Airfoil::default()),
         other => {
             return Err(format!(
-                "'{other}' is not a kind of case: channel, cavity, plate, plate-turbulent, nozzle, nozzle-wedge or jet"
+                "'{other}' is not a kind of case: channel, cavity, plate, plate-turbulent, airfoil, nozzle, nozzle-wedge or jet"
             ));
         }
     };
@@ -76,6 +77,7 @@ fn geometry(kind: &str, settings: &[&str]) -> Result<Geometry, String> {
             Geometry::Nozzle(n) => n.set(name, number),
             Geometry::Jet(j) => j.set(name, number),
             Geometry::Drawn(d) => d.set(name, number),
+            Geometry::Airfoil(a) => a.set(name, number),
         }
         .map_err(|e| e.to_string())?;
     }

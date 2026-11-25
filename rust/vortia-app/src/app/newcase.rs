@@ -7,7 +7,9 @@ use eframe::egui::{self, DragValue, Ui};
 use nodalia_theme::engineering::Look;
 use nodalia_theme::office;
 use nodalia_theme::{Palette, space};
-use vortia_cases::{Cavity, Channel, Drawn, Geometry, Jet, Nozzle, NozzleKind, Plate};
+use vortia_cases::{
+    Airfoil, AirfoilModel, Cavity, Channel, Drawn, Geometry, Jet, Nozzle, NozzleKind, Plate,
+};
 use vortia_sketch::Measure;
 
 use crate::region_editor::{self, Canvas, RegionEditor, Role};
@@ -19,6 +21,7 @@ pub(super) enum Kind {
     Channel,
     Cavity,
     Plate,
+    Airfoil,
     PlanarNozzle,
     AxisymmetricNozzle,
     Jet,
@@ -27,10 +30,11 @@ pub(super) enum Kind {
 }
 
 impl Kind {
-    const ALL: [Kind; 8] = [
+    const ALL: [Kind; 9] = [
         Kind::Channel,
         Kind::Cavity,
         Kind::Plate,
+        Kind::Airfoil,
         Kind::PlanarNozzle,
         Kind::AxisymmetricNozzle,
         Kind::Jet,
@@ -43,6 +47,7 @@ impl Kind {
             Kind::Channel => tr("Channel"),
             Kind::Cavity => tr("Cavity"),
             Kind::Plate => tr("Flat plate"),
+            Kind::Airfoil => tr("Airfoil"),
             Kind::PlanarNozzle => tr("Planar nozzle"),
             Kind::AxisymmetricNozzle => tr("Axisymmetric nozzle"),
             Kind::Jet => tr("Jet into the atmosphere"),
@@ -61,6 +66,9 @@ impl Kind {
             }
             Kind::Plate => {
                 "A flat plate in a uniform stream with a slip wall ahead of it: laminar, incompressible, steady (simpleFoam). Reynolds number 10⁵ on the plate by default, the boundary layer Blasius solved."
+            }
+            Kind::Airfoil => {
+                "A NACA 4-digit airfoil in a stream at any angle of attack, on a C-grid Vortia meshes itself: turbulent, incompressible, steady (simpleFoam) with Spalart–Allmaras or k-ω SST. Lift, drag and moment coefficients and the Cp curve come out of `vortia airfoil`. The NACA 0012 at Reynolds 6·10⁶ by default."
             }
             Kind::PlanarNozzle => {
                 "A converging-diverging slot between two walls: compressible air, k-ω SST, steady (rhoSimpleFoam)."
@@ -89,6 +97,7 @@ pub(super) struct NewCase {
     channel: Channel,
     cavity: Cavity,
     plate: Plate,
+    airfoil: Airfoil,
     planar: Nozzle,
     wedge: Nozzle,
     jet: Jet,
@@ -119,6 +128,7 @@ impl NewCase {
             channel: Channel::default(),
             cavity: Cavity::default(),
             plate: Plate::default(),
+            airfoil: Airfoil::default(),
             planar: Nozzle::new(NozzleKind::Planar),
             wedge: Nozzle::new(NozzleKind::Axisymmetric),
             jet: Jet::default(),
@@ -147,6 +157,7 @@ impl NewCase {
             Kind::Channel => "channel",
             Kind::Cavity => "cavity",
             Kind::Plate => "plate",
+            Kind::Airfoil => "airfoil",
             Kind::PlanarNozzle => "planar-nozzle",
             Kind::AxisymmetricNozzle => "nozzle",
             Kind::Jet => "jet",
@@ -177,6 +188,7 @@ impl NewCase {
             Kind::Channel => Geometry::Channel(self.channel.clone()),
             Kind::Cavity => Geometry::Cavity(self.cavity.clone()),
             Kind::Plate => Geometry::Plate(self.plate.clone()),
+            Kind::Airfoil => Geometry::Airfoil(self.airfoil.clone()),
             Kind::PlanarNozzle => Geometry::Nozzle(self.planar.clone()),
             Kind::AxisymmetricNozzle => Geometry::Nozzle(self.wedge.clone()),
             Kind::Jet => Geometry::Jet(self.jet.clone()),
@@ -260,6 +272,7 @@ impl NewCase {
                 Kind::Channel => channel_fields(ui, &mut self.channel),
                 Kind::Cavity => cavity_fields(ui, &mut self.cavity),
                 Kind::Plate => plate_fields(ui, &mut self.plate),
+                Kind::Airfoil => airfoil_fields(ui, &mut self.airfoil),
                 Kind::PlanarNozzle => nozzle_fields(ui, &mut self.planar),
                 Kind::AxisymmetricNozzle => nozzle_fields(ui, &mut self.wedge),
                 Kind::Jet => jet_fields(ui, &mut self.jet),
@@ -884,6 +897,60 @@ fn plate_fields(ui: &mut Ui, p: &mut Plate) {
                 });
                 row(ui, tr("Mixing length"), |ui| {
                     value(ui, &mut p.length_scale, "m")
+                });
+            }
+        });
+}
+
+fn airfoil_fields(ui: &mut Ui, a: &mut Airfoil) {
+    ui.horizontal(|ui| {
+        ui.label(tr("Turbulence model"));
+        for (model, title) in [
+            (AirfoilModel::SpalartAllmaras, "Spalart–Allmaras"),
+            (AirfoilModel::KOmegaSst, "k-ω SST"),
+        ] {
+            if ui.selectable_label(a.model == model, title).clicked() {
+                a.model = model;
+            }
+        }
+    });
+    egui::Grid::new("new_airfoil")
+        .num_columns(2)
+        .spacing([space::MD, space::SM])
+        .show(ui, |ui| {
+            row(ui, tr("NACA profile"), |ui| {
+                ui.add(egui::DragValue::new(&mut a.naca).speed(0.2).range(1..=9999));
+            });
+            row(ui, tr("Angle of attack"), |ui| {
+                ui.add(
+                    egui::DragValue::new(&mut a.alpha)
+                        .speed(0.1)
+                        .range(-45.0..=45.0)
+                        .suffix(" °"),
+                );
+            });
+            row(ui, tr("Chord"), |ui| value(ui, &mut a.chord, "m"));
+            row(ui, tr("Stream speed"), |ui| value(ui, &mut a.speed, "m/s"));
+            row(ui, tr("Reynolds number"), |ui| {
+                value(ui, &mut a.reynolds, "")
+            });
+            row(ui, tr("Distance to the far field"), |ui| {
+                value(ui, &mut a.far, "chords")
+            });
+            row(ui, tr("Wake length"), |ui| value(ui, &mut a.wake, "chords"));
+            row(ui, tr("Cells along each surface"), |ui| {
+                count(ui, &mut a.cells_chord)
+            });
+            row(ui, tr("Cells to the far field"), |ui| {
+                count(ui, &mut a.cells_normal)
+            });
+            row(ui, tr("Cells along the wake"), |ui| {
+                count(ui, &mut a.cells_wake)
+            });
+            row(ui, tr("First cell y+"), |ui| value(ui, &mut a.yplus, ""));
+            if a.model == AirfoilModel::KOmegaSst {
+                row(ui, tr("Turbulence intensity"), |ui| {
+                    value(ui, &mut a.intensity, "")
                 });
             }
         });
