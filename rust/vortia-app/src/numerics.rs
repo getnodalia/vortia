@@ -10,6 +10,7 @@ use vortia_foamfile::file::FoamFile;
 use vortia_foamfile::write;
 
 use crate::conditions::{Item, checked, set_at};
+use crate::i18n::trf;
 
 /// The dictionaries of the case that are edited here: two of `system`, and the physics of
 /// `constant` (the fluid, the turbulence model, the viscosity of an incompressible case).
@@ -155,10 +156,13 @@ fn checked_scheme(item: &Item) -> Result<String, String> {
     let words: Vec<&str> = item.text.split_whitespace().collect();
     let allowed = |c: char| c.is_alphanumeric() || "_.()|*+-$:<>,".contains(c);
     if words.is_empty() {
-        return Err(format!("{} needs a scheme.", item.key));
+        return Err(trf("{} needs a scheme.", &[&item.key]));
     }
     if let Some(bad) = words.iter().flat_map(|w| w.chars()).find(|c| !allowed(*c)) {
-        return Err(format!("{}: '{bad}' cannot be part of a scheme.", item.key));
+        return Err(trf(
+            "{}: '{}' cannot be part of a scheme.",
+            &[&item.key, &bad],
+        ));
     }
     Ok(words.join(" "))
 }
@@ -183,7 +187,7 @@ pub fn apply(text: &str, groups: &[Group], file: File) -> Result<String, String>
 pub fn save(case: &Path, file: File, groups: &[Group]) -> Result<(), String> {
     let path = case.join(file.folder()).join(file.name());
     let text = std::fs::read_to_string(&path)
-        .map_err(|e| format!("Could not read {}: {e}", path.display()))?;
+        .map_err(|e| trf("Could not read {}: {}", &[&path.display(), &e]))?;
     let edited = apply(&text, groups, file)?;
     write::atomic(&path, edited.as_bytes()).map_err(|e| e.to_string())
 }

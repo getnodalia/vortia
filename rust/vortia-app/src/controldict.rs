@@ -2,7 +2,7 @@
 //! `system/controlDict`. The file is edited as text, one value at a time, so its comments, its
 //! layout and everything else in it stay as they were.
 
-use crate::i18n::tr;
+use crate::i18n::{tr, trf};
 use std::path::Path;
 
 use vortia_foamfile::write;
@@ -69,7 +69,7 @@ impl SettingsForm {
         let number = |name: &str, text: &str| {
             text.trim()
                 .parse::<f64>()
-                .map_err(|_| format!("'{name}' is not a number."))
+                .map_err(|_| trf("'{}' is not a number.", &[&name]))
         };
         let settings = RunSettings {
             start_time: number(tr("Start time"), &self.start_time)?,
@@ -176,8 +176,9 @@ pub(crate) fn replace_in_line(
     }
     let value_start = indent + key.len() + (after_key.len() - after_key.trim_start().len());
     let Some(end) = code.rfind(';') else {
-        return Err(format!(
-            "'{key}' is written over several lines; edit it in the file."
+        return Err(trf(
+            "'{}' is written over several lines; edit it in the file.",
+            &[&key],
         ));
     };
     if end < value_start
@@ -185,10 +186,10 @@ pub(crate) fn replace_in_line(
             .get(value_start..end)
             .is_none_or(|v| v.trim().is_empty())
     {
-        return Err(format!("'{key}' has no value to replace."));
+        return Err(trf("'{}' has no value to replace.", &[&key]));
     }
     let (Some(head), Some(tail)) = (line.get(..value_start), line.get(end..)) else {
-        return Err(format!("'{key}' could not be edited."));
+        return Err(trf("'{}' could not be edited.", &[&key]));
     };
     Ok(Some(format!("{head}{value}{tail}")))
 }
@@ -198,7 +199,7 @@ pub fn save(case: &Path, settings: &RunSettings) -> Result<(), String> {
     settings.check()?;
     let path = case.join("system").join("controlDict");
     let text = std::fs::read_to_string(&path)
-        .map_err(|e| format!("Could not read {}: {e}", path.display()))?;
+        .map_err(|e| trf("Could not read {}: {}", &[&path.display(), &e]))?;
     let edited = apply(&text, settings)?;
     write::atomic(&path, edited.as_bytes()).map_err(|e| e.to_string())
 }

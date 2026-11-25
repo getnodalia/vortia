@@ -8,7 +8,7 @@ use eframe::egui::{
     self, Color32, Context, Frame, Id, Key, Margin, Pos2, RichText, Sense, Vec2, ViewportCommand,
 };
 use nodalia_theme::engineering::{
-    self as eng, Document, Look, TitleAction, TitleBar, TitleLabels, TreeHit, TreeRow, layout,
+    self as eng, Document, Look, TitleAction, TitleBar, TitleLabels, TreeHit, TreeRow, layout, menu,
 };
 use nodalia_theme::office::{self, Entry, Nav};
 use nodalia_theme::{Mode, Palette, component, font_size, for_egui, space, window_controls};
@@ -327,11 +327,12 @@ impl VortiaApp {
             Some(TitleAction::Search) => self.search = Some(String::new()),
             None => {}
         }
-        self.title_menus(ui, ctx);
+        self.title_menus(ui, ctx, look);
     }
 
-    /// The File menu and the app's menu, opened from the title bar.
-    fn title_menus(&mut self, ui: &egui::Ui, ctx: &Context) {
+    /// The File menu and the app's menu, opened from the title bar. Both are the suite's menu
+    /// (`engineering::menu`), the same surface Torno and Forja open from the same buttons.
+    fn title_menus(&mut self, ui: &egui::Ui, ctx: &Context, look: &Look) {
         let mut chosen = None;
         let mut recent: Option<PathBuf> = None;
         let at = |id: Id| {
@@ -340,71 +341,113 @@ impl VortiaApp {
         };
         let case_open = matches!(self.screen, Screen::Case(_));
         let running = matches!(&self.screen, Screen::Case(case) if case.running());
-        egui::Popup::new(file_menu(), ctx.clone(), at(file_menu()), ui.layer_id())
-            .kind(egui::PopupKind::Menu)
-            .open_memory(None)
-            .show(|ui| {
-                ui.set_min_width(190.0);
-                let mut item = |ui: &mut egui::Ui, label: &str, enabled: bool, command: Cmd| {
-                    if ui.add_enabled(enabled, egui::Button::new(label)).clicked() {
-                        chosen = Some(command);
-                        ui.close();
-                    }
-                };
-                item(ui, tr("New case"), true, Cmd::New);
-                item(ui, tr("Open a case"), true, Cmd::Open);
-                ui.add_enabled_ui(!self.prefs.recent.is_empty(), |ui| {
-                    ui.menu_button(tr("Open recent"), |ui| {
-                        for dir in &self.prefs.recent {
-                            let name = dir.file_name().map_or_else(
-                                || dir.display().to_string(),
-                                |n| n.to_string_lossy().into_owned(),
-                            );
-                            if ui
-                                .button(name)
-                                .on_hover_text(dir.display().to_string())
-                                .clicked()
-                            {
-                                recent = Some(dir.clone());
-                                ui.close();
-                            }
-                        }
-                    });
-                });
-                item(ui, tr("Run"), case_open && !running, Cmd::Run);
-                item(ui, tr("Pause or resume"), running, Cmd::Pause);
-                item(ui, tr("Stop"), running, Cmd::Stop);
-                item(ui, tr("Duplicate the case"), case_open, Cmd::Duplicate);
-                item(
-                    ui,
-                    tr("Close the case"),
-                    case_open && !running,
-                    Cmd::CloseCase,
-                );
-                ui.separator();
-                item(ui, tr("Quit"), true, Cmd::Quit);
-            });
-        egui::Popup::new(app_menu(), ctx.clone(), at(app_menu()), ui.layer_id())
-            .kind(egui::PopupKind::Menu)
-            .open_memory(None)
-            .show(|ui| {
-                ui.set_min_width(190.0);
-                for (label, dialog) in [
-                    (tr("Preferences"), Dialog::Preferences),
-                    (tr("Keyboard shortcuts"), Dialog::Shortcuts),
-                    (tr("Report a problem"), Dialog::Report),
-                    (tr("About Vortia"), Dialog::About),
-                ] {
-                    if ui.button(label).clicked() {
-                        chosen = Some(Cmd::Show(dialog));
-                        ui.close();
-                    }
-                }
-                if ui.button(tr("Check for updates…")).clicked() {
-                    chosen = Some(Cmd::CheckUpdates);
+        let popup = |id: Id| {
+            menu::popup(
+                egui::Popup::new(id, ctx.clone(), at(id), ui.layer_id())
+                    .kind(egui::PopupKind::Menu)
+                    .open_memory(None),
+                look,
+            )
+        };
+        popup(file_menu()).show(|ui| {
+            ui.set_min_width(menu::metric::MIN_WIDTH);
+            let mut item = |ui: &mut egui::Ui, row: menu::Item, command: Cmd| {
+                if menu::item(ui, look, &row).clicked() {
+                    chosen = Some(command);
                     ui.close();
                 }
-            });
+            };
+            item(ui, menu::Item::new(tr("New case")).icon("file"), Cmd::New);
+            item(
+                ui,
+                menu::Item::new(tr("Open a case")).icon("folder"),
+                Cmd::Open,
+            );
+            menu::submenu(
+                ui,
+                look,
+                &menu::Item::new(tr("Open recent"))
+                    .icon("history")
+                    .enabled(!self.prefs.recent.is_empty()),
+                |ui| {
+                    for dir in &self.prefs.recent {
+                        let name = dir.file_name().map_or_else(
+                            || dir.display().to_string(),
+                            |n| n.to_string_lossy().into_owned(),
+                        );
+                        if menu::item(ui, look, &menu::Item::new(&name))
+                            .on_hover_text(dir.display().to_string())
+                            .clicked()
+                        {
+                            recent = Some(dir.clone());
+                            ui.close();
+                        }
+                    }
+                },
+            );
+            menu::separator(ui, look);
+            item(
+                ui,
+                menu::Item::new(tr("Run"))
+                    .icon("play")
+                    .enabled(case_open && !running),
+                Cmd::Run,
+            );
+            item(
+                ui,
+                menu::Item::new(tr("Pause or resume"))
+                    .icon("pause")
+                    .enabled(running),
+                Cmd::Pause,
+            );
+            item(
+                ui,
+                menu::Item::new(tr("Stop")).icon("stop").enabled(running),
+                Cmd::Stop,
+            );
+            menu::separator(ui, look);
+            item(
+                ui,
+                menu::Item::new(tr("Duplicate the case"))
+                    .icon("copy")
+                    .enabled(case_open),
+                Cmd::Duplicate,
+            );
+            item(
+                ui,
+                menu::Item::new(tr("Close the case"))
+                    .icon("close")
+                    .enabled(case_open && !running),
+                Cmd::CloseCase,
+            );
+            menu::separator(ui, look);
+            item(ui, menu::Item::new(tr("Quit")).icon("log-out"), Cmd::Quit);
+        });
+        popup(app_menu()).show(|ui| {
+            ui.set_min_width(menu::metric::MIN_WIDTH);
+            for (label, icon, dialog) in [
+                (tr("Preferences"), "settings", Dialog::Preferences),
+                (tr("Keyboard shortcuts"), "keyboard", Dialog::Shortcuts),
+                (tr("Report a problem"), "flag", Dialog::Report),
+                (tr("About Vortia"), "info", Dialog::About),
+            ] {
+                if menu::item(ui, look, &menu::Item::new(label).icon(icon)).clicked() {
+                    chosen = Some(Cmd::Show(dialog));
+                    ui.close();
+                }
+            }
+            menu::separator(ui, look);
+            if menu::item(
+                ui,
+                look,
+                &menu::Item::new(tr("Check for updates…")).icon("refresh"),
+            )
+            .clicked()
+            {
+                chosen = Some(Cmd::CheckUpdates);
+                ui.close();
+            }
+        });
         if let Some(command) = chosen {
             self.perform(ctx, command);
         }

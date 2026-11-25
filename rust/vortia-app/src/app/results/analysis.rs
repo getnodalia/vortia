@@ -83,7 +83,7 @@ impl SectionForm {
                 .parse::<f64>()
                 .ok()
                 .filter(|v| v.is_finite())
-                .ok_or_else(|| format!("{what} needs a number."))
+                .ok_or_else(|| trf("{} needs a number.", &[&what]))
         };
         let density = if self.from_field {
             Density::Field
@@ -224,10 +224,12 @@ pub(super) fn section_card(
             Err(message) => Slot::Done(Err(message)),
             Ok(options) => {
                 let case = Arc::clone(case);
-                let label = format!(
+                let label = trf(
                     "Section at {} {}",
-                    ["x", "y", "z"].get(options.axis).copied().unwrap_or("x"),
-                    plain(options.position)
+                    &[
+                        &["x", "y", "z"].get(options.axis).copied().unwrap_or("x"),
+                        &plain(options.position),
+                    ],
                 );
                 spawn(ui.ctx(), move || {
                     let analysis = case.section(&time, &options).map_err(|e| e.to_string())?;
@@ -263,7 +265,7 @@ pub(super) fn save_report(dir: &Path, report: &SectionReport, format: &str) -> (
         other => {
             return (
                 false,
-                format!("The report is json, csv or html, not '{other}'."),
+                trf("The report is json, csv or html, not '{}'.", &[&other]),
             );
         }
     };

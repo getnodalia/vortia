@@ -10,6 +10,7 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::thread::JoinHandle;
 
 use crate::convergence::Convergence;
+use crate::i18n::tr;
 
 /// What the engine's thread reports.
 #[derive(Debug)]
@@ -137,9 +138,9 @@ fn run(
         Ok(Ok(())) => Outcome::Done,
         Ok(Err(vortia_solvers::SolverError::Cancelled)) => Outcome::Stopped,
         Ok(Err(e)) => Outcome::Failed(e.to_string()),
-        Err(_) => {
-            Outcome::Failed("the engine stopped unexpectedly; the case was left as it was".into())
-        }
+        Err(_) => Outcome::Failed(
+            tr("the engine stopped unexpectedly; the case was left as it was").into(),
+        ),
     }
 }
 

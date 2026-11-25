@@ -463,9 +463,9 @@ impl VortiaApp {
             return Err(trf("'{}' is not a folder.", &[&dir.display()]));
         }
         if !dir.join("system").join("controlDict").is_file() {
-            return Err(format!(
+            return Err(trf(
                 "'{}' is not a case: it has no system/controlDict.",
-                dir.display()
+                &[&dir.display()],
             ));
         }
         // Only the controlDict: a case that is not ready to run still opens, and the run says why.
@@ -567,7 +567,10 @@ impl VortiaApp {
                 case.stopping = false;
             }
             Err(e) => {
-                case.outcome = Some(Outcome::Failed(format!("The engine could not start: {e}")))
+                case.outcome = Some(Outcome::Failed(trf(
+                    "The engine could not start: {}",
+                    &[&e],
+                )))
             }
         }
     }
@@ -970,9 +973,9 @@ fn convergence_card(ui: &mut egui::Ui, p: &Palette, report: Option<&Convergence>
                     .show(ui, |ui| ui.label(RichText::new(label).color(fg)));
                 if r.automatic {
                     ui.label(
-                        RichText::new(format!(
+                        RichText::new(trf(
                             "{} of {} checks in a row",
-                            r.stable_samples, r.required_samples
+                            &[&r.stable_samples, &r.required_samples],
                         ))
                         .color(muted(p)),
                     );
@@ -1061,9 +1064,9 @@ fn file_tab(ui: &mut egui::Ui, p: &Palette, case: &mut CaseView, file: File) {
             });
             if running {
                 ui.label(
-                    RichText::new(format!(
+                    RichText::new(trf(
                         "{} cannot change while the case runs.",
-                        file.name()
+                        &[&file.name()],
                     ))
                     .color(muted(p)),
                 );
@@ -1170,9 +1173,9 @@ fn conditions_tab(ui: &mut egui::Ui, p: &Palette, case: &mut CaseView) {
                                     ui.horizontal(|ui| {
                                         ui.add_space(space::MD);
                                         ui.label(
-                                            RichText::new(format!(
+                                            RichText::new(trf(
                                                 "{} — replaced on save",
-                                                item.key
+                                                &[&item.key],
                                             ))
                                             .color(muted(p)),
                                         );
@@ -1289,7 +1292,7 @@ fn choice_row(
         ui.horizontal(|ui| {
             ui.add_space(space::MD + 148.0);
             ui.label(
-                RichText::new(format!("Needs {fields} in the time folder."))
+                RichText::new(trf("Needs {} in the time folder.", &[&fields]))
                     .size(font_size::SMALL)
                     .color(muted(p)),
             );

@@ -108,7 +108,7 @@ impl PointForm {
             .map(|t| t.trim().parse::<f64>().ok().filter(|v| v.is_finite()));
         match (n.next().flatten(), n.next().flatten(), n.next().flatten()) {
             (Some(x), Some(y), Some(z)) => Ok(Vec3::new(x, y, z)),
-            _ => Err(format!("The {what} needs three numbers.")),
+            _ => Err(trf("The {} needs three numbers.", &[&what])),
         }
     }
 }
@@ -152,9 +152,9 @@ impl LineForm {
             .ok()
             .filter(|n| (1..=vortia_post::MAX_LINE_POINTS).contains(n))
             .ok_or_else(|| {
-                format!(
+                trf(
                     "The number of points is between 1 and {}.",
-                    vortia_post::MAX_LINE_POINTS
+                    &[&vortia_post::MAX_LINE_POINTS],
                 )
             })?;
         Ok((start, end, points))
@@ -675,9 +675,9 @@ fn overview(ui: &mut egui::Ui, p: &Palette, results: &Results) {
                 let total: f64 = fluxes.iter().sum();
                 ui.add_space(space::SM);
                 ui.label(
-                    RichText::new(format!(
+                    RichText::new(trf(
                         "Flux out of all patches: {} (zero when what comes in goes out)",
-                        plain(total)
+                        &[&plain(total)],
                     ))
                     .size(font_size::SMALL)
                     .color(muted(p)),
@@ -698,7 +698,7 @@ fn walls_card(ui: &mut egui::Ui, p: &Palette, walls: &Slot<Vec<WallReport>>) {
         Slot::Done(Err(message)) => {
             card(ui, p, |ui| {
                 ui.label(RichText::new(tr("Walls")).strong());
-                ui.label(RichText::new(format!("Not worked out: {message}")).color(muted(p)));
+                ui.label(RichText::new(trf("Not worked out: {}", &[&message])).color(muted(p)));
             });
             return;
         }
@@ -781,12 +781,10 @@ fn probe_card(ui: &mut egui::Ui, p: &Palette, case: &Arc<Case>, results: &mut Re
             }
             Slot::Done(Ok(probe)) => {
                 let text = match probe.cell {
-                    Some(cell) => format!("{} in cell {cell}", shown(&probe.value)),
-                    None => format!(
+                    Some(cell) => trf("{} in cell {}", &[&shown(&probe.value), &cell]),
+                    None => trf(
                         "({} {} {}) is outside the mesh",
-                        plain(probe.at.x),
-                        plain(probe.at.y),
-                        plain(probe.at.z)
+                        &[&plain(probe.at.x), &plain(probe.at.y), &plain(probe.at.z)],
                     ),
                 };
                 ui.label(text);
@@ -798,7 +796,7 @@ fn probe_card(ui: &mut egui::Ui, p: &Palette, case: &Arc<Case>, results: &mut Re
         let (Some(time), Some(field)) = (results.time.clone(), results.field.clone()) else {
             return;
         };
-        results.probe = match results.point.parse("point") {
+        results.probe = match results.point.parse(tr("point")) {
             Err(message) => Slot::Done(Err(message)),
             Ok(at) => {
                 let case = Arc::clone(case);

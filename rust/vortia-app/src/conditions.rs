@@ -2,7 +2,7 @@
 //! place: only the numbers of an entry change, in the field's own file, and everything else in
 //! the file stays as it was.
 
-use crate::i18n::tr;
+use crate::i18n::{tr, trf};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, channel};
 
@@ -141,10 +141,10 @@ pub fn read(case: &Path, time: &str, field: &str) -> Result<FieldConditions, Str
         .map_err(|e| e.to_string())?;
     let internal = match dict.get("internalField") {
         Some(Entry::Values(vs)) => Item::new("internalField", vs),
-        _ => return Err(format!("{field} has no internalField.")),
+        _ => return Err(trf("{} has no internalField.", &[&field])),
     };
     let Some(boundary) = dict.dict("boundaryField") else {
-        return Err(format!("{field} has no boundaryField."));
+        return Err(trf("{} has no boundaryField.", &[&field]));
     };
     let mut patches = Vec::new();
     for (name, entry) in boundary.entries() {
@@ -191,8 +191,8 @@ pub fn spawn(
                 };
                 let current = match field.or_else(|| fields.first().cloned()) {
                     Some(name) if fields.contains(&name) => read(&case, &time, &name),
-                    Some(name) => Err(format!("{name} is not in the {time} folder.")),
-                    None => Err(format!("The {time} folder holds no fields.")),
+                    Some(name) => Err(trf("{} is not in the {} folder.", &[&name, &time])),
+                    None => Err(trf("The {} folder holds no fields.", &[&time])),
                 };
                 Loaded { fields, current }
             };
@@ -225,7 +225,7 @@ fn shape(text: &str) -> Result<(bool, usize, String), String> {
         s.parse::<f64>()
             .ok()
             .filter(|v| v.is_finite())
-            .ok_or_else(|| format!("'{s}' is not a number."))
+            .ok_or_else(|| trf("'{}' is not a number.", &[&s]))
     };
     let (count, body) = match rest.strip_prefix('(').and_then(|r| r.strip_suffix(')')) {
         Some(inner) => {
@@ -251,9 +251,9 @@ pub(crate) fn checked(item: &Item) -> Result<String, String> {
     let typed = shape(&item.text).map_err(|e| format!("{}: {e}", item.key))?;
     let before = shape(&item.original).map_err(|e| format!("{}: {e}", item.key))?;
     if (typed.0, typed.1) != (before.0, before.1) {
-        return Err(format!(
+        return Err(trf(
             "{} must keep its form, like '{}'.",
-            item.key, item.original
+            &[&item.key, &item.original],
         ));
     }
     Ok(typed.2)
@@ -312,9 +312,9 @@ pub(crate) fn set_at(text: &str, path: &[&str], key: &str, value: &str) -> Resul
     if found {
         Ok(out)
     } else {
-        Err(format!(
-            "'{key}' of {} is not written the way the editor reads; edit it in the file.",
-            path.last().copied().unwrap_or("the file")
+        Err(trf(
+            "'{}' of {} is not written the way the editor reads; edit it in the file.",
+            &[&key, &path.last().copied().unwrap_or(tr("the file"))],
         ))
     }
 }
@@ -389,7 +389,7 @@ fn block_for(field: &FieldConditions, kind: &str) -> Result<Vec<(&'static str, S
             lines.push(("gradient", "uniform 0".to_owned()));
             lines.push(("value", start));
         }
-        other => return Err(format!("'{other}' cannot be set for {}.", field.field)),
+        other => return Err(trf("'{}' cannot be set for {}.", &[&other, &field.field])),
     }
     lines.insert(0, ("type", kind.to_owned()));
     Ok(lines)
@@ -448,8 +448,9 @@ fn replace_patch(text: &str, patch: &str, lines: &[(&str, String)]) -> Result<St
         }
     }
     let (Some(start), Some(end)) = (start, end) else {
-        return Err(format!(
-            "The block of {patch} is not written the way the editor reads; edit it in the file."
+        return Err(trf(
+            "The block of {} is not written the way the editor reads; edit it in the file.",
+            &[&patch],
         ));
     };
     let first = source.get(start).copied().unwrap_or("");
@@ -485,9 +486,9 @@ pub fn apply(text: &str, conditions: &FieldConditions) -> Result<String, String>
             .map(|i| i.text.clone())
         {
             if !retypable(patch) {
-                return Err(format!(
+                return Err(trf(
                     "The condition type of {} is decided by the mesh.",
-                    patch.patch
+                    &[&patch.patch],
                 ));
             }
             let lines = block_for(conditions, &kind)?;
@@ -508,7 +509,7 @@ pub fn save(case: &Path, time: &str, conditions: &FieldConditions) -> Result<(),
     }
     let path = case.join(time).join(&conditions.field);
     let text = std::fs::read_to_string(&path)
-        .map_err(|e| format!("Could not read {}: {e}", path.display()))?;
+        .map_err(|e| trf("Could not read {}: {}", &[&path.display(), &e]))?;
     let edited = apply(&text, conditions)?;
     write::atomic(&path, edited.as_bytes()).map_err(|e| e.to_string())
 }

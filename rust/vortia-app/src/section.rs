@@ -4,7 +4,7 @@
 //! The case is read once and kept (`load`), because moving the plane asks for a new section
 //! at every step.
 
-use crate::i18n::tr;
+use crate::i18n::{tr, trf};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, channel};
@@ -38,10 +38,10 @@ pub fn compute(case: &Case, axis: usize, fraction: f64) -> Result<Section, Strin
         _ => None,
     };
     let (Some(low), Some(high)) = (along(bounds.min), along(bounds.max)) else {
-        return Err(format!("axis {axis} is not x, y or z"));
+        return Err(trf("axis {} is not x, y or z", &[&axis]));
     };
     if !fraction.is_finite() {
-        return Err("the position of the section is not a number".to_owned());
+        return Err(tr("the position of the section is not a number").to_owned());
     }
     let offset = low + (high - low) * fraction.clamp(0.0, 1.0);
     let (origin, normal) = match axis {

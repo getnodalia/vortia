@@ -2,7 +2,7 @@
 //! from a time directory as one number per cell (a vector gives its length), with the range of
 //! the numbers, and a colour scale to turn them into colours.
 
-use crate::i18n::tr;
+use crate::i18n::{tr, trf};
 use crate::prefs::ColourScale;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU8, Ordering};
@@ -63,11 +63,16 @@ pub fn read(case: &Path, time: &str, name: &str, cells: usize) -> Result<CellVal
     let plain =
         |part: &str| !part.is_empty() && !part.contains(['/', '\\']) && part != ".." && part != ".";
     if !plain(time) || !plain(name) {
-        return Err(format!("'{time}/{name}' is not a field of the case."));
+        return Err(trf("'{}/{}' is not a field of the case.", &[&time, &name]));
     }
     let path = case.join(time).join(name);
-    let too_few = |n: usize| format!("{name} has {n} values, but the mesh has {cells} cells.");
-    let faces = || format!("{name} has a value on each face, not on each cell.");
+    let too_few = |n: usize| {
+        trf(
+            "{} has {} values, but the mesh has {} cells.",
+            &[&name, &n, &cells],
+        )
+    };
+    let faces = || trf("{} has a value on each face, not on each cell.", &[&name]);
     match Field::<f64>::read(&path) {
         Ok(field) if field.location != Location::Cells => Err(faces()),
         Ok(field) => {
@@ -100,8 +105,9 @@ pub fn read(case: &Path, time: &str, name: &str, cells: usize) -> Result<CellVal
                 ))
             }
             // The scalar reading's error says more when the file is not a vector either.
-            Err(_) => Err(format!(
-                "{name} cannot be shown on the mesh: {scalar_error}"
+            Err(_) => Err(trf(
+                "{} cannot be shown on the mesh: {}",
+                &[&name, &scalar_error],
             )),
         },
     }
