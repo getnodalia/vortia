@@ -3068,6 +3068,7 @@ dependencies = [
 name = "vortia-mesh"
 version = "0.12.0"
 dependencies = [
+ "tempfile",
  "thiserror 2.0.21",
  "vortia-core",
  "vortia-foamfile",

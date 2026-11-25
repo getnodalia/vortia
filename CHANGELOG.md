@@ -7,6 +7,10 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 
 ## [Unreleased]
 
+### Añadido
+- **Abrir un proyecto de ANSYS Workbench (`.wbpj`):** «Abrir una geometría» acepta un `.wbpj`. Vortia lee su índice de archivos y abre, de la carpeta `<nombre>_files` que Workbench guarda a su lado, el caso resuelto (`.cas.h5` de la celda Solution), si no el de Setup, si no la malla (`.msh.h5` o `.msh`), y dice si hay resultados (`.dat.h5`), que aún no se muestran. Un `.wbpj` no contiene la malla ni el caso: si falta esa carpeta, el mensaje la nombra y lista los archivos que espera. Comprobado con el índice de un proyecto real de Workbench 2024 R2; la carpeta de ese proyecto no estaba disponible, así que la lectura del caso sigue comprobada solo con el `.cas.h5` del propio proyecto.
+- **Mallas de Fluent tradicionales (`.msh`) en «Abrir una geometría»:** el mismo conversor que `vortia fluenttofoam`; una malla binaria se rechaza con un mensaje que lo dice.
+
 ### Cambiado
 - **Iconos NDL de ingeniería en la cinta:** Ejecutar, Pausar, Parar, Abrir, Cerrar, Malla, Condiciones, Fluido, Turbulencia, Viscosidad, Ajustes, Numéricos, Esquemas y Sondas se dibujan con los iconos en volumen de NDL, los mismos que Torno y Forja. Los iconos nuevos (caso, malla, condiciones, fluido, turbulencia, viscosidad, esquemas, sondas, resultados, residuos) viven en nodalia-design. El árbol del Browser conserva sus iconos planos pequeños.
 
