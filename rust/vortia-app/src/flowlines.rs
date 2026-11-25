@@ -4,7 +4,7 @@
 //! The seeds lie on a grid across the two longest sides of the mesh, in the middle of the
 //! third: that is the plane a 2-D or wedge case lives in, and a readable slice of a 3-D one.
 
-use crate::i18n::tr;
+use crate::i18n::{tr, trf};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, channel};
 
@@ -101,7 +101,7 @@ pub fn compute(case: &Path, time: &str, name: &str) -> Result<FlowLines, String>
     let plain =
         |part: &str| !part.is_empty() && !part.contains(['/', '\\']) && part != ".." && part != ".";
     if !plain(time) || !plain(name) {
-        return Err(format!("'{time}/{name}' is not a field of the case."));
+        return Err(trf("'{}/{}' is not a field of the case.", &[&time, &name]));
     }
     let case = Case::open(case).map_err(|e| e.to_string())?;
     let bounds = case.bounds();
@@ -109,8 +109,9 @@ pub fn compute(case: &Path, time: &str, name: &str) -> Result<FlowLines, String>
     let velocity = match case.field(time, name).map_err(|e| e.to_string())? {
         FieldValues::Vector(v) => v,
         _ => {
-            return Err(format!(
-                "{name} is not a vector field, so it has no flow lines."
+            return Err(trf(
+                "{} is not a vector field, so it has no flow lines.",
+                &[&name],
             ));
         }
     };

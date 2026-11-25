@@ -73,7 +73,7 @@ impl ForcesForm {
                 .parse::<f64>()
                 .ok()
                 .filter(|v| v.is_finite())
-                .ok_or_else(|| format!("{what} needs a number."))
+                .ok_or_else(|| trf("{} needs a number.", &[&what]))
         };
         let patches: Vec<String> = self
             .walls
