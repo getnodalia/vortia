@@ -7,6 +7,8 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-11-25
+
 ### Añadido
 - **Perfiles aerodinámicos (`vortia new airfoil`):** un NACA de 4 cifras en una malla C de seis bloques hecha por el `blockMesh` propio, con la corriente al ángulo de ataque, Spalart–Allmaras (o k-ω SST) y funciones de pared. `vortia airfoil CASO [-csv ARCHIVO]` da C_L, C_D (presión y viscosa), C_m en el cuarto de cuerda y la distribución de C_p y C_f; la página «Nuevo caso» de la app lo ofrece. NACA 0012 a Re = 6e6: C_L entre el −0,4 % y el −4,4 % de la teoría del perfil delgado hasta 8° y a −3,7 % de la referencia a 10° (malla fina), pero la resistencia sale un 16–27 % alta y por encima de unos 12° el perfil se desprende de forma que la referencia no muestra. Detalle y límites en `benchmarks/naca0012-spalart-allmaras/`.
 - **Transferencia de calor en `simpleFoam` (laminar y turbulenta):** con un `T` en el tiempo inicial y `Pr` en `transportProperties` (y `Prt`, 0,85 por defecto), el solver resuelve `∇·(φT) − ∇·(α_eff ∇T) = 0` con `α_eff = ν/Pr + ν_t/Prt` tras el modelo de turbulencia; en la pared se usa el ν_t de la función de pared. Sin `Pr` el caso queda como estaba. `vortia post wall` y los resultados de la app dan el flujo de calor y su total en K m/s y K m³/s (por unidad de ρ Cp) cuando el flujo es incompresible. Placa laminar con Pr = 1: Nu_L +3,3 % sobre Pohlhausen; placa turbulenta con Pr = 0,71 (k-ω SST): −13,3 % respecto a la correlación Nu_L = 0,037 Re^0,8 Pr^(1/3). Una malla por caso, sin GCI ni comparación con OpenFOAM; el esquema de T es `upwind` y la ley es de Prt constante, sin corrección de subcapa térmica (no vale para Pr ≫ 1).
