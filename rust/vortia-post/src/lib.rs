@@ -19,6 +19,7 @@
     clippy::indexing_slicing
 )]
 
+mod airfoil;
 mod balance;
 mod case;
 mod compare;
@@ -36,6 +37,7 @@ mod stats;
 mod streamline;
 mod wall;
 
+pub use airfoil::{AIRFOIL_PATCH, AirfoilReport, AirfoilSettings, SurfacePoint};
 pub use balance::{BalanceHistory, MassBalance};
 pub use case::{Case, FieldReport, FieldValues, MAX_LINE_POINTS, PatchReport, Sample};
 pub use compare::{DEFINITIONS_DIFFER, Row, compare, comparison_csv};

@@ -561,6 +561,7 @@ impl Model {
 pub(crate) enum Turbulence {
     KEpsilon(Box<KEpsilon>),
     KOmegaSst(Box<KOmegaSst>),
+    SpalartAllmaras(Box<crate::spalart::Incompressible>),
 }
 
 impl Turbulence {
@@ -577,10 +578,19 @@ impl Turbulence {
     ) -> Result<Option<Self>> {
         Ok(match Model::read(case)? {
             Model::Laminar => None,
-            Model::SpalartAllmaras(_) => {
-                return Err(SolverError::Setup(
-                    "RAS model 'SpalartAllmaras' runs in rhoCentralFoam only; use kEpsilon or kOmegaSST".into(),
-                ));
+            Model::SpalartAllmaras(ras) => {
+                let coeffs = ras.dict("SpalartAllmarasCoeffs").cloned().unwrap_or(ras);
+                Some(Self::SpalartAllmaras(Box::new(
+                    crate::spalart::Incompressible::read(
+                        case,
+                        mesh,
+                        fv,
+                        dir,
+                        Some(&coeffs),
+                        (nu, relax("nuTilda")),
+                        (flow.0, flow.1),
+                    )?,
+                )))
             }
             Model::KEpsilon(coeffs) => Some(Self::KEpsilon(Box::new(KEpsilon::read(
                 case,
@@ -621,6 +631,7 @@ impl Turbulence {
                 )
             }
             Self::KOmegaSst(m) => (m.nu_eff_cells(), m.nu_eff_faces()),
+            Self::SpalartAllmaras(m) => m.nu_eff(),
         };
         let faces = face_diffusivity(mesh, fv, &cells, &boundary);
         (cells, boundary, faces)
@@ -639,14 +650,16 @@ impl Turbulence {
         match self {
             Self::KEpsilon(m) => m.correct(mesh, fv, u, u_bc, phi, log),
             Self::KOmegaSst(m) => m.correct(mesh, fv, u, u_bc, phi, log),
+            Self::SpalartAllmaras(m) => m.correct(mesh, fv, (u, u_bc), phi, log),
         }
     }
 
     /// Writes the model's fields into `dir/time`.
     pub(crate) fn write(&self, mesh: &PolyMesh, dir: &std::path::Path, time: &str) -> Result<()> {
         let fields = match self {
-            Self::KEpsilon(m) => m.fields(),
-            Self::KOmegaSst(m) => m.fields(),
+            Self::KEpsilon(m) => m.fields().to_vec(),
+            Self::KOmegaSst(m) => m.fields().to_vec(),
+            Self::SpalartAllmaras(m) => m.fields(),
         };
         for field in fields {
             let mut out = field.to_write(mesh);

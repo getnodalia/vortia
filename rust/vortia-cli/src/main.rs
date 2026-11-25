@@ -38,7 +38,7 @@ mod post;
 mod section;
 mod sketch;
 
-const USAGE: &str = "usage: vortia new channel|cavity|plate|nozzle|nozzle-wedge|jet DIR [NAME=VALUE...]\n\
+const USAGE: &str = "usage: vortia new channel|cavity|plate|airfoil|nozzle|nozzle-wedge|jet DIR [NAME=VALUE...]\n\
     \x20      vortia new sketch DIR FILE [planar|axisymmetric] [segments=N] [NAME=VALUE...]\n\
     \x20      vortia new region DIR FILE [NAME=VALUE...]\n\
     \x20      vortia sketch template duct|nozzle|rounded-nozzle|channel-with-block FILE [NAME=VALUE...]\n\
@@ -62,6 +62,7 @@ const USAGE: &str = "usage: vortia new channel|cavity|plate|nozzle|nozzle-wedge|
     \x20             [-pref P] [-rhoref R] [-uref U] [-aref A] [-wedge DEG] [-report json|csv|html FILE]\n\
     \x20      vortia forces CASE WALL[,WALL...] [-time T] [-rho R] [-uref U] [-aref A] [-lref L]\n\
     \x20             [-drag X Y Z] [-lift X Y Z] [-cofr X Y Z] [-report json|csv|html FILE]\n\
+    \x20      vortia airfoil CASE [-time T] [-csv FILE]\n\
     \x20      vortia compare NUMBER BASELINE REPORT... [-csv FILE]\n\
     \x20      vortia volume CASE FIELD [TIME]\n\
     \x20      vortia wall CASE PATCH [TIME]\n\n\
@@ -92,6 +93,8 @@ const USAGE: &str = "usage: vortia new channel|cavity|plate|nozzle|nozzle-wedge|
     \x20            through the plane across the domain, and its report as JSON, CSV or HTML\n\
     forces       force and moment on walls, pressure and viscous, along drag and lift, and as\n\
     \x20            coefficients; its report as JSON, CSV or HTML\n\
+    airfoil      lift, drag and moment coefficients of an airfoil case and its Cp and Cf along the\n\
+    \x20            surface, as CSV for a plot\n\
     compare      one number of saved reports (section or forces) against the first or another,\n\
     \x20            with a warning where their definitions differ; refuses a report that was edited\n\
     volume       volume, integral, average and range of FIELD over the domain\n\

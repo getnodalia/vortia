@@ -699,3 +699,152 @@ fn a_drawn_channel_with_a_block_conserves_the_flow_that_enters_it() {
         flux("block")
     );
 }
+
+/// A NACA 0012 at 5° and Reynolds number 6 × 10⁶, on a medium C grid with wall functions.
+/// Thin-airfoil theory gives a lift slope of 2π per radian, which the NASA Turbulence Modeling
+/// Resource's CFL3D Spalart–Allmaras results for this section match (C_L 1.0909 at 10°). The
+/// acceptance, fixed before the first run: C_L within 8 % of 2π·α, a drag coefficient between
+/// 0.008 and 0.016 (a wall-function mesh overpredicts the 0.0082–0.0123 of the references), a
+/// small moment about the quarter chord and a suction peak on the upper surface.
+#[test]
+fn a_naca_0012_at_five_degrees_follows_thin_airfoil_theory() {
+    let dir = tempfile::tempdir().expect("a folder");
+    let foil = vortia_cases::Airfoil {
+        alpha: 5.0,
+        cells_chord: 60,
+        cells_normal: 32,
+        cells_wake: 20,
+        ..vortia_cases::Airfoil::default()
+    };
+    vortia_cases::create(dir.path(), &Geometry::Airfoil(foil)).expect("the airfoil is written");
+    let case = vortia_solvers::Case::open(dir.path()).expect("the solver opens it");
+    vortia_solvers::run(&case, |_| {}).expect("the run finishes");
+    let case = Case::open(dir.path()).expect("the results open");
+    let time = case.latest_time().expect("a time was written");
+    let report = case.airfoil(&time).expect("the coefficients are read");
+    let thin = 2.0 * std::f64::consts::PI * 5.0_f64.to_radians();
+    eprintln!(
+        "time {time}: C_L = {:.4} (2πα {thin:.4}, {:+.1} %), C_D = {:.5}, C_m = {:.4}",
+        report.cl,
+        100.0 * (report.cl / thin - 1.0),
+        report.cd,
+        report.cm
+    );
+    assert!(
+        (report.cl - thin).abs() < 0.08 * thin,
+        "C_L {} is not within 8 % of {thin}",
+        report.cl
+    );
+    assert!(
+        (0.008..0.016).contains(&report.cd),
+        "C_D {} is out of range",
+        report.cd
+    );
+    assert!(report.cm.abs() < 0.02, "C_m {}", report.cm);
+    assert!(
+        (report.cd - report.cd_pressure - report.cd_viscous).abs() < 1e-9,
+        "the two parts of the drag add up to it"
+    );
+    let peak = report.suction_peak().expect("the surface has points");
+    assert!(peak < -1.0, "suction peak {peak}");
+    assert!(
+        report
+            .surface
+            .iter()
+            .all(|p| p.cp.is_finite() && p.cf.is_finite()),
+        "every surface value is finite"
+    );
+}
+
+/// The same turbulent plate with the Spalart–Allmaras model (wall function of Spalding,
+/// `nuTilda` at four times the viscosity in the stream). The first run, on 2026-11-25, gave
+/// a friction coefficient 5.6 % above Prandtl–Schlichting's, so the band here is 10 %, a
+/// margin around what the engine does and not a band fixed beforehand.
+#[test]
+fn the_turbulent_plate_with_spalart_allmaras_is_in_the_range_of_prandtl_schlichting() {
+    let dir = tempfile::tempdir().expect("a folder");
+    let plate = vortia_cases::Plate::turbulent();
+    vortia_cases::create(dir.path(), &Geometry::Plate(plate.clone()))
+        .expect("the plate is written");
+    let swap = |file: &str, from: &str, to: &str| {
+        let path = dir.path().join(file);
+        let text = std::fs::read_to_string(&path).expect("the file is there");
+        assert!(text.contains(from), "{file} has no {from}");
+        std::fs::write(&path, text.replace(from, to)).expect("the file is written");
+    };
+    swap(
+        "constant/turbulenceProperties",
+        "kOmegaSST",
+        "SpalartAllmaras",
+    );
+    swap(
+        "0/nut",
+        "type            nutkWallFunction;",
+        "type            nutUSpaldingWallFunction;",
+    );
+    swap(
+        "system/fvSchemes",
+        "div(phi,k)      bounded Gauss upwind;\n    div(phi,omega)  bounded Gauss upwind;",
+        "div(phi,nuTilda) bounded Gauss upwind;",
+    );
+    let block = |name: &str| {
+        format!(
+            "    {name}\n    {{\n        solver          smoothSolver;\n        smoother        symGaussSeidel;\n        tolerance       1e-09;\n        relTol          0.05;\n    }}\n"
+        )
+    };
+    swap("system/fvSolution", &format!("\n{}", block("omega")), "");
+    swap("system/fvSolution", &block("k"), &block("nuTilda"));
+    swap(
+        "system/fvSolution",
+        "k               1e-06;\n        omega           1e-06;",
+        "nuTilda         1e-06;",
+    );
+    swap(
+        "system/fvSolution",
+        "k               0.7;\n        omega           0.7;",
+        "nuTilda         0.7;",
+    );
+    std::fs::remove_file(dir.path().join("0/k")).expect("k is there");
+    std::fs::remove_file(dir.path().join("0/omega")).expect("omega is there");
+    let nu_tilda = 4.0 * plate.viscosity;
+    std::fs::write(
+        dir.path().join("0/nuTilda"),
+        format!(
+            "FoamFile {{ version 2.0; format ascii; class volScalarField; object nuTilda; }}\n\
+             dimensions [0 2 -1 0 0 0 0];\ninternalField uniform {nu_tilda};\nboundaryField\n{{\n\
+             inlet {{ type fixedValue; value uniform {nu_tilda}; }}\n\
+             outlet {{ type inletOutlet; inletValue uniform {nu_tilda}; value uniform {nu_tilda}; }}\n\
+             plate {{ type fixedValue; value uniform 0; }}\n\
+             freestream {{ type inletOutlet; inletValue uniform {nu_tilda}; value uniform {nu_tilda}; }}\n\
+             frontAndBack {{ type empty; }}\n}}\n"
+        ),
+    )
+    .expect("nuTilda is written");
+    let case = vortia_solvers::Case::open(dir.path()).expect("the solver opens it");
+    vortia_solvers::run(&case, |_| {}).expect("the run finishes");
+    let case = Case::open(dir.path()).expect("the results open");
+    let time = case.latest_time().expect("a time was written");
+
+    let reynolds = plate.speed * plate.length / plate.viscosity;
+    let correlation = 0.455 / reynolds.log10().powf(2.58);
+    let reference = vortia_post::ForceReference {
+        speed: plate.speed,
+        area: plate.length * plate.depth,
+        ..vortia_post::ForceReference::default()
+    };
+    let cd = case
+        .forces(&time, &["plate".to_owned()], &reference)
+        .expect("the forces are read")
+        .metrics()
+        .into_iter()
+        .find(|m| m.key == "cd")
+        .map_or(f64::NAN, |m| m.value);
+    eprintln!(
+        "time {time}: C_D = {cd:.6}, Prandtl-Schlichting {correlation:.6} ({:+.1} %)",
+        100.0 * (cd / correlation - 1.0)
+    );
+    assert!(
+        (cd - correlation).abs() < 0.10 * correlation,
+        "C_D {cd} is not within 10 % of {correlation}"
+    );
+}

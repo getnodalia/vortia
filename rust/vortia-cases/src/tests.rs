@@ -855,3 +855,139 @@ fn a_drawn_region_without_an_inlet_and_an_outlet_or_with_an_open_outline_is_refu
     let mut d = Drawn::default();
     assert!(d.set("cell-size", 2.0).is_ok() && d.set("nope", 1.0).is_err());
 }
+
+fn coarse_airfoil() -> Airfoil {
+    Airfoil {
+        cells_chord: 16,
+        cells_normal: 8,
+        cells_wake: 6,
+        ..Airfoil::default()
+    }
+}
+
+#[test]
+fn an_airfoil_is_a_c_grid_of_six_blocks_with_the_flow_at_its_angle_of_attack() {
+    let dir = tempfile::tempdir().unwrap();
+    let foil = Airfoil {
+        alpha: 5.0,
+        ..coarse_airfoil()
+    };
+    let made = create(dir.path(), &Geometry::Airfoil(foil.clone())).unwrap();
+    assert_eq!(made.application, "simpleFoam");
+    let mesh = PolyMesh::read_case(dir.path()).unwrap();
+    let geo = MeshGeometry::compute(&mesh);
+    let report = check(&mesh, &geo);
+    assert!(
+        report.unsolvable().is_empty(),
+        "mesh not solvable: {:?}",
+        report.unsolvable()
+    );
+    let names: Vec<&str> = mesh.patches().iter().map(|p| p.name.as_str()).collect();
+    for patch in ["airfoil", "farfield", "outlet", "frontAndBack"] {
+        assert!(names.contains(&patch), "no patch {patch} in {names:?}");
+    }
+    assert_eq!(made.cells, 2 * 16 * 8 + 2 * 6 * 8);
+    // The stream carries the angle of attack; the chord stays on the x axis.
+    let u = read(dir.path(), "0/U");
+    let (sin_a, cos_a) = 5.0_f64.to_radians().sin_cos();
+    let want = format!("{:.6}", foil.speed * cos_a);
+    assert!(u.contains(&want[..5]), "freestream {want} not in 0/U");
+    assert!(sin_a > 0.0);
+    for file in ["0/nuTilda", "0/nut", "constant/airfoilProperties"] {
+        assert!(dir.path().join(file).is_file(), "{file}");
+    }
+    let turbulence = read(dir.path(), "constant/turbulenceProperties");
+    assert!(turbulence.contains("SpalartAllmaras"));
+    // The volume of the box is the C grid minus the section; the section is thinner than the box.
+    assert!(geo.total_volume() > 0.0);
+}
+
+#[test]
+fn an_airfoil_with_a_k_omega_sst_model_has_those_fields() {
+    let dir = tempfile::tempdir().unwrap();
+    let foil = Airfoil {
+        model: AirfoilModel::KOmegaSst,
+        ..coarse_airfoil()
+    };
+    create(dir.path(), &Geometry::Airfoil(foil)).unwrap();
+    for file in ["0/k", "0/omega", "0/nut"] {
+        assert!(dir.path().join(file).is_file(), "{file}");
+    }
+    assert!(read(dir.path(), "constant/turbulenceProperties").contains("kOmegaSST"));
+}
+
+#[test]
+fn an_airfoil_runs_and_what_cannot_be_one_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    create(dir.path(), &Geometry::Airfoil(coarse_airfoil())).unwrap();
+    end_at(dir.path(), 3);
+    let case = vortia_solvers::Case::open(dir.path()).unwrap();
+    vortia_solvers::run(&case, |_| {}).unwrap();
+    assert!(dir.path().join("3/U").is_file());
+    assert!(dir.path().join("3/nuTilda").is_file());
+
+    let base = coarse_airfoil();
+    let bad = [
+        Airfoil {
+            naca: 12_345,
+            ..base.clone()
+        },
+        Airfoil {
+            naca: 2400,
+            ..base.clone()
+        },
+        Airfoil {
+            naca: 0,
+            ..base.clone()
+        },
+        Airfoil {
+            chord: 0.0,
+            ..base.clone()
+        },
+        Airfoil {
+            speed: f64::NAN,
+            ..base.clone()
+        },
+        Airfoil {
+            reynolds: -1.0,
+            ..base.clone()
+        },
+        Airfoil {
+            alpha: 120.0,
+            ..base.clone()
+        },
+        Airfoil {
+            alpha: f64::INFINITY,
+            ..base.clone()
+        },
+        Airfoil {
+            far: 0.0,
+            ..base.clone()
+        },
+        Airfoil {
+            cells_chord: 0,
+            ..base.clone()
+        },
+        Airfoil {
+            cells_normal: 100_000,
+            cells_chord: 100_000,
+            ..base.clone()
+        },
+        Airfoil {
+            yplus: 0.0,
+            ..base.clone()
+        },
+    ];
+    for (i, foil) in bad.iter().enumerate() {
+        let other = tempfile::tempdir().unwrap();
+        assert!(
+            create(other.path(), &Geometry::Airfoil(foil.clone())).is_err(),
+            "bad airfoil {i} was accepted"
+        );
+    }
+    let mut foil = Airfoil::default();
+    assert!(foil.set("alpha", 3.0).is_ok());
+    assert!(foil.set("cells-chord", 2.5).is_err());
+    assert!(foil.set("model", 7.0).is_err());
+    assert!(foil.set("nope", 1.0).is_err());
+}
