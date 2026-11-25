@@ -99,4 +99,5 @@ its benchmark, and a feature release (a minor version) goes out when a batch is 
 | Date | Item | State |
 |---|---|---|
 | 2026-11-25 | Audit and this plan | written |
-| 2026-11-25 | Item 1, airfoils: `vortia new airfoil`, incompressible Spalart–Allmaras, `vortia airfoil` (Cl, Cd, Cm, Cp, Cf), New case page; NACA 0012 Cl within 4 % of the reference to 10°, Cd over by 16–27 %, stall not reproduced | in review (see `benchmarks/naca0012-spalart-allmaras/`) |
+| 2026-11-25 | Item 1, airfoils: `vortia new airfoil`, incompressible Spalart–Allmaras, `vortia airfoil` (Cl, Cd, Cm, Cp, Cf), New case page; NACA 0012 Cl within 4 % of the reference to 10°, Cd over by 16–27 %, stall not reproduced | merged in #241 (see `benchmarks/naca0012-spalart-allmaras/`) |
+| 2026-11-25 | Item 2, first part: `adjustTimeStep` (`maxCo`, `maxDeltaT`, write-time landing) in `icoFoam`; cavity to t = 0.5 in 186 steps vs 500, velocity within 0.33 % of the lid speed of a 0.001 s step. Second-order time schemes, PIMPLE, Taylor–Green and cylinder-wake validation not done | partial |
