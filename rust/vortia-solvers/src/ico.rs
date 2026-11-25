@@ -22,7 +22,7 @@ use vortia_mesh::{PatchKind, PolyMesh};
 use crate::case::{
     Case, KINEMATIC_DIFFUSIVITY, KINEMATIC_PRESSURE, VELOCITY, VOLUME_FLUX, check_dimensions,
 };
-use crate::control::{LinearSolver, RunControl, solve_line};
+use crate::control::{Clock, LinearSolver, RunControl, solve_line};
 use crate::error::{Result, SolverError};
 use crate::laplacian::{Ddt, transport_property};
 use crate::scalar_transport::face_values;
@@ -236,15 +236,29 @@ pub fn run(case: &Case, mut log: impl FnMut(&str)) -> Result<Vec<Step>> {
     let names = ["Ux", "Uy", "Uz"];
 
     let mut steps = Vec::new();
-    for step in 1..=run.n_steps {
+    let mut clock = Clock::new(&run);
+    let volumes = fv.volumes().to_vec();
+    loop {
         crate::cancel::check()?;
-        let name = run.name(step);
+        let rate = courant_rate(&mesh, &volumes, &phi);
+        let previous = clock.delta_t();
+        let Some(tick) = clock.advance(rate)? else {
+            break;
+        };
+        let name = tick.name;
+        let delta_t = tick.delta_t;
+        if run.adjust.is_some() {
+            log(&format!(
+                "Courant Number max: {}\ndeltaT = {delta_t}\n",
+                rate * previous
+            ));
+        }
         log(&format!("Time = {name}\n\n"));
         let u_old = u.clone();
         let phi_old = phi.clone();
         let mut solves = Vec::new();
 
-        let mut u_eqn = VectorMatrix::ddt_euler(&mesh, &fv, &u_old, run.delta_t)?;
+        let mut u_eqn = VectorMatrix::ddt_euler(&mesh, &fv, &u_old, delta_t)?;
         let mut convection = VectorMatrix::convection(
             &mesh,
             &fv,
@@ -283,7 +297,7 @@ pub fn run(case: &Case, mut log: impl FnMut(&str)) -> Result<Vec<Step>> {
             }
         }
 
-        let ddt_corr = ddt_corr(&mesh, &fv, &u_bc, &u_old, &phi_old, run.delta_t);
+        let ddt_corr = ddt_corr(&mesh, &fv, &u_bc, &u_old, &phi_old, delta_t);
         for corr in 1..=piso.n_correctors {
             let r_au: Vec<f64> = u_eqn.a(&mesh, &fv).iter().map(|&a| 1.0 / a).collect();
             let h = u_eqn.h(&mesh, &fv, &u, valid);
@@ -337,7 +351,7 @@ pub fn run(case: &Case, mut log: impl FnMut(&str)) -> Result<Vec<Step>> {
             }
         }
 
-        let written = run.writes(step);
+        let written = tick.writes;
         if written {
             write_flow(&case.dir, &name, (&mut u_field, &u), (&mut p_field, &p))?;
             flux_field(&mesh, &phi).write(&case.dir, &name)?;
@@ -350,6 +364,28 @@ pub fn run(case: &Case, mut log: impl FnMut(&str)) -> Result<Vec<Step>> {
     }
     log("End\n");
     Ok(steps)
+}
+
+/// Half the largest ratio of a cell's summed absolute flux to its volume: the
+/// Courant number is this times the time step (OpenFOAM's `CourantNo.H`).
+pub(crate) fn courant_rate(mesh: &PolyMesh, volumes: &[f64], phi: &[f64]) -> f64 {
+    let mut sum = vec![0.0; mesh.n_cells()];
+    let internal = mesh.n_internal_faces();
+    for (f, &flux) in phi.iter().enumerate() {
+        if let Some(c) = mesh.owner().get(f).and_then(|&c| sum.get_mut(c)) {
+            *c += flux.abs();
+        }
+        let neighbour = mesh.neighbour().get(f).filter(|_| f < internal);
+        if let Some(c) = neighbour.and_then(|&c| sum.get_mut(c)) {
+            *c += flux.abs();
+        }
+    }
+    0.5 * sum
+        .iter()
+        .zip(volumes)
+        .filter(|&(_, &v)| v > 0.0)
+        .map(|(&s, &v)| s / v)
+        .fold(0.0, f64::max)
 }
 
 /// A cell field's own values on every boundary face (`None` on empty faces):

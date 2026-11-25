@@ -24,7 +24,19 @@ pub struct RunControl {
     pub n_steps: u64,
     /// Significant digits in the names of the times written.
     pub precision: u32,
+    pub end_time: f64,
+    /// `adjustTimeStep yes`: the step follows the Courant number.
+    pub adjust: Option<Adjust>,
     write: WriteControl,
+}
+
+/// `adjustTimeStep yes`, with the limits `controlDict` gives it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Adjust {
+    /// The Courant number the step keeps the flow at.
+    pub max_co: f64,
+    /// The longest step.
+    pub max_delta_t: f64,
 }
 
 impl RunControl {
@@ -65,24 +77,50 @@ impl RunControl {
             }
         };
         let end_time = case.scalar("endTime")?;
+        let adjust = if crate::ico::switch(&case.control, "adjustTimeStep") == Some(true) {
+            let max_co = case.control.scalar("maxCo").unwrap_or(1.0);
+            let max_delta_t = case.control.scalar("maxDeltaT").unwrap_or(f64::MAX);
+            if !(max_co > 0.0 && max_co.is_finite()) {
+                return Err(SolverError::Setup("maxCo must be positive".into()));
+            }
+            if max_delta_t.is_nan() || max_delta_t <= 0.0 {
+                return Err(SolverError::Setup("maxDeltaT must be positive".into()));
+            }
+            Some(Adjust {
+                max_co,
+                max_delta_t,
+            })
+        } else {
+            None
+        };
         let steps = ((end_time - start_time) / delta_t).round();
         if !(0.0..=MAX_STEPS as f64).contains(&steps) {
             return Err(SolverError::Setup(format!("{steps} time steps")));
         }
-        let n_steps = steps as u64;
+        let mut n_steps = steps as u64;
+        if adjust.is_some() {
+            // The steps follow the flow; the count is the clock's to find.
+            n_steps = 0;
+        }
         let requested = case
             .control
             .label("timePrecision")
             .and_then(|p| u32::try_from(p).ok())
             .unwrap_or(DEFAULT_TIME_PRECISION);
-        let precision = distinct_precision(requested, start_time, delta_t, n_steps)?;
+        let precision = if adjust.is_some() {
+            requested.clamp(1, MAX_TIME_PRECISION)
+        } else {
+            distinct_precision(requested, start_time, delta_t, n_steps)?
+        };
         Ok(Self {
             start_time,
             start_name,
             delta_t,
             n_steps,
             precision,
-            write: WriteControl::read(case, delta_t)?,
+            end_time,
+            adjust,
+            write: WriteControl::read(case, delta_t, adjust.is_some())?,
         })
     }
 
@@ -101,6 +139,122 @@ impl RunControl {
     pub fn writes(&self, step: u64) -> bool {
         self.write
             .due(step, step as f64 * self.delta_t, self.delta_t)
+    }
+}
+
+/// One step of the time loop.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Tick {
+    /// The directory name of the time the step reaches.
+    pub name: String,
+    pub delta_t: f64,
+    pub writes: bool,
+}
+
+/// Where a run is in time. With a fixed step it is the old step count; with
+/// `adjustTimeStep yes` each step is set from the Courant number of the flux
+/// the step starts with, as OpenFOAM's `setInitialDeltaT.H` and `setDeltaT.H`
+/// do: the first step keeps the Courant number at `maxCo`, and then the step
+/// grows by at most 10 % of the room left, at most 20 % at a time, never past
+/// `maxDeltaT`. `adjustableRunTime` shortens the step that would pass a write
+/// time so that it lands on it (the number of steps to the write time is
+/// rounded up, so no step grows to get there), and the last step lands on
+/// `endTime`.
+#[derive(Debug)]
+pub struct Clock<'a> {
+    run: &'a RunControl,
+    step: u64,
+    time: f64,
+    delta_t: f64,
+}
+
+impl<'a> Clock<'a> {
+    pub fn new(run: &'a RunControl) -> Self {
+        Self {
+            run,
+            step: 0,
+            time: run.start_time,
+            delta_t: run.delta_t,
+        }
+    }
+
+    /// The step the next tick will have if it is not adjusted: what a Courant
+    /// number is multiplied by.
+    pub fn delta_t(&self) -> f64 {
+        self.delta_t
+    }
+
+    /// The next step, or `None` when the run is over. `rate` is half the
+    /// largest ratio of a cell's summed absolute flux to its volume, so that
+    /// the Courant number is `rate * delta_t`.
+    pub fn advance(&mut self, rate: f64) -> Result<Option<Tick>> {
+        let Some(adjust) = self.run.adjust else {
+            self.step += 1;
+            if self.step > self.run.n_steps {
+                return Ok(None);
+            }
+            return Ok(Some(Tick {
+                name: self.run.name(self.step),
+                delta_t: self.run.delta_t,
+                writes: self.run.writes(self.step),
+            }));
+        };
+        let remaining = self.run.end_time - self.time;
+        if remaining <= 1e-9 * self.run.delta_t.min(self.delta_t) {
+            return Ok(None);
+        }
+        if self.step >= MAX_STEPS {
+            return Err(SolverError::Setup(format!(
+                "more than {MAX_STEPS} time steps: the Courant number keeps the step too short"
+            )));
+        }
+        const SMALL: f64 = 1e-15;
+        let co = rate * self.delta_t;
+        let mut dt = if self.step == 0 {
+            if co > SMALL {
+                (adjust.max_co / rate).min(self.delta_t.min(adjust.max_delta_t))
+            } else {
+                self.delta_t.min(adjust.max_delta_t)
+            }
+        } else {
+            let room = adjust.max_co / (co + SMALL);
+            let factor = room.min(1.0 + 0.1 * room).min(1.2);
+            (factor * self.delta_t).min(adjust.max_delta_t)
+        };
+        if !(dt > 0.0 && dt.is_finite()) {
+            return Err(SolverError::Setup(format!(
+                "the time step became {dt}: the flux is not finite"
+            )));
+        }
+        if let WriteControl::Time(interval) = self.run.write {
+            let elapsed = self.time - self.run.start_time;
+            let next = ((elapsed + 1e-9 * interval) / interval).floor() + 1.0;
+            let to_next = next * interval - elapsed;
+            let n = (to_next / dt - 1e-6).ceil().max(1.0);
+            if n < 1e15 {
+                dt = to_next / n;
+            }
+        }
+        if dt >= remaining * (1.0 - 1e-9) || remaining - dt < 1e-6 * dt {
+            dt = remaining;
+        }
+        self.step += 1;
+        self.time += dt;
+        self.delta_t = dt;
+        if let WriteControl::Time(interval) = self.run.write {
+            let k = ((self.time - self.run.start_time) / interval).round();
+            if k > 0.0 && ((self.time - self.run.start_time) - k * interval).abs() < 1e-9 * interval
+            {
+                self.time = self.run.start_time + k * interval;
+            }
+        }
+        let elapsed = self.time - self.run.start_time;
+        let writes = self.run.write.due(self.step, elapsed, dt);
+        Ok(Some(Tick {
+            name: time_name_with(self.time, self.run.precision),
+            delta_t: dt,
+            writes,
+        }))
     }
 }
 
@@ -211,7 +365,7 @@ enum WriteControl {
 }
 
 impl WriteControl {
-    fn read(case: &Case, delta_t: f64) -> Result<Self> {
+    fn read(case: &Case, delta_t: f64, adjusting: bool) -> Result<Self> {
         let interval = case.control.scalar("writeInterval");
         let positive = |v: f64| v.is_finite() && v > 0.0;
         match case.control.word("writeControl").unwrap_or("timeStep") {
@@ -223,10 +377,13 @@ impl WriteControl {
                     SolverError::Setup("writeInterval must be a positive time".into())
                 })?;
                 // `adjustableRunTime` shortens steps to land on write times;
-                // the engine does not, so it accepts only intervals the steps
-                // already land on.
+                // with a fixed step the engine does not, so it accepts only
+                // intervals the steps already land on.
                 let steps = interval / delta_t;
-                if control == "adjustableRunTime" && (steps - steps.round()).abs() > 1e-9 * steps {
+                if control == "adjustableRunTime"
+                    && !adjusting
+                    && (steps - steps.round()).abs() > 1e-9 * steps
+                {
                     return Err(SolverError::Setup(
                         "adjustableRunTime with a writeInterval that is not a whole number \
                          of deltaT is not supported yet"
