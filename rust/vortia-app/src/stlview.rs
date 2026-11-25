@@ -1,5 +1,6 @@
-//! A geometry file on Home: an STL, or a Fluent case in the common file format, read on a
-//! thread, what it is, and the surface to turn around with the mouse.
+//! A geometry file on Home: an STL, a Fluent case or mesh (`.cas.h5`, `.msh.h5`, `.msh`), or
+//! an ANSYS Workbench project (`.wbpj`) that holds one, read on a thread, what it is, and the
+//! surface to turn around with the mouse.
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, channel};
@@ -38,10 +39,67 @@ pub struct StlView {
     source: Source,
 }
 
+fn has_extension(path: &Path, extension: &str) -> bool {
+    path.extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case(extension))
+}
+
 /// Whether a path is a Fluent case or mesh in the common file format.
 fn is_case(path: &Path) -> bool {
-    path.extension()
-        .is_some_and(|e| e.eq_ignore_ascii_case("h5"))
+    has_extension(path, "h5")
+}
+
+/// Reads a Fluent case or mesh: the common file format, or a traditional ASCII `.msh`.
+fn fluent_mesh(path: &Path) -> Result<vortia_foamfile::RawPolyMesh, String> {
+    let options = vortia_mesh::fluent::Options::default();
+    if is_case(path) {
+        return vortia_mesh::cff::cff_to_foam(path, options).map_err(|e| e.to_string());
+    }
+    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+    let text = std::str::from_utf8(&bytes).map_err(|_| {
+        tr("Only ASCII Fluent meshes (.msh) are read; this one is binary.").to_owned()
+    })?;
+    vortia_mesh::fluent::fluent_to_foam(text, options).map_err(|e| e.to_string())
+}
+
+/// The Fluent file of a Workbench project, and what is said about the project first.
+fn workbench(path: &Path) -> Result<(PathBuf, Vec<String>), String> {
+    use vortia_mesh::workbench::Project;
+    let project = Project::read(path).map_err(|e| e.to_string())?;
+    let expected: Vec<&str> = project.fluent_files().map(|f| f.name.as_str()).collect();
+    let folder = project
+        .files_dir
+        .file_name()
+        .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+    let Some(file) = project.fluent_file() else {
+        return Err(if expected.is_empty() {
+            trf(
+                "The Workbench project '{}' has no Fluent case or mesh.",
+                &[&project.name],
+            )
+        } else if project.files_dir.is_dir() {
+            trf(
+                "None of the Fluent files of the Workbench project is in '{}': {}.",
+                &[&folder, &expected.join(", ")],
+            )
+        } else {
+            trf(
+                "A .wbpj holds no mesh or case: they are in the folder '{}', which must be next to it. Copy the whole project (or archive it from Workbench as a .wbpz). It lists {}.",
+                &[&folder, &expected.join(", ")],
+            )
+        });
+    };
+    let mut lines = vec![trf(
+        "Workbench project '{}': {}",
+        &[&project.name, &file.name],
+    )];
+    if let Some(results) = project.results() {
+        lines.push(trf(
+            "Its results ({}) are not shown yet: only the mesh.",
+            &[&results.name],
+        ));
+    }
+    Ok((file.path.clone(), lines))
 }
 
 /// What a Fluent case holds, as sentences.
@@ -67,11 +125,18 @@ fn case_lines(mesh: &vortia_foamfile::RawPolyMesh, surface: &Surface) -> Vec<Str
 
 /// Reads and measures a file; the error is a sentence for the user.
 pub fn load(path: &Path) -> Result<(About, Surface), String> {
-    if is_case(path) {
-        let mesh = vortia_mesh::cff::cff_to_foam(path, vortia_mesh::fluent::Options::default())
-            .map_err(|e| e.to_string())?;
+    let (fluent, mut lines) = if has_extension(path, "wbpj") {
+        let (file, lines) = workbench(path)?;
+        (Some(file), lines)
+    } else if is_case(path) || has_extension(path, "msh") {
+        (Some(path.to_path_buf()), Vec::new())
+    } else {
+        (None, Vec::new())
+    };
+    if let Some(file) = fluent {
+        let mesh = fluent_mesh(&file)?;
         let surface = Surface::from_mesh(&mesh);
-        let lines = case_lines(&mesh, &surface);
+        lines.extend(case_lines(&mesh, &surface));
         return Ok((About::Case(lines), surface));
     }
     let stl = Stl::read(path).map_err(|e| e.to_string())?;
@@ -256,5 +321,70 @@ endsolid t
     #[test]
     fn a_missing_file_is_an_error_not_a_panic() {
         assert!(load(Path::new("/no/such/file.stl")).is_err());
+    }
+
+    /// A Workbench project as it lists its files: the set-up case, the solved one and its
+    /// results, in the `<name>_files` folder.
+    fn wbpj() -> String {
+        let reference = |n: u32, shown: &str, cell: &str| {
+            format!(
+                "<Object Name=\"/FileContainer/FileReference:F{n}\" Version=\"1.0\">\
+                 <member-data valType=\"String\">{{\"DisplayText\": \"{shown}\", \
+                 \"ContainerAssociations\": [\"{cell}\"], \
+                 \"Location\": r\"$(ProjectName)_files\\dp0\\FFF\\Fluent\\{shown}\"}}</member-data></Object>"
+            )
+        };
+        format!(
+            "<?xml version=\"1.0\"?><Storage>{}{}{}</Storage>",
+            reference(7, "FFF-Setup-Output.cas.h5", "Setup"),
+            reference(10, "FFF-1.cas.h5", "Solution"),
+            reference(11, "FFF-1-08120.dat.h5", "Solution"),
+        )
+    }
+
+    #[test]
+    fn a_workbench_project_opens_its_solved_case() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("Practice.wbpj");
+        std::fs::write(&project, wbpj()).unwrap();
+        let fluent = dir.path().join("Practice_files/dp0/FFF/Fluent");
+        std::fs::create_dir_all(&fluent).unwrap();
+        let hex = Path::new(env!("CARGO_MANIFEST_DIR")).join("../vortia-mesh/tests/cff/hex.cas.h5");
+        std::fs::copy(&hex, fluent.join("FFF-1.cas.h5")).unwrap();
+        std::fs::write(fluent.join("FFF-1-08120.dat.h5"), b"results").unwrap();
+
+        let (about, surface) = load(&project).unwrap();
+        let About::Case(lines) = about else {
+            panic!("a project is described as a case");
+        };
+        assert_eq!(surface.cells, 1);
+        assert!(
+            lines[0].contains("Practice") && lines[0].contains("FFF-1.cas.h5"),
+            "{lines:?}"
+        );
+        assert!(lines[1].contains("FFF-1-08120.dat.h5"), "{lines:?}");
+    }
+
+    #[test]
+    fn a_workbench_project_without_its_folder_says_which_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("Practice.wbpj");
+        std::fs::write(&project, wbpj()).unwrap();
+        let Err(why) = load(&project) else {
+            panic!("there is nothing to open");
+        };
+        assert!(
+            why.contains("Practice_files") && why.contains("FFF-1.cas.h5"),
+            "{why}"
+        );
+    }
+
+    #[test]
+    fn a_traditional_fluent_mesh_is_read() {
+        let file =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../vortia-mesh/tests/fluent/hex.msh");
+        let (about, surface) = load(&file).unwrap();
+        assert!(matches!(about, About::Case(_)));
+        assert!(surface.cells > 0);
     }
 }

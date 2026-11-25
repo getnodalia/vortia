@@ -32,6 +32,7 @@ pub mod polymesh;
 pub mod stl;
 pub mod tri2d;
 pub mod wall;
+pub mod workbench;
 
 pub use check::{MeshReport, check};
 pub use error::{MeshError, Result};

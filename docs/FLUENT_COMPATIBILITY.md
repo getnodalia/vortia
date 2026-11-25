@@ -15,7 +15,8 @@ archivos reales (ver `docs/VALIDATION.md`).
 | Resultados CFF | `.dat.h5` | magic HDF5 | ✅ campos | n/a | ✅ vtkFLUENTCFFReader | P0 (viz) |
 | Comprimido | `.gz` | magic gzip | detección | ⬜ | ⬜ | P2 |
 | Journal | `.jou` | extensión | ⬜ P2 | n/a | n/a | P2 |
-| Workbench | `.flprj/.wbpj/.wbpz` | extensión | ⬜ P2 | n/a | n/a | P2 |
+| Workbench | `.wbpj` | XML del índice | ✅ abre el caso o la malla de `<nombre>_files` (resuelto > Setup > malla) | según el archivo | según el archivo | P1 |
+| Workbench archivado / Fluent | `.wbpz` / `.flprj` | extensión | ⬜ P2 | n/a | n/a | P2 |
 
 ## Herramientas disponibles en esta máquina (macOS ARM64)
 

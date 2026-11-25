@@ -261,14 +261,38 @@ pub const ES: &[(&str, &str)] = &[
     ("Cell size", "Tamaño de celda"),
     ("Symmetry plane on the axis", "Plano de simetría en el eje"),
     (
-        "An STL file or a Fluent case (.cas.h5)",
-        "Un archivo STL o un caso de Fluent (.cas.h5)",
+        "An STL file, a Fluent case (.cas.h5, .msh) or a Workbench project (.wbpj)",
+        "Un archivo STL, un caso de Fluent (.cas.h5, .msh) o un proyecto de Workbench (.wbpj)",
     ),
     (
         "{} cells, {} faces, {} points",
         "{} celdas, {} caras, {} puntos",
     ),
     ("Boundaries: {}", "Contornos: {}"),
+    (
+        "Only ASCII Fluent meshes (.msh) are read; this one is binary.",
+        "Solo se leen mallas de Fluent (.msh) en ASCII; esta es binaria.",
+    ),
+    (
+        "The Workbench project '{}' has no Fluent case or mesh.",
+        "El proyecto de Workbench «{}» no tiene ningún caso ni malla de Fluent.",
+    ),
+    (
+        "None of the Fluent files of the Workbench project is in '{}': {}.",
+        "Ninguno de los archivos de Fluent del proyecto de Workbench está en «{}»: {}.",
+    ),
+    (
+        "A .wbpj holds no mesh or case: they are in the folder '{}', which must be next to it. Copy the whole project (or archive it from Workbench as a .wbpz). It lists {}.",
+        "Un .wbpj no contiene la malla ni el caso: están en la carpeta «{}», que tiene que estar a su lado. Copia el proyecto completo (o archívalo desde Workbench como .wbpz). Contiene {}.",
+    ),
+    (
+        "Workbench project '{}': {}",
+        "Proyecto de Workbench «{}»: {}",
+    ),
+    (
+        "Its results ({}) are not shown yet: only the mesh.",
+        "Sus resultados ({}) aún no se muestran: solo la malla.",
+    ),
     ("Show geometry", "Ver geometría"),
     ("Close geometry", "Cerrar la geometría"),
     ("Reading the geometry…", "Leyendo la geometría…"),

@@ -10,3 +10,6 @@ thiserror = "2"
 vortia-core = { path = "../vortia-core" }
 vortia-foamfile = { path = "../vortia-foamfile" }
 vortia-h5 = { path = "../vortia-h5" }
+
+[dev-dependencies]
+tempfile = "3"
