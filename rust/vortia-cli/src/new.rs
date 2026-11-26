@@ -16,6 +16,9 @@ pub fn run(args: &[&str]) -> ExitCode {
     if let ["body", dir, file, settings @ ..] = args {
         return from_body(dir, file, settings);
     }
+    if let ["section", dir, file, settings @ ..] = args {
+        return from_section(dir, file, settings);
+    }
     let [kind, dir, settings @ ..] = args else {
         eprintln!(
             "vortia: new needs a kind (channel, cavity, plate, plate-turbulent, airfoil, nozzle, nozzle-wedge or jet) and a folder"
@@ -148,24 +151,52 @@ fn from_sketch(dir: &str, file: &str, settings: &[&str]) -> ExitCode {
     }
 }
 
-/// `vortia new region DIR FILE [NAME=VALUE...]`: a case whose region is the closed outline of a
-/// sketch file, its edges named `inlet`, `outlet`, `symmetry` or anything else for a wall.
+fn is_dxf(file: &str) -> bool {
+    Path::new(file)
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("dxf"))
+}
+
+fn number_setting(setting: &str) -> Result<(&str, f64), String> {
+    let (name, value) = setting
+        .split_once('=')
+        .ok_or_else(|| format!("'{setting}' is not NAME=VALUE"))?;
+    let number: f64 = value
+        .parse()
+        .map_err(|_| format!("'{value}' in '{setting}' is not a number"))?;
+    Ok((name, number))
+}
+
+/// `vortia new region DIR FILE.sketch|.dxf [NAME=VALUE...]`: a case whose region is the closed
+/// outline of a sketch file or a DXF drawing, its edges (a DXF's layers) named `inlet`, `outlet`,
+/// `symmetry` or anything else for a wall. A DXF without a unit is read as millimetres; `scale=F`
+/// multiplies its lengths.
 fn from_region(dir: &str, file: &str, settings: &[&str]) -> ExitCode {
     let build = || -> Result<vortia_cases::Drawn, String> {
-        let mut sketch = vortia_sketch::Sketch::open(Path::new(file)).map_err(|e| e.to_string())?;
-        sketch.solve().map_err(|e| e.to_string())?;
-        let mut drawn = vortia_cases::Drawn {
-            sketch,
-            ..vortia_cases::Drawn::default()
-        };
-        for setting in settings {
-            let (name, value) = setting
-                .split_once('=')
-                .ok_or_else(|| format!("'{setting}' is not NAME=VALUE"))?;
-            let number: f64 = value
-                .parse()
-                .map_err(|_| format!("'{value}' in '{setting}' is not a number"))?;
-            drawn.set(name, number).map_err(|e| e.to_string())?;
+        let mut drawn = vortia_cases::Drawn::default();
+        if is_dxf(file) {
+            let mut drawing = vortia_cad::dxf::read(Path::new(file)).map_err(|e| e.to_string())?;
+            for setting in settings {
+                let (name, number) = number_setting(setting)?;
+                if name == "scale" {
+                    drawing.scale(number).map_err(|e| e.to_string())?;
+                } else {
+                    drawn.set(name, number).map_err(|e| e.to_string())?;
+                }
+            }
+            drawn.sketch = drawing.sketch().map_err(|e| e.to_string())?;
+            for note in &drawing.notes {
+                eprintln!("vortia: {note}");
+            }
+        } else {
+            let mut sketch =
+                vortia_sketch::Sketch::open(Path::new(file)).map_err(|e| e.to_string())?;
+            sketch.solve().map_err(|e| e.to_string())?;
+            drawn.sketch = sketch;
+            for setting in settings {
+                let (name, number) = number_setting(setting)?;
+                drawn.set(name, number).map_err(|e| e.to_string())?;
+            }
         }
         Ok(drawn)
     };
@@ -183,6 +214,74 @@ fn from_region(dir: &str, file: &str, settings: &[&str]) -> ExitCode {
                 format_args!(
                     "Wrote the drawn region ({} cells, {} points) to {dir}; run it with `vortia solve {dir}` ({})\n",
                     made.cells, made.points, made.application
+                ),
+            );
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("vortia: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// `vortia new section DIR FILE.dxf [upstream=F] [downstream=F] [lateral=F] [scale=F] [NAME=VALUE...]`:
+/// the 2D flow around the closed outlines of a DXF drawing (an airfoil section, a car's side
+/// profile, a cylinder) in a wind tunnel drawn around them. The tunnel's sizes are multiples of
+/// the bodies' largest size; the flow comes in from the left, the top and bottom are symmetry planes
+/// and the bodies are the patch `body`.
+fn from_section(dir: &str, file: &str, settings: &[&str]) -> ExitCode {
+    let build = || -> Result<vortia_cases::Drawn, String> {
+        let mut drawing = vortia_cad::dxf::read(Path::new(file)).map_err(|e| e.to_string())?;
+        let mut tunnel = vortia_cad::dxf::Tunnel::default();
+        let mut drawn = vortia_cases::Drawn::default();
+        let mut sized = false;
+        for setting in settings {
+            let (name, number) = number_setting(setting)?;
+            match name {
+                "upstream" => tunnel.upstream = number,
+                "downstream" => tunnel.downstream = number,
+                "lateral" => tunnel.lateral = number,
+                "scale" => drawing.scale(number).map_err(|e| e.to_string())?,
+                _ => {
+                    sized |= name == "cell-size";
+                    drawn.set(name, number).map_err(|e| e.to_string())?;
+                }
+            }
+        }
+        // The cells along the bodies are a fortieth of their size unless said, and grow out to
+        // sixteen times that at the tunnel's walls.
+        if let Some((lo, hi)) = drawing.bounds()
+            && !sized
+        {
+            drawn.cell_size = ((hi.0 - lo.0).max(hi.1 - lo.1) / 40.0).max(1.0e-3);
+        }
+        if drawn.far_cell_size.is_none() {
+            drawn.far_cell_size = Some(16.0 * drawn.cell_size);
+        }
+        drawn.sketch = drawing.around(tunnel).map_err(|e| e.to_string())?;
+        for note in &drawing.notes {
+            eprintln!("vortia: {note}");
+        }
+        Ok(drawn)
+    };
+    let drawn = match build() {
+        Ok(d) => d,
+        Err(message) => {
+            eprintln!("vortia: {message}");
+            return ExitCode::from(2);
+        }
+    };
+    match vortia_cases::create(Path::new(dir), &Geometry::Drawn(drawn)) {
+        Ok(made) => {
+            let _ = std::io::Write::write_fmt(
+                &mut std::io::stdout(),
+                format_args!(
+                    "Wrote the flow around the section ({} cells, {} points) to {dir}; run it with `vortia solve {dir}` ({}), then `vortia forces {dir} {}`\n",
+                    made.cells,
+                    made.points,
+                    made.application,
+                    vortia_cad::dxf::BODY_PATCH
                 ),
             );
             ExitCode::SUCCESS

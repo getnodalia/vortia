@@ -3,13 +3,17 @@ name = "vortia-cad"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "CAD files as surfaces for the mesher: STEP solids read and tessellated by Nodalia's own solidcore kernel"
+description = "CAD files for the meshers: STEP solids as surfaces through Nodalia's solidcore kernel, DXF drawings as 2D outlines"
 
 [dependencies]
 vortia-mesh = { path = "../vortia-mesh" }
+vortia-sketch = { path = "../vortia-sketch" }
+# Nodalia's DXF reader (MIT OR Apache-2.0), shared with Forja; pinned by revision.
+nodalia-dxf = { git = "https://github.com/getnodalia/foundation", rev = "a6eb9c3d814ac584f03725b2a0b1dabf70655b2d" }
 # Nodalia's STEP reader and tessellator (Apache-2.0), vendored in Torno's tree; pinned by revision.
 solidcore-step = { git = "https://github.com/getnodalia/torno", rev = "6d840f18cf019d251a9d2d2cd6448d0a1fbd9681" }
 solidcore-tess = { git = "https://github.com/getnodalia/torno", rev = "6d840f18cf019d251a9d2d2cd6448d0a1fbd9681" }
 
 [dev-dependencies]
 vortia-cases = { path = "../vortia-cases" }
+tempfile = "3"

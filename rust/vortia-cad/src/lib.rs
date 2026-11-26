@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! CAD files as the closed triangle surfaces the body mesher takes.
 //!
+//! - [`dxf`]: DXF drawings (Forja's reader) as closed 2D outlines for the triangle mesher.
 //! - [`step`]: STEP (ISO 10303) solids, read and tessellated by Nodalia's solidcore kernel.
 //! - [`load`]: any surface file by its extension (STEP here, STL and OBJ in `vortia-mesh`).
 //!
@@ -17,6 +18,7 @@
     clippy::indexing_slicing
 )]
 
+pub mod dxf;
 pub mod step;
 
 use std::path::Path;
