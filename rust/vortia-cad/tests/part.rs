@@ -491,3 +491,203 @@ fn a_sketched_outline_becomes_a_solid_in_metres_and_an_open_one_is_refused() {
     assert!(vortia_cad::part::outline_from_sketch(&open).is_err());
     assert!(vortia_cad::part::outline_from_sketch(&vortia_sketch::Sketch::default()).is_err());
 }
+
+#[test]
+fn a_row_of_holes_is_one_hole_repeated_along_a_step() {
+    let plate = feature(
+        Shape::Box {
+            origin: [0.0; 3],
+            size: [2.0, 0.5, 0.2],
+        },
+        Join::Add,
+    );
+    let hole = feature(
+        Shape::Cylinder {
+            origin: [0.25, 0.25, -0.4],
+            radius: 0.05,
+            height: 1.0,
+        },
+        Join::Cut,
+    );
+    let part = Part {
+        features: vec![
+            plate,
+            hole,
+            feature(
+                Shape::LinearPattern {
+                    count: 4,
+                    step: [0.5, 0.0, 0.0],
+                },
+                Join::Add,
+            ),
+        ],
+    };
+    let surface = part.surface(0.001).unwrap();
+    assert!(surface.summary().closed(), "{:?}", surface.summary());
+    let exact = 2.0 * 0.5 * 0.2 - 4.0 * std::f64::consts::PI * 0.05 * 0.05 * 0.2;
+    let v = volume(&surface);
+    assert!(
+        (v - exact).abs() / exact < 0.005,
+        "volume {v} against {exact}"
+    );
+}
+
+#[test]
+fn bolt_holes_round_a_flange_are_one_hole_turned_about_the_axis() {
+    use std::f64::consts::PI;
+    let part = Part {
+        features: vec![
+            feature(
+                Shape::Cylinder {
+                    origin: [0.0; 3],
+                    radius: 1.0,
+                    height: 0.1,
+                },
+                Join::Add,
+            ),
+            feature(
+                Shape::Cylinder {
+                    origin: [0.6, 0.0, -1.0],
+                    radius: 0.1,
+                    height: 3.0,
+                },
+                Join::Cut,
+            ),
+            feature(
+                Shape::CircularPattern {
+                    count: 6,
+                    center: [0.0; 3],
+                    angle: PI / 3.0,
+                },
+                Join::Add,
+            ),
+        ],
+    };
+    let surface = part.surface(0.001).unwrap();
+    assert!(surface.summary().closed(), "{:?}", surface.summary());
+    let exact = PI * 0.1 - 6.0 * PI * 0.01 * 0.1;
+    let v = volume(&surface);
+    assert!(
+        (v - exact).abs() / exact < 0.01,
+        "volume {v} against {exact}"
+    );
+}
+
+#[test]
+fn a_pattern_of_something_added_adds_copies() {
+    let ball = |x: f64| Shape::Sphere {
+        center: [x, 0.0, 0.0],
+        radius: 0.2,
+    };
+    let part = Part {
+        features: vec![
+            feature(ball(0.0), Join::Add),
+            feature(
+                Shape::LinearPattern {
+                    count: 3,
+                    step: [1.0, 0.0, 0.0],
+                },
+                Join::Add,
+            ),
+        ],
+    };
+    let v = volume(&part.surface(0.001).unwrap());
+    let exact = 3.0 * 4.0 / 3.0 * std::f64::consts::PI * 0.2f64.powi(3);
+    assert!(
+        (v - exact).abs() / exact < 0.03,
+        "volume {v} against {exact}"
+    );
+}
+
+#[test]
+fn a_pattern_with_nothing_to_repeat_or_too_many_copies_says_so() {
+    let pattern = |count| {
+        feature(
+            Shape::LinearPattern {
+                count,
+                step: [1.0, 0.0, 0.0],
+            },
+            Join::Add,
+        )
+    };
+    let ball = feature(
+        Shape::Sphere {
+            center: [0.0; 3],
+            radius: 0.2,
+        },
+        Join::Add,
+    );
+    // Nothing before it.
+    assert!(
+        Part {
+            features: vec![pattern(3)]
+        }
+        .build()
+        .is_err()
+    );
+    // A round is not something to repeat.
+    let rounded = Part {
+        features: vec![
+            unit_box(),
+            feature(
+                Shape::Round {
+                    points: vec![[0.5, 0.0, 0.0]],
+                    size: 0.1,
+                },
+                Join::Add,
+            ),
+            pattern(2),
+        ],
+    };
+    assert!(rounded.build().is_err());
+    // One copy is the original; too many is refused before anything is built.
+    for count in [0, 1, 65, u32::MAX] {
+        let part = Part {
+            features: vec![ball.clone(), pattern(count)],
+        };
+        assert!(part.build().is_err(), "{count}");
+    }
+}
+
+#[test]
+fn patterns_are_kept_in_a_part_file_and_a_bad_count_is_refused() {
+    let part = Part {
+        features: vec![
+            feature(
+                Shape::Sphere {
+                    center: [0.0; 3],
+                    radius: 0.2,
+                },
+                Join::Add,
+            ),
+            feature(
+                Shape::LinearPattern {
+                    count: 3,
+                    step: [1.0, 0.5, 0.0],
+                },
+                Join::Add,
+            ),
+            feature(
+                Shape::CircularPattern {
+                    count: 4,
+                    center: [0.0, 0.0, 1.0],
+                    angle: 0.5,
+                },
+                Join::Add,
+            ),
+        ],
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("p.vortia-part");
+    part.save(&path).unwrap();
+    assert_eq!(Part::open(&path).unwrap(), part);
+    for damaged in [
+        r#"{"format":"vortia-part","features":[{"shape":"linear_pattern","join":"add","count":3}]}"#,
+        r#"{"format":"vortia-part","features":[{"shape":"linear_pattern","join":"add","count":-1,"step":[1,0,0]}]}"#,
+        r#"{"format":"vortia-part","features":[{"shape":"linear_pattern","join":"add","count":99999,"step":[1,0,0]}]}"#,
+        r#"{"format":"vortia-part","features":[{"shape":"circular_pattern","join":"add","count":2,"center":[0,0,0],"angle":"x"}]}"#,
+    ] {
+        std::fs::write(&path, damaged).unwrap();
+        assert!(Part::open(&path).is_err(), "{damaged}");
+    }
+}

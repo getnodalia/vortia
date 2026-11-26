@@ -456,6 +456,11 @@ pub const ES: &[(&str, &str)] = &[
     ("Open part", "Abrir pieza"),
     ("Round edges", "Redondear aristas"),
     ("Chamfer edges", "Achaflanar aristas"),
+    ("Row of copies", "Fila de copias"),
+    ("Copies round an axis", "Copias alrededor de un eje"),
+    ("Copies in all", "Copias en total"),
+    ("Step between copies", "Paso entre copias"),
+    ("Angle between copies", "Ángulo entre copias"),
     ("A point on each edge", "Un punto de cada arista"),
     ("Add an edge", "Añadir una arista"),
     (
