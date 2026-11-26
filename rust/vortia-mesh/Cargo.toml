@@ -6,6 +6,7 @@ license.workspace = true
 description = "Polyhedral finite-volume mesh of the Vortia engine: topology, geometry and quality checks"
 
 [dependencies]
+serde_json = "1"
 thiserror = "2"
 vortia-core = { path = "../vortia-core" }
 vortia-foamfile = { path = "../vortia-foamfile" }

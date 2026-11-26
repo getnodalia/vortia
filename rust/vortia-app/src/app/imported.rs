@@ -1,6 +1,6 @@
 //! Home's "New > Around a CAD file": the flow around a body or a drawing read from a file.
 //!
-//! An STL, OBJ or STEP file is a closed surface in a wind tunnel (`vortia_cases::Body`, meshed by
+//! An STL, OBJ, PLY, glTF or STEP file is a closed surface in a wind tunnel (`vortia_cases::Body`, meshed by
 //! octree refinement); a DXF drawing is 2D outlines, a section of a wing or of a car, in a tunnel
 //! drawn around them (`vortia_cad::dxf::Drawing::around`, meshed with triangles).
 
@@ -31,7 +31,7 @@ enum Loaded {
 
 /// The form of a case made around a file.
 pub(super) struct Imported {
-    /// The file being typed, an `.stl`, `.obj`, `.step`/`.stp` or `.dxf`.
+    /// The file being typed, an `.stl`, `.obj`, `.ply`, `.gltf`/`.glb`, `.step`/`.stp` or `.dxf`.
     pub(super) file: String,
     /// What every length of the file is multiplied by: 0.001 for the millimetres of an STL.
     scale: f64,
@@ -139,7 +139,7 @@ impl Imported {
         ui.horizontal_wrapped(|ui| {
             ui.add(
                 egui::TextEdit::singleline(&mut self.file)
-                    .hint_text(tr("A .stl, .obj, .step or .dxf file"))
+                    .hint_text(tr("A .stl, .obj, .ply, .gltf, .glb, .step or .dxf file"))
                     .desired_width(320.0),
             );
             if ui.button(tr("Read file")).clicked() {
@@ -164,7 +164,7 @@ impl Imported {
                 let (a, b) = (
                     tr("Scale of the file"),
                     tr(
-                        "Multiplies every length of the file: 0.001 turns the millimetres of an STL or OBJ into metres. A STEP file carries its own unit.",
+                        "Multiplies every length of the file: 0.001 turns the millimetres of an STL, OBJ, PLY or glTF into metres. A STEP file carries its own unit.",
                     ),
                 );
                 ui.label(a).on_hover_text(b);
@@ -518,5 +518,17 @@ mod tests {
             vortia_mesh::bodymesh::part_patches(&body.surface, "body").unwrap(),
             ["body_hull", "body_keel"]
         );
+    }
+
+    #[test]
+    fn a_ply_and_a_glb_are_read_like_any_other_surface() {
+        let dir = tempfile::tempdir().unwrap();
+        let ply = "ply\nformat ascii 1.0\nelement vertex 8\nproperty float x\nproperty float y\nproperty float z\nelement face 6\nproperty list uchar int vertex_indices\nend_header\n0 0 0\n1 0 0\n1 1 0\n0 1 0\n0 0 1\n1 0 1\n1 1 1\n0 1 1\n4 0 3 2 1\n4 4 5 6 7\n4 0 1 5 4\n4 2 3 7 6\n4 1 2 6 5\n4 3 0 4 7\n";
+        let path = written(&dir, "box.ply", ply);
+        let form = read(&path);
+        assert!(form.problem.is_none(), "{:?}", form.problem);
+        assert!(matches!(form.geometry(), Ok(Geometry::Body(_))));
+        let broken = written(&dir, "broken.gltf", "{\"asset\":");
+        assert!(read(&broken).problem.is_some());
     }
 }

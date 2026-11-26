@@ -121,7 +121,7 @@ impl Stl {
         }
     }
 
-    /// Reads a surface file by its extension: `.stl` or `.obj`, upper or lower case.
+    /// Reads a surface file by its extension: `.stl`, `.obj`, `.ply`, `.gltf` or `.glb`, upper or lower case.
     pub fn load(path: &Path) -> Result<Self> {
         let extension = path
             .extension()
@@ -129,10 +129,12 @@ impl Stl {
         match extension.as_deref() {
             Some("stl") => Self::read(path),
             Some("obj") => crate::obj::read(path),
+            Some("ply") => crate::ply::read(path),
+            Some("gltf" | "glb") => crate::gltf::read(path),
             // A file with another name may still be an STL.
             _ => Self::read(path).map_err(|e| match e {
                 MeshError::Invalid(message) => MeshError::Invalid(format!(
-                    "{message}; surfaces are read from STL, OBJ and STEP files (IGES and DXF are not read yet)"
+                    "{message}; surfaces are read from STL, OBJ, PLY, glTF and STEP files (IGES is not read)"
                 )),
                 other => other,
             }),

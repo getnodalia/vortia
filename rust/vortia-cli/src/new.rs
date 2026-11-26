@@ -293,7 +293,7 @@ fn from_section(dir: &str, file: &str, settings: &[&str]) -> ExitCode {
     }
 }
 
-/// `vortia new body DIR FILE.stl|.obj|.step [scale=F] [NAME=VALUE...]`: the flow around a closed
+/// `vortia new body DIR FILE.stl|.obj|.ply|.gltf|.glb|.step [scale=F] [NAME=VALUE...]`: the flow around a closed
 /// surface in a wind tunnel, meshed by octree refinement. A STEP file carries its own unit; an
 /// STL or OBJ is in metres unless `scale` says otherwise (0.001 for millimetres). `solid=MATERIAL`
 /// (or `conductivity=W/mK`) makes the body a solid that conducts heat to the air, and `heat=W`
