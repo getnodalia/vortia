@@ -819,13 +819,13 @@ fn region_canvas(ui: &mut Ui, editor: &mut RegionEditor) {
     }
 }
 
-fn row(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui)) {
+pub(super) fn row(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui)) {
     ui.label(label);
     add(ui);
     ui.end_row();
 }
 
-fn value(ui: &mut Ui, v: &mut f64, unit: &str) {
+pub(super) fn value(ui: &mut Ui, v: &mut f64, unit: &str) {
     let speed = 0.01 * v.abs().max(0.001);
     ui.add(
         DragValue::new(v)
@@ -1073,11 +1073,7 @@ mod tests {
             if kind == Kind::Imported {
                 // The one kind that needs a file: a circle drawn in millimetres.
                 let file = base.path().join("circle.dxf");
-                std::fs::write(
-                    &file,
-                    "0\nSECTION\n2\nHEADER\n9\n$INSUNITS\n70\n4\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n0\nCIRCLE\n8\n0\n10\n0\n20\n0\n40\n10\n0\nENDSEC\n0\nEOF\n",
-                )
-                .unwrap();
+                std::fs::write(&file, crate::app::imported::CIRCLE_DXF).unwrap();
                 form.imported.file = file.display().to_string();
                 form.imported.load();
                 form.propose(base.path());

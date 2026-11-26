@@ -11,6 +11,7 @@ use vortia_cad::dxf::{self, Drawing, Outline, Tunnel};
 use vortia_cases::{Body, BodyModel, Drawn, Geometry};
 use vortia_mesh::stl::Summary;
 
+use super::newcase::{row, value};
 use crate::i18n::{tr, trf};
 
 /// What was read from the file.
@@ -191,22 +192,6 @@ impl Imported {
     }
 }
 
-fn row(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui)) {
-    ui.label(label);
-    add(ui);
-    ui.end_row();
-}
-
-fn number(ui: &mut Ui, v: &mut f64, unit: &str) {
-    let speed = 0.01 * v.abs().max(0.001);
-    ui.add(
-        DragValue::new(v)
-            .speed(speed)
-            .suffix(format!(" {unit}"))
-            .max_decimals(6),
-    );
-}
-
 fn body_fields(ui: &mut Ui, body: &mut Body, summary: &Summary, scale: f64) {
     let extent = |axis: usize| {
         let at = |v: [f64; 3]| v.get(axis).copied().unwrap_or(0.0);
@@ -235,22 +220,22 @@ fn body_fields(ui: &mut Ui, body: &mut Body, summary: &Summary, scale: f64) {
         });
     }
     row(ui, tr("Stream speed"), |ui| {
-        number(ui, &mut body.speed, "m/s")
+        value(ui, &mut body.speed, "m/s")
     });
     row(ui, tr("Reynolds number"), |ui| {
-        number(ui, &mut body.reynolds, "");
+        value(ui, &mut body.reynolds, "");
     });
     row(ui, tr("Reference length (0: along the stream)"), |ui| {
-        number(ui, &mut body.length, "m");
+        value(ui, &mut body.length, "m");
     });
     row(ui, tr("Tunnel ahead of the body"), |ui| {
-        number(ui, &mut body.upstream, "L");
+        value(ui, &mut body.upstream, "L");
     });
     row(ui, tr("Tunnel behind the body"), |ui| {
-        number(ui, &mut body.downstream, "L");
+        value(ui, &mut body.downstream, "L");
     });
     row(ui, tr("Tunnel at each side"), |ui| {
-        number(ui, &mut body.lateral, "L");
+        value(ui, &mut body.lateral, "L");
     });
     row(ui, tr("Base cells along the length"), |ui| {
         ui.add(DragValue::new(&mut body.cells).range(1..=200));
@@ -286,25 +271,25 @@ fn section_fields(
         ui.label(trf("{} closed outlines", &[&closed]));
     });
     row(ui, tr("Stream speed"), |ui| {
-        number(ui, &mut drawn.speed, "m/s")
+        value(ui, &mut drawn.speed, "m/s")
     });
     row(ui, tr("Kinematic viscosity"), |ui| {
-        number(ui, &mut drawn.viscosity, "m²/s");
+        value(ui, &mut drawn.viscosity, "m²/s");
     });
     row(ui, tr("Tunnel ahead of the body"), |ui| {
-        number(ui, &mut tunnel.upstream, "L");
+        value(ui, &mut tunnel.upstream, "L");
     });
     row(ui, tr("Tunnel behind the body"), |ui| {
-        number(ui, &mut tunnel.downstream, "L");
+        value(ui, &mut tunnel.downstream, "L");
     });
     row(ui, tr("Tunnel at each side"), |ui| {
-        number(ui, &mut tunnel.lateral, "L");
+        value(ui, &mut tunnel.lateral, "L");
     });
     row(ui, tr("Cell size at the body (0: automatic)"), |ui| {
-        number(ui, cell_size, "mm");
+        value(ui, cell_size, "mm");
     });
     row(ui, tr("Depth of the one cell"), |ui| {
-        number(ui, &mut drawn.thickness, "mm");
+        value(ui, &mut drawn.thickness, "mm");
     });
 }
 
@@ -343,12 +328,13 @@ fn preview(ui: &mut Ui, drawing: &Drawing) {
     }
 }
 
+/// A circle of radius 10 mm drawn in millimetres.
+#[cfg(test)]
+pub(super) const CIRCLE_DXF: &str = "0\nSECTION\n2\nHEADER\n9\n$INSUNITS\n70\n4\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n0\nCIRCLE\n8\n0\n10\n0\n20\n0\n40\n10\n0\nENDSEC\n0\nEOF\n";
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// A circle of radius 10 mm drawn in millimetres.
-    const CIRCLE: &str = "0\nSECTION\n2\nHEADER\n9\n$INSUNITS\n70\n4\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n0\nCIRCLE\n8\n0\n10\n0\n20\n0\n40\n10\n0\nENDSEC\n0\nEOF\n";
 
     /// An axis-aligned cube of side 1, as an ASCII STL.
     fn cube() -> String {
@@ -390,7 +376,7 @@ mod tests {
     fn a_drawing_becomes_a_flow_around_its_outlines() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("circle.dxf");
-        std::fs::write(&path, CIRCLE).unwrap();
+        std::fs::write(&path, CIRCLE_DXF).unwrap();
         let mut form = Imported {
             file: path.display().to_string(),
             ..Imported::default()
