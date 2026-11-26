@@ -1672,7 +1672,7 @@ fn load_icon(ctx: &Context) -> egui::TextureHandle {
 }
 
 impl VortiaApp {
-    fn icon(&mut self, ctx: &Context) -> &egui::TextureHandle {
+    pub(super) fn icon(&mut self, ctx: &Context) -> &egui::TextureHandle {
         self.icon.get_or_insert_with(|| load_icon(ctx))
     }
 }

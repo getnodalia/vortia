@@ -1047,6 +1047,13 @@ pub const ES: &[(&str, &str)] = &[
     ("{} cells", "{} celdas"),
     ("{} to {} s", "{} a {} s"),
     ("Version {}", "Versión {}"),
+    ("Vortia page", "Página de Vortia"),
+    ("GitHub", "GitHub"),
+    ("Report an issue", "Informar de un fallo"),
+    (
+        "Part of the Nodalia suite of open engineering tools.",
+        "Parte de la suite de herramientas de ingeniería abiertas de Nodalia.",
+    ),
     ("Saved to {}.", "Guardado en {}."),
     ("Saved to {}/{}.", "Guardado en {}/{}."),
     ("Running · {}", "En ejecución · {}"),
