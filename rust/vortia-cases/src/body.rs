@@ -7,9 +7,9 @@
 //! the one the model was drawn for. The four lateral sides are symmetry planes (a tunnel with
 //! slip walls), which is why they are kept far from the body.
 //!
-//! The wall is stepped (no snapping, no prism layers yet), so the drag of a body that sheds
-//! its flow from a smooth surface is overpredicted at the coarse levels; refine the surface
-//! and check that the numbers stop moving before trusting them.
+//! The wall is snapped onto the surface (no prism layers yet). The drag of a smooth body is
+//! within a few percent of published values on the sphere benchmark, not better; refine the
+//! surface and check that the numbers stop moving before trusting them.
 
 use vortia_mesh::bodymesh::{self, BodySpec, Region, SideKind};
 use vortia_mesh::stl::Stl;

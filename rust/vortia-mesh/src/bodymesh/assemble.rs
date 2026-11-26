@@ -356,6 +356,7 @@ pub(super) fn assemble(
         cells: cells.len(),
         faces: faces.len(),
         body_faces: counts.first().copied().unwrap_or(0),
+        snapping: Default::default(),
     };
     Ok((
         RawPolyMesh {

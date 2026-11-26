@@ -124,5 +124,6 @@ request with its tests and its benchmark; a feature release goes out per finishe
 | 2026-11-26 | Plan written | this document |
 | 2026-11-26 | B1–B2, B5 first stage: `vortia-mesh::bodymesh` (octree, 2:1 balance, stepped wall, tunnel patches) and `vortia new body DIR FILE.stl` (laminar, Spalart–Allmaras, k-ω SST) | in PR #247; mesh quality is checked by the existing `check-mesh` |
 | 2026-11-26 | Sphere at Re = 100: C_D 1.033, 1.017, 1.013 on 18 k, 62 k and 344 k cells against 1.09 published | **misses the reference by 7 %**; the gap does not close with refinement and its cause (stepped wall, hanging nodes, symmetry sides) is not yet separated. `benchmarks/sphere-drag-re100/` |
-| next | B3 snapping to the surface, then B4 prism layers, then re-run the sphere; a uniform-grid run to separate solver from mesh | not started |
+| B3 | snapping to the surface (`bodymesh::snap`); sphere Re = 100 C_D 1.107 / 1.124 / 1.135 (levels 3–5), against 1.09: the stepped −7 % became about +4 %, not closed | done, result not yet within 2 % |
+| next | B4 prism layers, then re-run the sphere; a uniform-grid run to separate solver from mesh (the viscous drag share, 52 %, looks high) | not started |
 | 2026-11-26 | A: OBJ reader (`vortia-mesh::obj`, hostile-input limits, quads fanned, negative indices), `Stl::load` by extension, `scale=` for millimetres; the Home page and `vortia new body` open OBJ as well as STL | in review; STEP/IGES/DXF, PLY and glTF not read yet |
