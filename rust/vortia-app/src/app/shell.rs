@@ -945,6 +945,8 @@ fn volume(flat: &str) -> Option<&str> {
         "solver" => "cfd-numerics",
         "parameters" => "cfd-schemes",
         "probe" => "cfd-probe",
+        // The Results step already names its volumetric icons.
+        name if name.starts_with("cfd-") => name,
         _ => return None,
     })
 }

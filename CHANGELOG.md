@@ -7,6 +7,11 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 
 ## [Unreleased]
 
+## [0.13.2] — 2026-11-26
+
+### Corregido
+- **Cinta de Resultados: los iconos vuelven y las etiquetas ya no se pisan:** los ocho botones (Resumen, Paredes, Fuerzas, Sondas, Línea, Sección, Comparar y Guardar informe) pedían iconos en volumen que la cinta no sabía dibujar y salían solo con texto. Ahora se dibujan, y la celda de una herramienta se ensancha si su etiqueta no cabe («Comparar» y «Guardar informe» se superponían). Lo segundo viene de `nodalia-theme` (nodalia-design #86).
+
 ## [0.13.1] — 2026-11-26
 
 ### Corregido
