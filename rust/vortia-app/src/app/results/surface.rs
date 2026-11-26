@@ -15,6 +15,7 @@ use super::analysis::write_report;
 use super::forces::axis_name;
 use super::{Results, Slot, card, plain, spawn, wait};
 use crate::app::{accent_button, corner, muted};
+use crate::facepaint::FacePaint;
 
 /// The most points a plot paints; a wall with more faces is thinned for the picture (the
 /// numbers and the CSV keep every face).
@@ -80,6 +81,7 @@ pub(super) fn surface_card(
     results: &mut Results,
 ) {
     let (mut ask, mut save) = (false, false);
+    let mut paint: Option<FacePaint> = None;
     card(ui, p, |ui| {
         ui.label(RichText::new(tr("Pressure and friction on the surface")).strong());
         ui.label(
@@ -137,6 +139,12 @@ pub(super) fn surface_card(
                     if ui.button(trf("Save {}", &[&"CSV"])).clicked() {
                         save = true;
                     }
+                    if ui.button(tr("Paint Cp on the body")).clicked() {
+                        paint = Some(FacePaint::from_report("Cp", report, |f| f.cp));
+                    }
+                    if ui.button(tr("Paint Cf on the body")).clicked() {
+                        paint = Some(FacePaint::from_report("Cf", report, |f| f.cf_stream));
+                    }
                     if let Some((ok, message)) = &results.saved_surface {
                         let tone = if *ok {
                             p.status_success_fg
@@ -173,6 +181,9 @@ pub(super) fn surface_card(
                 })
             }
         };
+    }
+    if paint.is_some() {
+        results.paint = paint;
     }
     if save && let Slot::Done(Ok(report)) = &results.surface {
         results.saved_surface = Some(write_report(

@@ -19,6 +19,8 @@ pub struct PatchSurface {
     pub kind: String,
     /// The faces of the patch that made it into the surface.
     pub faces: usize,
+    /// The mesh's number of the patch's first face.
+    start_face: usize,
     triangles: std::ops::Range<usize>,
     face_range: std::ops::Range<usize>,
     /// The edges that only one face of the patch has: its border.
@@ -32,6 +34,10 @@ pub struct Surface {
     triangles: Vec<[u32; 3]>,
     /// The cell each triangle's face belongs to.
     triangle_cells: Vec<u32>,
+    /// The face of the surface each triangle is a part of, and the face of the mesh each of
+    /// those is.
+    triangle_faces: Vec<u32>,
+    face_source: Vec<u32>,
     /// The first point of each face in `loops`, and one more at the end.
     face_starts: Vec<u32>,
     loops: Vec<u32>,
@@ -91,6 +97,13 @@ impl Surface {
                     .owner
                     .get(face_index)
                     .map_or(0, |&c| u32::try_from(c).unwrap_or(u32::MAX));
+                surface.triangle_faces.extend(std::iter::repeat_n(
+                    u32::try_from(surface.face_source.len()).unwrap_or(u32::MAX),
+                    triangles,
+                ));
+                surface
+                    .face_source
+                    .push(u32::try_from(face_index).unwrap_or(u32::MAX));
                 surface
                     .triangle_cells
                     .extend(std::iter::repeat_n(cell, triangles));
@@ -123,6 +136,12 @@ impl Surface {
             surface
                 .triangle_cells
                 .push(u32::try_from(n).unwrap_or(u32::MAX));
+            surface
+                .triangle_faces
+                .push(u32::try_from(surface.face_source.len()).unwrap_or(u32::MAX));
+            surface
+                .face_source
+                .push(u32::try_from(n).unwrap_or(u32::MAX));
             surface.loops.extend(triangle);
             surface.face_starts.push(surface.loops.len() as u32);
         }
@@ -132,6 +151,7 @@ impl Surface {
             name: name.to_owned(),
             kind: "wall".to_owned(),
             faces,
+            start_face: 0,
             triangles: 0..surface.triangles.len(),
             face_range: 0..faces,
             border: 0..0,
@@ -151,6 +171,7 @@ impl Surface {
             name: patch.name.clone(),
             kind: patch.kind.clone(),
             faces: last_face.saturating_sub(first_face),
+            start_face: patch.start_face,
             triangles: first_triangle..self.triangles.len(),
             face_range: first_face..last_face,
             border: 0..0,
@@ -460,6 +481,13 @@ impl Camera {
                         .triangle_cells
                         .get(first + offset)
                         .map_or(0, |&c| c as usize),
+                    face: surface
+                        .triangle_faces
+                        .get(first + offset)
+                        .and_then(|&f| surface.face_source.get(f as usize))
+                        .map_or(0, |&mesh_face| {
+                            (mesh_face as usize).saturating_sub(patch.start_face)
+                        }),
                 });
             }
         }
@@ -571,6 +599,8 @@ pub struct Projected {
     pub patch: usize,
     /// The cell the triangle's face belongs to.
     pub cell: usize,
+    /// The face of the triangle, counted from the first face of its patch in the mesh.
+    pub face: usize,
 }
 
 /// Whether the middle of the segment from `p` to `q` is on the side the cut takes away.
@@ -658,6 +688,27 @@ mod tests {
         assert_eq!(surface.extent, [1.0; 3]);
         assert_eq!(surface.radius, 0.5);
         assert!(!surface.truncated);
+    }
+
+    #[test]
+    fn each_triangle_knows_its_face_counted_from_the_start_of_its_patch() {
+        let surface = read_cube();
+        let camera = Camera {
+            yaw: 0.0,
+            pitch: 0.0,
+            ..Camera::default()
+        };
+        let mut faces: Vec<Vec<usize>> = vec![Vec::new(); 2];
+        for t in camera.project(&surface, [100.0, 100.0], &[]) {
+            faces[t.patch].push(t.face);
+        }
+        for list in &mut faces {
+            list.sort_unstable();
+        }
+        // Two triangles for each of the two faces of `sides` and each of the four of `rest`,
+        // and `rest` starts at mesh face 2 but its first face is face 0 of the patch.
+        assert_eq!(faces[0], [0, 0, 1, 1]);
+        assert_eq!(faces[1], [0, 0, 1, 1, 2, 2, 3, 3]);
     }
 
     #[test]

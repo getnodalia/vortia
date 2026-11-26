@@ -280,6 +280,9 @@ pub struct Results {
     surface_form: SurfaceForm,
     surface: Slot<SurfaceReport>,
     saved_surface: Option<(bool, String)>,
+    /// A quantity of the surface the person asked to see painted on the body; the case screen
+    /// takes it to the viewer.
+    pub(super) paint: Option<crate::facepaint::FacePaint>,
     saved_report: Option<(bool, String)>,
     /// The card the ribbon asked to be scrolled to.
     jump: Option<Card>,
