@@ -194,12 +194,13 @@ fn from_region(dir: &str, file: &str, settings: &[&str]) -> ExitCode {
     }
 }
 
-/// `vortia new body DIR FILE.stl [NAME=VALUE...]`: the flow around a closed surface in a wind
-/// tunnel, meshed by octree refinement.
+/// `vortia new body DIR FILE.stl|FILE.obj [scale=F] [NAME=VALUE...]`: the flow around a closed
+/// surface in a wind tunnel, meshed by octree refinement.
 fn from_body(dir: &str, file: &str, settings: &[&str]) -> ExitCode {
     let build = || -> Result<vortia_cases::Body, String> {
-        let surface = vortia_mesh::stl::Stl::read(Path::new(file)).map_err(|e| e.to_string())?;
-        let mut body = vortia_cases::Body::new(surface);
+        let mut surface =
+            vortia_mesh::stl::Stl::load(Path::new(file)).map_err(|e| e.to_string())?;
+        let mut rest = Vec::new();
         for setting in settings {
             let (name, value) = setting
                 .split_once('=')
@@ -207,6 +208,15 @@ fn from_body(dir: &str, file: &str, settings: &[&str]) -> ExitCode {
             let number: f64 = value
                 .parse()
                 .map_err(|_| format!("'{value}' in '{setting}' is not a number"))?;
+            // The unit of the file: 0.001 for millimetres.
+            if name == "scale" {
+                surface.scale(number).map_err(|e| e.to_string())?;
+            } else {
+                rest.push((name, number));
+            }
+        }
+        let mut body = vortia_cases::Body::new(surface);
+        for (name, number) in rest {
             body.set(name, number).map_err(|e| e.to_string())?;
         }
         Ok(body)

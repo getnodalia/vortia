@@ -139,7 +139,7 @@ pub fn load(path: &Path) -> Result<(About, Surface), String> {
         lines.extend(case_lines(&mesh, &surface));
         return Ok((About::Case(lines), surface));
     }
-    let stl = Stl::read(path).map_err(|e| e.to_string())?;
+    let stl = Stl::load(path).map_err(|e| e.to_string())?;
     let name = path
         .file_stem()
         .map_or_else(|| "STL".to_owned(), |n| n.to_string_lossy().into_owned());

@@ -94,6 +94,37 @@ impl Stl {
         }
     }
 
+    /// Reads a surface file by its extension: `.stl` or `.obj`, upper or lower case.
+    pub fn load(path: &Path) -> Result<Self> {
+        let extension = path
+            .extension()
+            .map(|e| e.to_string_lossy().to_ascii_lowercase());
+        match extension.as_deref() {
+            Some("stl") => Self::read(path),
+            Some("obj") => crate::obj::read(path),
+            // A file with another name may still be an STL.
+            _ => Self::read(path).map_err(|e| match e {
+                MeshError::Invalid(message) => MeshError::Invalid(format!(
+                    "{message}; surfaces are read from STL and OBJ files (STEP, IGES and DXF are not read yet)"
+                )),
+                other => other,
+            }),
+        }
+    }
+
+    /// Multiplies every coordinate by `factor` (a unit change, such as 0.001 for millimetres).
+    pub fn scale(&mut self, factor: f64) -> Result<()> {
+        if !factor.is_finite() || factor <= 0.0 {
+            return invalid(format!("the scale must be a positive number, not {factor}"));
+        }
+        for v in &mut self.vertices {
+            for c in v {
+                *c *= factor;
+            }
+        }
+        Ok(())
+    }
+
     fn corner(&self, index: u32) -> [f64; 3] {
         self.vertices
             .get(index as usize)
@@ -169,13 +200,13 @@ fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
 
 /// Merges coinciding vertices as the triangles are added.
 #[derive(Default)]
-struct Builder {
-    stl: Stl,
+pub(crate) struct Builder {
+    pub(crate) stl: Stl,
     index: HashMap<[u64; 3], u32>,
 }
 
 impl Builder {
-    fn vertex(&mut self, v: [f64; 3]) -> Result<u32> {
+    pub(crate) fn vertex(&mut self, v: [f64; 3]) -> Result<u32> {
         // -0.0 and 0.0 are one point.
         let key = v.map(|c| if c == 0.0 { 0 } else { c.to_bits() });
         if let Some(&i) = self.index.get(&key) {
@@ -189,7 +220,7 @@ impl Builder {
         Ok(i)
     }
 
-    fn triangle(&mut self, corners: [[f64; 3]; 3]) -> Result<()> {
+    pub(crate) fn triangle(&mut self, corners: [[f64; 3]; 3]) -> Result<()> {
         if self.stl.triangles.len() >= MAX_TRIANGLES {
             return invalid(format!("more than {MAX_TRIANGLES} triangles"));
         }

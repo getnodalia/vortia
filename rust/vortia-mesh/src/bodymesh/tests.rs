@@ -133,8 +133,8 @@ fn the_mesh_around_a_sphere_is_closed_and_the_volume_is_right() {
     );
     // Every boundary face together encloses the domain: their area vectors cancel.
     let mut sum = vortia_core::Vec3::new(0.0, 0.0, 0.0);
-    for f in mesh.n_internal_faces()..mesh.n_faces() {
-        sum = sum + geo.face_areas[f];
+    for area in &geo.face_areas[mesh.n_internal_faces()..mesh.n_faces()] {
+        sum = sum + *area;
     }
     assert!(sum.norm() < 1e-9, "the boundary does not close: {sum:?}");
     // The cells step through three sizes: 1, 0.5, 0.25 and 0.125 across the levels.
