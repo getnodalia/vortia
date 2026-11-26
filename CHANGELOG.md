@@ -7,6 +7,8 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 
 ## [Unreleased]
 
+## [0.15.0] — 2026-11-26
+
 ### Añadido
 
 - El visor 3D es ahora el protagonista: ocupa toda la zona central y las opciones de «Colorear por», instante, escala, corte, guardar imagen y parches flotan sobre la imagen en un panel que se puede ocultar (con la escala de color siempre a la vista). El panel «Caso» de la derecha queda como un raíl estrecho y se abre con un botón, o solo al elegir un parche.
