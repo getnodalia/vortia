@@ -12,9 +12,11 @@
 
 mod assemble;
 mod grid;
+mod layers;
 mod octree;
 mod snap;
 
+pub use layers::{LayerSpec, LayerStats, MAX_LAYERS, add_layers};
 pub use octree::Region;
 pub use snap::SnapStats;
 
@@ -83,6 +85,8 @@ pub struct BodySpec {
     pub body: String,
     /// Whether the wall is moved onto the surface (otherwise it stays stepped).
     pub snap: bool,
+    /// Prism layers grown from the wall (none when `None`).
+    pub layers: Option<LayerSpec>,
 }
 
 impl BodySpec {
@@ -110,6 +114,7 @@ impl BodySpec {
             ],
             body: "body".into(),
             snap: true,
+            layers: None,
         }
     }
 }
@@ -126,6 +131,8 @@ pub struct BodyStats {
     pub body_faces: usize,
     /// What snapping the wall to the surface did (all zero when it was off).
     pub snapping: snap::SnapStats,
+    /// What growing prism layers did (all zero when there were none).
+    pub layering: layers::LayerStats,
 }
 
 fn invalid<T>(message: impl Into<String>) -> Result<T> {
@@ -211,6 +218,16 @@ pub fn mesh_around(surface: &Stl, spec: &BodySpec) -> Result<(RawPolyMesh, BodyS
         let finest =
             size.iter().copied().fold(0.0, f64::max) / f64::from(1u32 << spec.surface_level);
         stats.snapping = snap::snap(&mut mesh, &grid, 2.5 * finest);
+    }
+    if let Some(layer_spec) = &spec.layers {
+        stats.layering = layers::add_layers(&mut mesh, &spec.body, layer_spec)?;
+        stats.cells += stats.layering.cells;
+        stats.faces = mesh.faces.len();
+        stats.body_faces = mesh
+            .patches
+            .iter()
+            .find(|p| p.name == spec.body)
+            .map_or(0, |p| p.n_faces);
     }
     Ok((mesh, stats))
 }

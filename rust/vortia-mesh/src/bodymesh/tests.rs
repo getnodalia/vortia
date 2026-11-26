@@ -312,3 +312,94 @@ fn snapping_puts_the_wall_on_the_sphere_and_keeps_the_mesh_valid() {
         512.0 - volume
     );
 }
+
+#[test]
+fn prism_layers_on_the_sphere_add_cells_and_keep_the_mesh_valid() {
+    let body = sphere([0.0; 3], 1.0, 4);
+    let mut spec = BodySpec::tunnel([-4.0; 3], [4.0; 3], [8; 3], 3);
+    let (plain_raw, plain_stats) = mesh_around(&body, &spec).unwrap();
+    let (plain, plain_geo) = mesh_of(plain_raw);
+    spec.layers = Some(LayerSpec {
+        count: 3,
+        first: 0.01,
+        ratio: 1.3,
+        reach: 0.5,
+    });
+    let (raw, stats) = mesh_around(&body, &spec).unwrap();
+    let (mesh, geo) = mesh_of(raw);
+    // Thin cells on a wall of skewed faces lean on each other, so some faces are more
+    // non-orthogonal than on the plain mesh; the mesh is still closed, valid and solvable.
+    let report = check(&mesh, &geo);
+    assert_eq!(report.non_positive_volumes, 0);
+    assert_eq!(report.open_cells, 0);
+    assert_eq!(report.wrongly_oriented, 0);
+    assert!(report.upper_triangular);
+    let worst = report.non_orthogonality.map_or(0.0, |s| s.max);
+    assert!(worst < 85.0, "worst non-orthogonality {worst} degrees");
+    assert_eq!(stats.layering.cells, 3 * plain_stats.body_faces);
+    assert_eq!(mesh.n_cells(), plain.n_cells() + stats.layering.cells);
+    assert_eq!(stats.cells, mesh.n_cells());
+    assert_eq!(stats.body_faces, plain_stats.body_faces);
+    assert!(stats.layering.mean > 0.0 && stats.layering.mean <= stats.layering.wanted + 1e-12);
+
+    // The wall is still the same size, the first layer is as thick as asked where it fits, and
+    // the layers take only the air next to the wall: the volume the body leaves is the same.
+    let wall_area = |m: &PolyMesh, g: &MeshGeometry| -> f64 {
+        m.patch("body")
+            .unwrap()
+            .faces()
+            .map(|f| g.face_areas[f].norm())
+            .sum()
+    };
+    let (a0, a1) = (wall_area(&plain, &plain_geo), wall_area(&mesh, &geo));
+    assert!((a0 - a1).abs() / a0 < 1e-9, "{a0} vs {a1}");
+    let (v0, v1): (f64, f64) = (
+        plain_geo.cell_volumes.iter().sum(),
+        geo.cell_volumes.iter().sum(),
+    );
+    assert!((v0 - v1).abs() / v0 < 1e-9, "{v0} vs {v1}");
+}
+
+#[test]
+fn layers_that_cannot_be_grown_are_refused_and_leave_the_mesh_alone() {
+    let body = sphere([0.0; 3], 1.0, 3);
+    let spec = BodySpec::tunnel([-4.0; 3], [4.0; 3], [8; 3], 3);
+    let (mut raw, _) = mesh_around(&body, &spec).unwrap();
+    let before = raw.clone();
+    let good = LayerSpec {
+        count: 2,
+        first: 0.01,
+        ratio: 1.2,
+        reach: 0.5,
+    };
+    for bad in [
+        LayerSpec {
+            count: 0,
+            ..good.clone()
+        },
+        LayerSpec {
+            count: MAX_LAYERS + 1,
+            ..good.clone()
+        },
+        LayerSpec {
+            first: 0.0,
+            ..good.clone()
+        },
+        LayerSpec {
+            first: f64::NAN,
+            ..good.clone()
+        },
+        LayerSpec {
+            ratio: 0.5,
+            ..good.clone()
+        },
+        LayerSpec {
+            reach: 0.0,
+            ..good.clone()
+        },
+    ] {
+        assert!(add_layers(&mut raw, "body", &bad).is_err(), "{bad:?}");
+    }
+    assert!(add_layers(&mut raw, "no-such-patch", &good).is_err());
+    assert_eq!(raw, before);
+}

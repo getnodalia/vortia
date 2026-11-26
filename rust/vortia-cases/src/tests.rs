@@ -1165,3 +1165,53 @@ fn a_body_runs_and_what_cannot_be_one_is_refused() {
     assert!(body.set("model", 7.0).is_err());
     assert!(body.set("nope", 1.0).is_err());
 }
+
+#[test]
+fn a_body_with_prism_layers_has_a_solvable_mesh_and_the_layers_are_sized_from_y_plus() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut body = small_body(BodyModel::Laminar);
+    body.layers = 2;
+    body.set("layer-growth", 1.3).unwrap();
+    let plain = create(
+        tempfile::tempdir().unwrap().path(),
+        &Geometry::Body(small_body(BodyModel::Laminar)),
+    )
+    .unwrap();
+    let made = create(dir.path(), &Geometry::Body(body.clone())).unwrap();
+    assert!(
+        made.cells > plain.cells,
+        "{} vs {}",
+        made.cells,
+        plain.cells
+    );
+    let mesh = PolyMesh::read_case(dir.path()).unwrap();
+    let report = check(&mesh, &MeshGeometry::compute(&mesh));
+    assert!(report.unsolvable().is_empty(), "{:?}", report.unsolvable());
+
+    // A target y+ sizes the first layer from the flat-plate friction.
+    let mut by_yplus = Body::new(unit_sphere(2));
+    by_yplus.reynolds = 1.0e6;
+    by_yplus.layers = 3;
+    by_yplus.yplus = 1.0;
+    let first = by_yplus.spec().unwrap().layers.unwrap().first;
+    assert!(first > 1.0e-6 && first < 1.0e-4, "first layer {first}");
+    by_yplus.yplus = 30.0;
+    let thicker = by_yplus.spec().unwrap().layers.unwrap().first;
+    assert!((thicker / first - 30.0).abs() < 1e-9);
+
+    for bad in [
+        ("layers", 1000.0),
+        ("layer-growth", 0.5),
+        ("layer-growth", 9.0),
+        ("yplus", -1.0e9),
+    ] {
+        let mut b = body.clone();
+        b.set(bad.0, bad.1).unwrap();
+        // A negative y+ is the same as none; everything else is refused.
+        if bad.0 == "yplus" {
+            assert!(b.spec().is_ok());
+        } else {
+            assert!(b.spec().is_err(), "{bad:?} was accepted");
+        }
+    }
+}

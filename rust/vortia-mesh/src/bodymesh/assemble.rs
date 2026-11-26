@@ -357,6 +357,7 @@ pub(super) fn assemble(
         faces: faces.len(),
         body_faces: counts.first().copied().unwrap_or(0),
         snapping: Default::default(),
+        layering: Default::default(),
     };
     Ok((
         RawPolyMesh {
