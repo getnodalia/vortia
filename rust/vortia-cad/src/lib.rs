@@ -19,6 +19,7 @@
 )]
 
 pub mod dxf;
+pub mod part;
 pub mod step;
 
 use std::path::Path;
