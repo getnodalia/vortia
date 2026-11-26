@@ -7,6 +7,9 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 
 ## [Unreleased]
 
+### Documentación
+- **Capturas del perfil NACA 2412 a 8°:** velocidad con líneas de corriente y presión (`docs/screenshots/results-airfoil-*.webp`), del caso que sale de `vortia new airfoil DIR naca=2412 alpha=8` y `vortia solve DIR` (20 480 celdas, converge en 1 280 iteraciones: C_L 1,066, C_D 0,0141, C_m 0,041, pico de succión C_p −3,37; una malla, sin validación).
+
 ### Añadido
 - **Archivos STEP como superficie (`vortia-cad`):** nuevo crate que lee los sólidos de un STEP con el kernel propio de Nodalia (`solidcore-step`, `solidcore-tess`, por dependencia git de `getnodalia/torno` fijada por revisión), los malla con las caras unidas por sus aristas y los pasa a metros según la unidad del archivo. `vortia new body DIR PIEZA.step` y la página de inicio de la app lo abren como STL u OBJ. Un archivo con varios sólidos da una superficie con todos (sirve como cuerpo solo si no se solapan); no hay ensamblajes con transformaciones ni IGES/DXF todavía. Prueba con un cilindro (volumen al 1 %, unidad respetada, malla de aire que pasa `checkMesh`).
 - **Esfera a Re = 100 en un túnel grande:** con 6 D aguas arriba, 15 D aguas abajo y 8 D a cada lado, el C_D es 1,084 / 1,101 / 1,111 en los niveles 3 / 4 / 5 (+3 % sobre 1,087 al extrapolar), así que el túnel pequeño explicaba unos 2 puntos del +4 % anterior; los correctores de no ortogonalidad no cambian nada. Detalle en `benchmarks/sphere-drag-re100/`.

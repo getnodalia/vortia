@@ -67,8 +67,14 @@ limit is listed in
 | <img src="docs/screenshots/menu-dark.webp" alt="The main menu open at the top of the side bar"> | <img src="docs/screenshots/preferences-dark.webp" alt="Preferences: appearance, language, theme and window controls"> |
 | Main menu: Preferences, Keyboard Shortcuts, About | Preferences, with Nodalia or desktop window controls |
 
-The results view shows the `examples/nozzle-practice-2026` case; the sketch is a
-nozzle made with the sketch's generator. `geometry-light.webp` and
+| <img src="docs/screenshots/results-airfoil-speed-dark.webp" alt="Speed field and streamlines around a NACA 2412 airfoil at 8 degrees"> | <img src="docs/screenshots/results-airfoil-pressure-dark.webp" alt="Pressure field around the same airfoil: suction above, stagnation at the nose"> |
+| Results: speed and streamlines around a NACA 2412 at 8° | Results: pressure, with the suction peak over the nose |
+
+The jet's results view shows the `examples/nozzle-practice-2026` case; the sketch is a
+nozzle made with the sketch's generator. The airfoil pictures come from
+`vortia new airfoil DIR naca=2412 alpha=8` and `vortia solve DIR` (about a minute on one
+core: 20 480 cells, converged in 1 280 iterations, C_L 1.066, C_D 0.0141, one mesh,
+no validation). `geometry-light.webp` and
 `results-speed-light.webp` are the same views in light mode. These are interface
 captures, not validation: see [`docs/VALIDATION.md`](docs/VALIDATION.md).
 
