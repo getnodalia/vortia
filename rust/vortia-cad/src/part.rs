@@ -7,10 +7,14 @@
 //! few lines. Lengths are in metres.
 
 use crate::dxf::{Drawing, Outline};
+use serde_json::{Value, json};
+use solidcore_ops::blend::{Blend, Corners, blend};
 use solidcore_ops::body::{Body, make_box, make_cone, make_cylinder, make_sphere, make_torus};
 use solidcore_ops::boolean::{BooleanOp, boolean};
+use solidcore_ops::pick::{self, Miss};
 use solidcore_ops::sweep::{Curve, DraftCorner, extrude, revolve};
 use solidcore_tess::{MeshTolerance, plan};
+use std::path::Path;
 use vortia_mesh::stl::Stl;
 use vortia_mesh::{MeshError, Result};
 
@@ -57,6 +61,18 @@ pub enum Shape {
         center: [f64; 3],
         major_radius: f64,
         minor_radius: f64,
+    },
+    /// Rounds the edges of what the part is so far, each the one nearest a point of the list
+    /// (within a millimetre), with a rolling ball of this radius. It needs something to round,
+    /// and its join is ignored.
+    Round {
+        points: Vec<[f64; 3]>,
+        size: f64,
+    },
+    /// Bevels those edges, the same distance back along both faces.
+    Chamfer {
+        points: Vec<[f64; 3]>,
+        size: f64,
     },
 }
 
@@ -230,6 +246,310 @@ pub fn outline_from_drawing(drawing: &Drawing) -> Result<Vec<[f64; 2]>> {
 /// The most corners an outline may have.
 pub const MAX_CORNERS: usize = 10_000;
 
+/// The most features a part file holds.
+pub const MAX_FEATURES: usize = 256;
+
+/// The largest part file read.
+const MAX_FILE_BYTES: u64 = 16 << 20;
+
+const FORMAT: &str = "vortia-part";
+
+fn bad(what: impl Into<String>) -> MeshError {
+    MeshError::Invalid(format!("the part file is not valid: {}", what.into()))
+}
+
+fn number(v: &Value, what: &str) -> Result<f64> {
+    v.as_f64()
+        .filter(|n| n.is_finite())
+        .ok_or_else(|| bad(format!("{what} is not a number")))
+}
+
+fn field<'a>(o: &'a Value, name: &str) -> Result<&'a Value> {
+    o.get(name)
+        .ok_or_else(|| bad(format!("`{name}` is missing")))
+}
+
+fn num(o: &Value, name: &str) -> Result<f64> {
+    number(field(o, name)?, name)
+}
+
+fn triple(o: &Value, name: &str) -> Result<[f64; 3]> {
+    match field(o, name)?.as_array().map(Vec::as_slice) {
+        Some([x, y, z]) => Ok([number(x, name)?, number(y, name)?, number(z, name)?]),
+        _ => Err(bad(format!("`{name}` is not three numbers"))),
+    }
+}
+
+fn points(o: &Value) -> Result<Vec<[f64; 3]>> {
+    let list = field(o, "points")?
+        .as_array()
+        .ok_or_else(|| bad("`points` is not a list"))?;
+    if list.len() > MAX_PICKS {
+        return Err(bad(format!("more than {MAX_PICKS} points")));
+    }
+    list.iter()
+        .map(|c| match c.as_array().map(Vec::as_slice) {
+            Some([x, y, z]) => Ok([
+                number(x, "a point")?,
+                number(y, "a point")?,
+                number(z, "a point")?,
+            ]),
+            _ => Err(bad("a point is not three numbers")),
+        })
+        .collect()
+}
+
+fn corners(o: &Value) -> Result<Vec<[f64; 2]>> {
+    let list = field(o, "corners")?
+        .as_array()
+        .ok_or_else(|| bad("`corners` is not a list"))?;
+    if list.len() > MAX_CORNERS {
+        return Err(bad(format!("more than {MAX_CORNERS} corners")));
+    }
+    list.iter()
+        .map(|c| match c.as_array().map(Vec::as_slice) {
+            Some([a, b]) => Ok([number(a, "a corner")?, number(b, "a corner")?]),
+            _ => Err(bad("a corner is not two numbers")),
+        })
+        .collect()
+}
+
+impl Shape {
+    fn to_json(&self) -> Value {
+        match self {
+            Shape::Box { origin, size } => {
+                json!({"shape": "box", "origin": origin, "size": size})
+            }
+            Shape::Cylinder {
+                origin,
+                radius,
+                height,
+            } => json!({"shape": "cylinder", "origin": origin, "radius": radius, "height": height}),
+            Shape::Cone {
+                origin,
+                base_radius,
+                top_radius,
+                height,
+            } => json!({"shape": "cone", "origin": origin, "base_radius": base_radius,
+                "top_radius": top_radius, "height": height}),
+            Shape::Sphere { center, radius } => {
+                json!({"shape": "sphere", "center": center, "radius": radius})
+            }
+            Shape::Torus {
+                center,
+                major_radius,
+                minor_radius,
+            } => json!({"shape": "torus", "center": center, "major_radius": major_radius,
+                "minor_radius": minor_radius}),
+            Shape::Round { points, size } => {
+                json!({"shape": "round", "points": points, "size": size})
+            }
+            Shape::Chamfer { points, size } => {
+                json!({"shape": "chamfer", "points": points, "size": size})
+            }
+            Shape::Extrude { corners, z, height } => {
+                json!({"shape": "extrude", "corners": corners, "z": z, "height": height})
+            }
+            Shape::Revolve {
+                corners,
+                center,
+                angle,
+            } => json!({"shape": "revolve", "corners": corners, "center": center, "angle": angle}),
+        }
+    }
+
+    fn from_json(o: &Value) -> Result<Self> {
+        let kind = field(o, "shape")?
+            .as_str()
+            .ok_or_else(|| bad("`shape` is not a name"))?;
+        Ok(match kind {
+            "box" => Shape::Box {
+                origin: triple(o, "origin")?,
+                size: triple(o, "size")?,
+            },
+            "cylinder" => Shape::Cylinder {
+                origin: triple(o, "origin")?,
+                radius: num(o, "radius")?,
+                height: num(o, "height")?,
+            },
+            "cone" => Shape::Cone {
+                origin: triple(o, "origin")?,
+                base_radius: num(o, "base_radius")?,
+                top_radius: num(o, "top_radius")?,
+                height: num(o, "height")?,
+            },
+            "sphere" => Shape::Sphere {
+                center: triple(o, "center")?,
+                radius: num(o, "radius")?,
+            },
+            "torus" => Shape::Torus {
+                center: triple(o, "center")?,
+                major_radius: num(o, "major_radius")?,
+                minor_radius: num(o, "minor_radius")?,
+            },
+            "round" => Shape::Round {
+                points: points(o)?,
+                size: num(o, "size")?,
+            },
+            "chamfer" => Shape::Chamfer {
+                points: points(o)?,
+                size: num(o, "size")?,
+            },
+            "extrude" => Shape::Extrude {
+                corners: corners(o)?,
+                z: num(o, "z")?,
+                height: num(o, "height")?,
+            },
+            "revolve" => Shape::Revolve {
+                corners: corners(o)?,
+                center: triple(o, "center")?,
+                angle: num(o, "angle")?,
+            },
+            other => return Err(bad(format!("`{other}` is not a shape"))),
+        })
+    }
+}
+
+impl Join {
+    fn name(self) -> &'static str {
+        match self {
+            Join::Add => "add",
+            Join::Cut => "cut",
+            Join::Keep => "keep",
+        }
+    }
+}
+
+impl Part {
+    /// The part as the JSON a file holds.
+    pub fn to_json(&self) -> Value {
+        let features: Vec<Value> = self
+            .features
+            .iter()
+            .map(|f| {
+                let mut o = f.shape.to_json();
+                if let Some(map) = o.as_object_mut() {
+                    map.insert("join".into(), f.join.name().into());
+                }
+                o
+            })
+            .collect();
+        json!({"format": FORMAT, "version": 1, "features": features})
+    }
+
+    /// A part from the JSON a file holds, every number checked.
+    pub fn from_json(value: &Value) -> Result<Self> {
+        if value.get("format").and_then(Value::as_str) != Some(FORMAT) {
+            return Err(bad("it is not a Vortia part"));
+        }
+        let list = field(value, "features")?
+            .as_array()
+            .ok_or_else(|| bad("`features` is not a list"))?;
+        if list.len() > MAX_FEATURES {
+            return Err(bad(format!("more than {MAX_FEATURES} features")));
+        }
+        let features = list
+            .iter()
+            .map(|o| {
+                let join = match field(o, "join")?.as_str() {
+                    Some("add") => Join::Add,
+                    Some("cut") => Join::Cut,
+                    Some("keep") => Join::Keep,
+                    _ => return Err(bad("`join` is not add, cut or keep")),
+                };
+                Ok(Feature {
+                    shape: Shape::from_json(o)?,
+                    join,
+                })
+            })
+            .collect::<Result<_>>()?;
+        Ok(Self { features })
+    }
+
+    /// Reads a part file.
+    pub fn open(path: &Path) -> Result<Self> {
+        let io = |e: std::io::Error| MeshError::Invalid(format!("{}: {e}", path.display()));
+        if std::fs::metadata(path).map_err(io)?.len() > MAX_FILE_BYTES {
+            return Err(bad("the file is too large"));
+        }
+        let text = std::fs::read_to_string(path).map_err(io)?;
+        let value: Value =
+            serde_json::from_str(&text).map_err(|e| bad(format!("not valid JSON: {e}")))?;
+        Self::from_json(&value)
+    }
+
+    /// Writes the part to `path`, through a temporary file so a failure leaves the old one.
+    pub fn save(&self, path: &Path) -> Result<()> {
+        let io = |e: std::io::Error| MeshError::Invalid(format!("{}: {e}", path.display()));
+        let text = serde_json::to_string_pretty(&self.to_json())
+            .map_err(|e| MeshError::Invalid(e.to_string()))?;
+        let mut tmp = path.as_os_str().to_owned();
+        tmp.push(".tmp");
+        let tmp = std::path::PathBuf::from(tmp);
+        std::fs::write(&tmp, format!("{text}\n")).map_err(io)?;
+        std::fs::rename(&tmp, path).map_err(io)
+    }
+}
+
+/// How far from an edge a point may be and still mean it, in metres.
+const PICK_TOLERANCE: f64 = 1.0e-3;
+
+/// The most edges one round or chamfer takes.
+pub const MAX_PICKS: usize = 64;
+
+impl Shape {
+    /// The kind, the pick points and the size of a round or a chamfer.
+    fn finish(&self) -> Option<(Blend, &[[f64; 3]], f64)> {
+        match self {
+            Shape::Round { points, size } => Some((Blend::Round, points, *size)),
+            Shape::Chamfer { points, size } => Some((Blend::Chamfer, points, *size)),
+            _ => None,
+        }
+    }
+}
+
+/// Rounds or bevels, in place, the edges of `body` nearest `points`.
+fn round_edges(
+    body: &Body,
+    kind: Blend,
+    points: &[[f64; 3]],
+    size: f64,
+    feature: usize,
+) -> Result<()> {
+    if points.is_empty() || points.len() > MAX_PICKS {
+        return Err(MeshError::Invalid(format!(
+            "feature {feature} takes 1 to {MAX_PICKS} edges, not {}",
+            points.len()
+        )));
+    }
+    if !size.is_finite() || size <= 0.0 {
+        return Err(MeshError::Invalid(format!(
+            "feature {feature}: the size of a round or chamfer is a positive length"
+        )));
+    }
+    let edges = match pick::edges(body, points, PICK_TOLERANCE)
+        .map_err(|e| refused(&format!("feature {feature} could not find its edges"), e))?
+    {
+        Ok(edges) => edges,
+        Err(Miss::None(i)) => {
+            return Err(MeshError::Invalid(format!(
+                "feature {feature}: point {} is not within a millimetre of an edge of the part",
+                i + 1
+            )));
+        }
+        Err(Miss::Ambiguous(i)) => {
+            return Err(MeshError::Invalid(format!(
+                "feature {feature}: point {} is as near to two edges: move it along its edge",
+                i + 1
+            )));
+        }
+    };
+    let sizes = vec![size; edges.len()];
+    blend(body, kind, &edges, &sizes, &[], Corners::Filled)
+        .map(|_| ())
+        .map_err(|e| refused(&format!("feature {feature} could not round its edges"), e))
+}
+
 impl Shape {
     fn solid(&self) -> Result<Body> {
         match *self {
@@ -263,6 +583,12 @@ impl Shape {
                 DraftCorner::Curvature,
                 true,
             ),
+            Shape::Round { .. } | Shape::Chamfer { .. } => {
+                return Err(MeshError::Invalid(
+                    "a round or a chamfer works on the part so far, not on a solid of its own"
+                        .into(),
+                ));
+            }
             Shape::Revolve {
                 ref corners,
                 center,
@@ -284,6 +610,17 @@ impl Part {
     pub fn build(&self) -> Result<Body> {
         let mut made: Option<Body> = None;
         for (n, feature) in self.features.iter().enumerate() {
+            if let Some((kind, points, size)) = feature.shape.finish() {
+                let body = made.take().ok_or_else(|| {
+                    MeshError::Invalid(format!(
+                        "feature {} rounds or bevels edges, and there is nothing yet",
+                        n + 1
+                    ))
+                })?;
+                round_edges(&body, kind, points, size, n + 1)?;
+                made = Some(body);
+                continue;
+            }
             let solid = feature.shape.solid()?;
             made = Some(match (made, feature.join) {
                 (None, Join::Add) => solid,
