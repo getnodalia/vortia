@@ -27,6 +27,7 @@ mod channel;
 mod drawn;
 mod error;
 mod files;
+mod heating;
 mod jet;
 mod nozzle;
 mod plate;
@@ -39,6 +40,7 @@ pub use cavity::Cavity;
 pub use channel::Channel;
 pub use drawn::Drawn;
 pub use error::{CaseError, Result};
+pub use heating::{Heating, material_names};
 pub use jet::Jet;
 pub use nozzle::{Nozzle, NozzleKind};
 pub use plate::Plate;
@@ -89,6 +91,8 @@ impl Geometry {
 pub struct Created {
     pub cells: usize,
     pub points: usize,
+    /// The cells of the solid written beside the fluid (0 when the case has none).
+    pub solid_cells: usize,
     /// The solver the case's `controlDict` names.
     pub application: &'static str,
 }
@@ -116,9 +120,14 @@ pub fn create(dir: &Path, geometry: &Geometry) -> Result<Created> {
         Some(raw) => files::write_raw(dir, raw)?,
         None => files::mesh(dir, &set.block_mesh_dict)?,
     };
+    let solid_cells = match &set.solid_mesh {
+        Some(raw) => files::write_solid(dir, raw)?.cells,
+        None => 0,
+    };
     Ok(Created {
         cells: mesh.cells,
         points: mesh.points,
+        solid_cells,
         application: set.application,
     })
 }

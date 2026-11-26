@@ -18,7 +18,7 @@ pub mod buoyant;
 pub mod cancel;
 pub mod case;
 pub(crate) mod coded;
-pub(crate) mod conjugate;
+pub mod conjugate;
 pub mod control;
 pub(crate) mod convergence;
 pub(crate) mod driven;

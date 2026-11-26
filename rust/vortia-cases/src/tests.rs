@@ -1288,3 +1288,112 @@ fn a_body_with_prism_layers_has_a_solvable_mesh_and_the_layers_are_sized_from_y_
         }
     }
 }
+
+fn heated_sphere(heat: f64) -> Body {
+    let mut body = small_body(BodyModel::Laminar);
+    body.set_material("aluminium").unwrap();
+    body.set("heat", heat).unwrap();
+    body
+}
+
+/// A body with a material and a heat gets a second region: the body's own mesh, its
+/// temperature and its properties, and a `conjugate` wall on the air's temperature.
+#[test]
+fn a_heated_body_is_written_as_a_solid_beside_the_air() {
+    let dir = tempfile::tempdir().unwrap();
+    let made = create(dir.path(), &Geometry::Body(heated_sphere(10.0))).unwrap();
+    assert!(made.solid_cells > 10, "{made:?}");
+    let solid = PolyMesh::from_raw(
+        vortia_foamfile::RawPolyMesh::read_dir(dir.path().join("constant/solid/polyMesh")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(solid.n_cells(), made.solid_cells);
+    let geo = MeshGeometry::compute(&solid);
+    assert!(check(&solid, &geo).unsolvable().is_empty());
+    let sphere = std::f64::consts::PI / 6.0;
+    assert!(
+        (geo.total_volume() - sphere).abs() < 0.2 * sphere,
+        "{} for a sphere of {sphere}",
+        geo.total_volume()
+    );
+    let t = read(dir.path(), "0/T");
+    assert!(t.contains("conjugate") && t.contains("fixedValue") && t.contains("inletOutlet"));
+    assert!(read(dir.path(), "0/solid/T").contains("conjugate"));
+    let properties = read(dir.path(), "constant/solid/solidProperties");
+    assert!(properties.contains("k               237"), "{properties}");
+    // Q is the heat over the volume of the solid's mesh.
+    let q: f64 = properties
+        .lines()
+        .find_map(|l| l.strip_prefix("Q"))
+        .and_then(|v| v.trim().trim_end_matches(';').parse().ok())
+        .unwrap();
+    assert!((q * geo.total_volume() - 10.0).abs() < 1e-6, "{q}");
+    let transport = read(dir.path(), "constant/transportProperties");
+    assert!(transport.contains("Pr ") && transport.contains("rhoCp"));
+    assert!(read(dir.path(), "system/fvSchemes").contains("div(phi,T)"));
+}
+
+/// Run on, the heat that the body gives off leaves through the wall into the air: what the
+/// solid receives from the generation is what the fluid takes, and the body ends hotter than
+/// the air.
+#[test]
+fn a_heated_body_gives_its_heat_to_the_air() {
+    let dir = tempfile::tempdir().unwrap();
+    create(dir.path(), &Geometry::Body(heated_sphere(10.0))).unwrap();
+    end_at(dir.path(), 400);
+    let case = vortia_solvers::Case::open(dir.path()).unwrap();
+    let mut log = Vec::new();
+    vortia_solvers::run(&case, |line| log.push(line.to_owned())).unwrap();
+    let line = log
+        .iter()
+        .rev()
+        .find(|l| l.starts_with("conjugate:"))
+        .expect("the run logs the heat balance");
+    let numbers: Vec<f64> = line
+        .split_whitespace()
+        .filter_map(|w| w.parse().ok())
+        .collect();
+    let (from_fluid, into_solid, hottest) = (numbers[0], numbers[1], numbers[2]);
+    assert!(
+        (from_fluid - into_solid).abs() < 0.02 * into_solid.abs() + 1e-9,
+        "{line}"
+    );
+    // The sphere generates 10 W, so the air takes 10 W from it (heat flowing into the air is
+    // heat leaving the solid, which the log counts as negative).
+    assert!((into_solid + 10.0).abs() < 0.2, "{line}");
+    assert!(hottest > heating_ambient(), "{line}");
+}
+
+fn heating_ambient() -> f64 {
+    Body::new(unit_sphere(1)).ambient
+}
+
+#[test]
+fn a_body_that_conducts_needs_a_known_material_or_a_conductivity() {
+    let mut body = small_body(BodyModel::Laminar);
+    let err = body.set_material("unobtainium").unwrap_err().to_string();
+    assert!(
+        err.contains("aluminium") && err.contains("unobtainium"),
+        "{err}"
+    );
+    body.set("heat", 5.0).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let err = create(dir.path(), &Geometry::Body(body))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("conductivity"), "{err}");
+    let mut body = small_body(BodyModel::Laminar);
+    body.set("conductivity", -3.0).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    assert!(create(dir.path(), &Geometry::Body(body)).is_err());
+}
+
+/// Without a material the body stays a plain wall: no solid, no temperature.
+#[test]
+fn a_body_without_a_material_has_no_solid() {
+    let dir = tempfile::tempdir().unwrap();
+    let made = create(dir.path(), &Geometry::Body(small_body(BodyModel::Laminar))).unwrap();
+    assert_eq!(made.solid_cells, 0);
+    assert!(!dir.path().join("constant/solid").exists());
+    assert!(!dir.path().join("0/T").exists());
+}

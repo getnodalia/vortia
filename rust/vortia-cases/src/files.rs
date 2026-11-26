@@ -31,6 +31,8 @@ pub(crate) struct FileSet {
     pub block_mesh_dict: String,
     /// A mesh made without a `blockMeshDict` (the unstructured mesher's), written as it is.
     pub raw_mesh: Option<vortia_foamfile::RawPolyMesh>,
+    /// The mesh of a solid beside the fluid, written to `constant/solid/polyMesh`.
+    pub solid_mesh: Option<vortia_foamfile::RawPolyMesh>,
     pub application: &'static str,
 }
 
@@ -65,6 +67,16 @@ pub(crate) fn mesh(dir: &Path, text: &str) -> Result<MeshSize> {
     let raw =
         vortia_mesh::blockmesh::block_mesh(&dict).map_err(|e| CaseError::Mesh(e.to_string()))?;
     raw.write_case(dir)
+        .map_err(|e| CaseError::Io(e.to_string()))?;
+    Ok(MeshSize {
+        cells: raw.owner.iter().max().map_or(0, |m| m + 1),
+        points: raw.points.len(),
+    })
+}
+
+/// Writes the mesh of a solid into `constant/solid/polyMesh`.
+pub(crate) fn write_solid(dir: &Path, raw: &vortia_foamfile::RawPolyMesh) -> Result<MeshSize> {
+    raw.write_dir(dir.join("constant").join("solid").join("polyMesh"))
         .map_err(|e| CaseError::Io(e.to_string()))?;
     Ok(MeshSize {
         cells: raw.owner.iter().max().map_or(0, |m| m + 1),

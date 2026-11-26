@@ -295,15 +295,23 @@ fn from_section(dir: &str, file: &str, settings: &[&str]) -> ExitCode {
 
 /// `vortia new body DIR FILE.stl|.obj|.step [scale=F] [NAME=VALUE...]`: the flow around a closed
 /// surface in a wind tunnel, meshed by octree refinement. A STEP file carries its own unit; an
-/// STL or OBJ is in metres unless `scale` says otherwise (0.001 for millimetres).
+/// STL or OBJ is in metres unless `scale` says otherwise (0.001 for millimetres). `solid=MATERIAL`
+/// (or `conductivity=W/mK`) makes the body a solid that conducts heat to the air, and `heat=W`
+/// is the heat it generates; `vortia solid DIR` reads the result.
 fn from_body(dir: &str, file: &str, settings: &[&str]) -> ExitCode {
     let build = || -> Result<vortia_cases::Body, String> {
         let mut surface = vortia_cad::load(Path::new(file)).map_err(|e| e.to_string())?;
         let mut rest = Vec::new();
+        let mut material = None;
         for setting in settings {
             let (name, value) = setting
                 .split_once('=')
                 .ok_or_else(|| format!("'{setting}' is not NAME=VALUE"))?;
+            // The material the body is made of is a word, not a number.
+            if name == "solid" {
+                material = Some(value);
+                continue;
+            }
             let number: f64 = value
                 .parse()
                 .map_err(|_| format!("'{value}' in '{setting}' is not a number"))?;
@@ -315,6 +323,9 @@ fn from_body(dir: &str, file: &str, settings: &[&str]) -> ExitCode {
             }
         }
         let mut body = vortia_cases::Body::new(surface);
+        if let Some(name) = material {
+            body.set_material(name).map_err(|e| e.to_string())?;
+        }
         for (name, number) in rest {
             body.set(name, number).map_err(|e| e.to_string())?;
         }
@@ -344,10 +355,18 @@ fn from_body(dir: &str, file: &str, settings: &[&str]) -> ExitCode {
                     )
                 },
             );
+            let solid = if made.solid_cells > 0 {
+                format!(
+                    " and the solid body ({} cells, in constant/solid); `vortia solid {dir}` reads its temperatures and the heat through its wall",
+                    made.solid_cells
+                )
+            } else {
+                String::new()
+            };
             let _ = std::io::Write::write_fmt(
                 &mut std::io::stdout(),
                 format_args!(
-                    "Wrote the flow around the body ({} cells, {} points) to {dir}; run it with `vortia solve {dir}` ({}), then {forces}\n",
+                    "Wrote the flow around the body ({} cells, {} points){solid} to {dir}; run it with `vortia solve {dir}` ({}), then {forces}\n",
                     made.cells, made.points, made.application,
                 ),
             );

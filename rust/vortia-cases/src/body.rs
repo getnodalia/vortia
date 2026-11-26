@@ -17,6 +17,7 @@ use vortia_mesh::stl::Stl;
 use crate::channel::laminar_settings;
 use crate::error::{CaseError, Result};
 use crate::files::{File, FileSet, header};
+use crate::heating::{self, Heating};
 use crate::{MAX_CELLS, count, size};
 
 /// What the flow around the body is solved with.
@@ -68,6 +69,15 @@ pub struct Body {
     /// Whether a surface made of named parts gets a wall patch for each (`body_<part>`), so the
     /// forces can be read for each; off, or with fewer than two parts, the wall is one patch.
     pub by_part: bool,
+    /// The body as a solid that conducts heat to the air (conjugate heat transfer); `None`
+    /// leaves it a plain wall.
+    pub heating: Option<Heating>,
+    /// The temperature of the stream and of the body at the start, in K.
+    pub ambient: f64,
+    /// The Prandtl number of the air.
+    pub prandtl: f64,
+    /// The air's density times its specific heat, in J/m³K.
+    pub rho_cp: f64,
 }
 
 impl Body {
@@ -90,7 +100,20 @@ impl Body {
             layer_growth: 1.2,
             yplus: 0.0,
             by_part: true,
+            heating: None,
+            ambient: heating::AMBIENT,
+            prandtl: heating::PRANDTL,
+            rho_cp: heating::AIR_RHO_CP,
         }
+    }
+
+    /// Makes the body a solid of a named material (see [`heating::materials`]).
+    pub fn set_material(&mut self, name: &str) -> Result<()> {
+        let conductivity = heating::conductivity(name)?;
+        self.heating
+            .get_or_insert_with(Heating::default)
+            .conductivity = conductivity;
+        Ok(())
     }
 
     pub fn set(&mut self, name: &str, value: f64) -> Result<()> {
@@ -106,6 +129,15 @@ impl Body {
             "layer-growth" => self.layer_growth = value,
             "yplus" => self.yplus = value,
             "by-part" => self.by_part = value != 0.0,
+            "conductivity" => {
+                self.heating
+                    .get_or_insert_with(Heating::default)
+                    .conductivity = value;
+            }
+            "heat" => self.heating.get_or_insert_with(Heating::default).heat = value,
+            "ambient" => self.ambient = value,
+            "prandtl" => self.prandtl = value,
+            "rho-cp" => self.rho_cp = value,
             "layers" => self.layers = crate::whole(name, value)?,
             "cells" => self.cells = crate::whole(name, value)?,
             "levels" => {
@@ -189,6 +221,7 @@ impl Body {
         );
         spec.max_cells = MAX_CELLS as usize;
         spec.by_part = self.by_part;
+        spec.solid = self.heating.is_some();
         for side in spec.sides.iter_mut().skip(2) {
             side.kind = SideKind::Symmetry;
         }
@@ -248,7 +281,15 @@ impl Body {
         let extent = self.surface.summary().high[0] - self.surface.summary().low[0];
         let length = self.reference_length(extent);
         let nu = speed * length / reynolds;
-        let (raw, stats) = bodymesh::mesh_around(&self.surface, &spec)
+        let heating = self
+            .heating
+            .map(|h| h.checked(self.ambient, self.prandtl, self.rho_cp))
+            .transpose()?;
+        let bodymesh::BodyMeshes {
+            fluid: raw,
+            solid,
+            stats,
+        } = bodymesh::mesh_body(&self.surface, &spec)
             .map_err(|e| CaseError::Mesh(e.to_string()))?;
         // The wall is one patch, or one for each part of the surface.
         let walls: Vec<String> = if stats.parts.is_empty() {
@@ -262,17 +303,22 @@ impl Body {
             _ => self.turbulent_settings(nu),
         };
         files.extend(self.fields(&spec, &walls, speed, nu, intensity));
+        if let (Some(heating), Some(solid)) = (heating, &solid) {
+            heating.amend(&mut files)?;
+            files.extend(heating.files(&spec, &walls, solid)?);
+        }
         Ok(FileSet {
             files,
             block_mesh_dict: String::new(),
             raw_mesh: Some(raw),
+            solid_mesh: solid,
             application: "simpleFoam",
         })
     }
 
     /// The patch dictionaries of one field: the body (`walls`, one patch or one per part), the
     /// inlet, the outlet and the four sides.
-    fn field(
+    pub(crate) fn field(
         class: &str,
         name: &str,
         dims: &str,
@@ -310,6 +356,7 @@ impl Body {
                 "nuTilda" => "0/nuTilda",
                 "nut" => "0/nut",
                 "k" => "0/k",
+                "T" => "0/T",
                 _ => "0/omega",
             },
             text: format!(

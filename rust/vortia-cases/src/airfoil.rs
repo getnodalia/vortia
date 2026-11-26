@@ -524,6 +524,7 @@ impl Airfoil {
             files,
             block_mesh_dict,
             raw_mesh: None,
+            solid_mesh: None,
             application: "simpleFoam",
         })
     }

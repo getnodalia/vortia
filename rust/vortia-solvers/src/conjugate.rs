@@ -12,6 +12,8 @@
 //! `chtMultiRegionFoam`'s coupling for a steady run; when it has converged the two heat
 //! flows are the same number, whatever the meshes (the faces are the same faces).
 //!
+//! [`report`] reads back what a run left in the solid.
+//!
 //! The flow does not depend on the temperature (no buoyancy), so only the two temperature
 //! equations are iterated.
 
@@ -362,12 +364,127 @@ impl Conjugate {
         solve_line(&perf.0, &perf.1)
     }
 
-    /// Writes the solid's `T` into `<dir>/<time>/solid`.
+    /// Writes the solid's `T` into `<dir>/<time>/solid`, with the temperature of its wall on
+    /// the interface.
     pub(crate) fn write(&self, dir: &Path, time: &str) -> Result<()> {
         let mut out = self.file.clone();
         out.internal = Data::NonUniform(self.t.clone());
+        let n_internal = self.mesh.n_internal_faces();
+        let mut wall = vec![None; self.mesh.n_faces().saturating_sub(n_internal)];
+        let faces = self.solid.patch_temperature(
+            &self.mesh,
+            &self.fv,
+            &self.t,
+            self.numerics.sn_grad,
+            self.interface,
+        );
+        if let Some(patch) = self.mesh.patches().get(self.interface) {
+            for (f, tf) in patch.faces().zip(faces) {
+                if let Some(slot) = f.checked_sub(n_internal).and_then(|b| wall.get_mut(b)) {
+                    *slot = tf;
+                }
+            }
+        }
+        out.store_patch_values(&self.mesh, &["conjugate"], &wall);
         out.drop_zero_gradient_values();
         out.write(dir.join(time), "solid")?;
         Ok(())
     }
+}
+
+/// What a run left in the solid: its temperatures and the heat that crossed its wall.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SolidReport {
+    pub time: String,
+    pub cells: usize,
+    /// The solid's volume, in m³.
+    pub volume: f64,
+    /// Thermal conductivity, in W/mK.
+    pub conductivity: f64,
+    /// The heat generated inside, in W.
+    pub generated: f64,
+    pub t_min: f64,
+    /// The mean over the volume.
+    pub t_mean: f64,
+    pub t_max: f64,
+    /// The area of the wall it shares with the fluid, in m².
+    pub wall_area: f64,
+    /// The mean temperature of that wall (by area).
+    pub wall_mean: f64,
+    /// The heat that leaves the solid through the wall, in W.
+    pub heat_out: f64,
+}
+
+/// The solid of `case_dir` as the solver left it at `time`.
+pub fn report(case_dir: &Path, time: &str) -> Result<SolidReport> {
+    let dir = case_dir.join("constant").join("solid");
+    let props = read_dict(&dir.join("solidProperties"))?;
+    let number = |key: &str, default: f64| props.scalar(key).unwrap_or(default);
+    let k = number("k", f64::NAN);
+    if !k.is_finite() {
+        return setup("solidProperties has no valid 'k'");
+    }
+    let generation = number("Q", 0.0);
+    let interface_name = props.word("interface").unwrap_or("body").to_owned();
+    let mesh = PolyMesh::from_raw(RawPolyMesh::read_dir(dir.join("polyMesh"))?)?;
+    let fv = FvGeometry::new(&mesh);
+    let file = ScalarField::read(case_dir.join(time).join("solid").join("T"))?;
+    file.check_against(&mesh)?;
+    let t = file
+        .internal
+        .expand(mesh.n_cells())
+        .ok_or_else(|| SolverError::Setup("the solid's T does not fit its mesh".into()))?;
+    let volumes = &fv.geo.cell_volumes;
+    let volume: f64 = volumes.iter().sum();
+    if !(volume.is_finite() && volume > 0.0) {
+        return setup("the solid has no volume");
+    }
+    let (t_min, t_max) = t
+        .iter()
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(l, h), &v| {
+            (l.min(v), h.max(v))
+        });
+    let t_mean = t.iter().zip(volumes).map(|(t, v)| t * v).sum::<f64>() / volume;
+
+    let patch = mesh
+        .patches()
+        .iter()
+        .find(|p| p.name == interface_name)
+        .ok_or_else(|| SolverError::Setup(format!("the solid has no patch '{interface_name}'")))?;
+    let walls = file
+        .patch_field(patch)
+        .and_then(|pf| pf.value.as_ref())
+        .and_then(|v| v.expand(patch.size))
+        .ok_or_else(|| {
+            SolverError::Setup(format!(
+                "the solid's T has no wall temperature on '{interface_name}': run the case first"
+            ))
+        })?;
+    let dc = SnGrad::Corrected.coeffs(&fv);
+    let (mut area, mut weighted, mut heat) = (0.0, 0.0, 0.0);
+    for (f, &tw) in patch.faces().zip(&walls) {
+        let a = fv.mag_sf.get(f).copied().unwrap_or(0.0);
+        let inside = mesh
+            .owner()
+            .get(f)
+            .and_then(|&c| t.get(c))
+            .copied()
+            .unwrap_or(tw);
+        area += a;
+        weighted += a * tw;
+        heat += k * dc.get(f).copied().unwrap_or(0.0) * (inside - tw) * a;
+    }
+    Ok(SolidReport {
+        time: time.to_owned(),
+        cells: mesh.n_cells(),
+        volume,
+        conductivity: k,
+        generated: generation * volume,
+        t_min,
+        t_mean,
+        t_max,
+        wall_area: area,
+        wall_mean: if area > 0.0 { weighted / area } else { 0.0 },
+        heat_out: heat,
+    })
 }
