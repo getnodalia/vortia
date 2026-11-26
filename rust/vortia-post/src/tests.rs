@@ -1264,3 +1264,85 @@ fn a_gas_needs_its_reference_density_for_the_coefficients() {
     assert!((value("pressureLift") + 400.0).abs() < 1e-9);
     assert!((value("cd") - 0.16 / 16.0).abs() < 1e-12);
 }
+
+#[test]
+fn the_coefficients_on_a_wall_are_the_pressure_and_the_stress_over_the_dynamic_pressure() {
+    use crate::ForceReference;
+    let (dir, case) = case();
+    constant(&dir, "transportProperties", "nu [0 2 -1 0 0 0 0] 0.01;");
+    write(
+        &dir,
+        "U",
+        "volVectorField",
+        "uniform (2 0 0)",
+        &[("yMin", "type noSlip;")],
+    );
+    write(
+        &dir,
+        "p",
+        "volScalarField",
+        "uniform 3",
+        &[("yMin", "type calculated; value uniform 3;")],
+    );
+    let reference = ForceReference {
+        speed: 2.0,
+        ..ForceReference::default()
+    };
+    let walls = ["yMin".to_owned()];
+    let report = case
+        .surface_coefficients("0", &walls, &reference, 0.0)
+        .unwrap();
+    // q = ½ U² = 2 per unit density; the wall has 4 unit faces.
+    assert_eq!(report.faces.len(), 4);
+    assert_eq!(report.patches, vec![("yMin".to_owned(), 4)]);
+    assert!((report.dynamic_pressure - 2.0).abs() < 1e-12);
+    for f in &report.faces {
+        assert!((f.cp - 1.5).abs() < 1e-12, "{f:?}");
+        assert!((f.cf - 0.02).abs() < 1e-12 && (f.cf_stream - 0.02).abs() < 1e-12);
+        assert!((f.area - 1.0).abs() < 1e-12);
+        // The normal points out of the fluid, down through the wall at y = 0.
+        assert!((f.normal.y + 1.0).abs() < 1e-12);
+    }
+    assert_eq!(report.cp_range(), Some((1.5, 1.5)));
+    assert_eq!(report.reversed_area(), 0.0);
+    let csv = report.csv();
+    assert!(csv.starts_with("patch,x,y,z,"));
+    assert_eq!(csv.lines().count(), 5);
+
+    // The free-stream pressure is taken off, and against the stream the friction is negative.
+    let shifted = case
+        .surface_coefficients("0", &walls, &reference, 3.0)
+        .unwrap();
+    assert_eq!(shifted.cp_range(), Some((0.0, 0.0)));
+    let back = ForceReference {
+        drag: Vec3::new(-1.0, 0.0, 0.0),
+        ..reference.clone()
+    };
+    let reversed = case.surface_coefficients("0", &walls, &back, 0.0).unwrap();
+    assert!(reversed.faces.iter().all(|f| f.cf_stream < 0.0));
+    assert!((reversed.reversed_area() - 4.0).abs() < 1e-12);
+
+    // What cannot be asked is said.
+    assert!(
+        case.surface_coefficients("0", &[], &reference, 0.0)
+            .is_err()
+    );
+    assert!(
+        case.surface_coefficients("0", &["nope".to_owned()], &reference, 0.0)
+            .is_err()
+    );
+    let twice = ["yMin".to_owned(), "yMin".to_owned()];
+    assert!(
+        case.surface_coefficients("0", &twice, &reference, 0.0)
+            .is_err()
+    );
+    let still = ForceReference {
+        speed: 0.0,
+        ..reference.clone()
+    };
+    assert!(case.surface_coefficients("0", &walls, &still, 0.0).is_err());
+    assert!(
+        case.surface_coefficients("0", &walls, &reference, f64::NAN)
+            .is_err()
+    );
+}
