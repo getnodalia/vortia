@@ -7,17 +7,14 @@ use eframe::egui::{
 };
 
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Receiver;
-
-use vortia_post::Case;
 
 use crate::edgepick::{self, FeatureEdge};
 use crate::facepaint::FacePaint;
 use crate::fieldview::{self, CellValues};
 use crate::flowlines::{self, FlowLines};
-use crate::section::{self, Section};
+use crate::section::{self, Loaded, Section};
 use crate::surface::{Camera, Cut, Surface};
 
 /// Outlines are drawn for surfaces up to this many faces; beyond it they would cost more than
@@ -101,8 +98,12 @@ pub struct Viewer {
     /// Where the plane is, 0 to 1 of the way through the mesh.
     slice_pos: f32,
     /// The case, read once for the sections.
-    case: Option<Arc<Case>>,
-    case_rx: Option<Receiver<Result<Arc<Case>, String>>>,
+    case: Option<Loaded>,
+    case_rx: Option<Receiver<Result<Loaded, String>>>,
+    /// The field in the solid region of a conjugate heat transfer case, for its cut.
+    solid_values: Option<Result<CellValues, String>>,
+    solid_rx: Option<Receiver<Result<CellValues, String>>>,
+    solid_requested: Option<(String, String)>,
     section: Option<Result<Section, String>>,
     section_rx: Option<Receiver<Result<Section, String>>>,
     /// The axis and position (in thousandths) the section shown, or the one in flight, is of.
@@ -160,6 +161,9 @@ impl Viewer {
             slice_pos: 0.5,
             case: None,
             case_rx: None,
+            solid_values: None,
+            solid_rx: None,
+            solid_requested: None,
             section: None,
             section_rx: None,
             section_asked: None,
@@ -204,6 +208,18 @@ impl Viewer {
     pub fn colour_by(&mut self, field: Option<&str>, time: Option<&str>) {
         self.field = field.map(str::to_owned);
         self.time = time.map(str::to_owned);
+    }
+
+    /// Opens the section through the volume across `axis` (0 to 2), `at` (0 to 1) of the way
+    /// through the mesh.
+    pub fn show_slice(&mut self, axis: usize, at: f32) {
+        self.slice = true;
+        self.slice_axis = axis.min(2);
+        self.slice_pos = if at.is_finite() {
+            at.clamp(0.0, 1.0)
+        } else {
+            0.5
+        };
     }
 
     /// Paints a number for each face of some walls on the surface (`None`: back to the field).
@@ -276,8 +292,12 @@ impl Viewer {
         if !(self.slice && self.field.is_some()) {
             self.camera.cut = None;
             self.section_asked = None;
+            self.solid_values = None;
+            self.solid_rx = None;
+            self.solid_requested = None;
             return;
         }
+        self.sync_solid(ctx, source);
         if self.case.is_none() && self.case_rx.is_none() && !matches!(self.section, Some(Err(_))) {
             let repaint = ctx.clone();
             self.case_rx = Some(section::load(source.dir.clone(), move || {
@@ -285,13 +305,13 @@ impl Viewer {
             }));
         }
         let wanted = (self.slice_axis, (self.slice_pos * 1000.0).round() as i32);
-        if let Some(case) = &self.case
+        if let Some(case) = self.case.clone()
             && self.section_rx.is_none()
             && self.section_asked != Some(wanted)
         {
             let repaint = ctx.clone();
             self.section_rx = Some(section::spawn(
-                case.clone(),
+                case,
                 wanted.0,
                 f64::from(wanted.1) / 1000.0,
                 move || repaint.request_repaint(),
@@ -308,6 +328,48 @@ impl Viewer {
         };
     }
 
+    /// Reads the field in the solid, when the case has one and the surface is coloured with it,
+    /// and gives it and the fluid one colour scale.
+    fn sync_solid(&mut self, ctx: &egui::Context, source: &Source) {
+        if let Some(rx) = &self.solid_rx
+            && let Ok(read) = rx.try_recv()
+        {
+            self.solid_values = Some(read);
+            self.solid_rx = None;
+        }
+        let cells = self.case.as_ref().map_or(0, Loaded::solid_cells);
+        let (Some(name), true) = (self.field.clone(), cells > 0) else {
+            self.solid_values = None;
+            self.solid_rx = None;
+            self.solid_requested = None;
+            return;
+        };
+        let time = self
+            .time
+            .clone()
+            .or_else(|| source.times.last().cloned())
+            .unwrap_or_else(|| "0".to_owned());
+        let wanted = (name.clone(), time.clone());
+        if self.solid_requested.as_ref() != Some(&wanted) {
+            let repaint = ctx.clone();
+            self.solid_values = None;
+            self.solid_rx = Some(fieldview::spawn_in(
+                source.dir.clone(),
+                Some("solid"),
+                time,
+                name,
+                cells,
+                move || repaint.request_repaint(),
+            ));
+            self.solid_requested = Some(wanted);
+        }
+        // One scale for both, so the body and the air around it read against each other.
+        if let (Some(Ok(fluid)), Some(Ok(solid))) = (&mut self.values, &mut self.solid_values) {
+            solid.share_range(fluid.range);
+            fluid.share_range(solid.range);
+        }
+    }
+
     /// The cells the plane crosses, coloured with the field.
     fn draw_section(&self, painter: &egui::Painter, rect: egui::Rect, screen: [f32; 2]) {
         let (Some(Ok(section)), Some(Ok(values))) = (&self.section, &self.values) else {
@@ -319,26 +381,32 @@ impl Viewer {
         let to_pixel = self.camera.pixel_projection(&self.surface, screen);
         let at = |p: [f32; 2]| Pos2::new(rect.min.x + p[0], rect.min.y + p[1]);
         let mut mesh = Mesh::default();
-        for polygon in &section.polygons {
-            let color = match values.fraction(polygon.cell) {
-                Some(t) => {
-                    let [r, g, b] = fieldview::scale(t);
-                    Color32::from_rgb(r, g, b)
+        let mut fill = |polygons: &[section::Polygon], values: &CellValues| {
+            for polygon in polygons {
+                let color = match values.fraction(polygon.cell) {
+                    Some(t) => {
+                        let [r, g, b] = fieldview::scale(t);
+                        Color32::from_rgb(r, g, b)
+                    }
+                    None => Color32::from_rgb(0x55, 0x5b, 0x63),
+                };
+                let first = mesh.vertices.len() as u32;
+                for p in &polygon.points {
+                    mesh.colored_vertex(at(to_pixel(p)), color);
                 }
-                None => Color32::from_rgb(0x55, 0x5b, 0x63),
-            };
-            let first = mesh.vertices.len() as u32;
-            for p in &polygon.points {
-                mesh.colored_vertex(at(to_pixel(p)), color);
+                for k in 1..polygon.points.len().saturating_sub(1) as u32 {
+                    mesh.add_triangle(first, first + k, first + k + 1);
+                }
             }
-            for k in 1..polygon.points.len().saturating_sub(1) as u32 {
-                mesh.add_triangle(first, first + k, first + k + 1);
-            }
+        };
+        fill(&section.polygons, values);
+        if let Some(Ok(solid)) = &self.solid_values {
+            fill(&section.solid, solid);
         }
         painter.add(egui::Shape::mesh(mesh));
         if self.outlines && section.polygons.len() <= MAX_OUTLINED_FACES {
             let ink = Stroke::new(0.75, Color32::from_black_alpha(110));
-            for polygon in &section.polygons {
+            for polygon in section.polygons.iter().chain(&section.solid) {
                 let points: Vec<Pos2> = polygon.points.iter().map(|p| at(to_pixel(p))).collect();
                 if points.len() >= 2 {
                     painter.add(egui::Shape::closed_line(points, ink));

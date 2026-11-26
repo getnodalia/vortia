@@ -43,8 +43,11 @@ new boundary condition.
 4. **The case.** `vortia new body DIR FILE solid=NAME [heat=W]` writes both regions, the
    material and the heating; the report gives the heat leaving through the wall and the
    maximum temperature of the solid.
-5. **The window.** The solid is a second item in the Browser tree; the 3D view colours it
-   with `T` and a section cuts through both.
+5. **The window.** The solid is a second item in the Browser tree, with its own properties
+   (conductivity, heating, and after a run its temperatures and the heat through its wall); the
+   3D view colours it with `T` and a section cuts through both on one colour scale.
+
+   ![A heated plastic sphere cut across y = 0, on the colour scale it shares with the air](../screenshots/heated-body-dark.webp)
 
 ## Steps, each one a pull request with its own test
 

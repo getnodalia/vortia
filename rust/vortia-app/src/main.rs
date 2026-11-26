@@ -23,7 +23,7 @@ fn main() -> eframe::Result {
         "Vortia",
         options,
         Box::new(|cc| {
-            // `vortia-app CASE [--run] [--mesh] [--field NAME] [--results] [--conditions] [--numerics] [--schemes] [--settings] [--fluid] [--turbulence] [--viscosity] [--new-sketch] [--preferences [SECTION]]`: open a case,
+            // `vortia-app CASE [--run] [--mesh] [--field NAME [--slice AXIS FRACTION] [--solid]] [--results] [--conditions] [--numerics] [--schemes] [--settings] [--fluid] [--turbulence] [--viscosity] [--new-sketch] [--preferences [SECTION]]`: open a case,
             // start it at once, or show its mesh (coloured with a field), conditions or settings.
             let mut args: Vec<_> = std::env::args_os().skip(1).collect();
             let case = if args
@@ -53,6 +53,20 @@ fn main() -> eframe::Result {
                 && let Some(field) = flags.get(at + 1)
             {
                 app.show_mesh_field(&field.to_string_lossy());
+                if let Some(at) = flags.iter().position(|a| a == "--slice") {
+                    let axis = flags
+                        .get(at + 1)
+                        .and_then(|a| a.to_string_lossy().parse().ok())
+                        .unwrap_or(1);
+                    let place = flags
+                        .get(at + 2)
+                        .and_then(|a| a.to_string_lossy().parse().ok())
+                        .unwrap_or(0.5);
+                    app.show_slice(axis, place);
+                }
+                if has("--solid") {
+                    app.show_solid();
+                }
             } else if has("--mesh") {
                 app.show_mesh();
             } else if has("--results") {

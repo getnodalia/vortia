@@ -41,6 +41,14 @@ impl CellValues {
         }
     }
 
+    /// Widens the range to take in `other`'s, so two regions share one colour scale.
+    pub fn share_range(&mut self, other: Option<(f32, f32)>) {
+        self.range = match (self.range, other) {
+            (Some((a, b)), Some((c, d))) => Some((a.min(c), b.max(d))),
+            (one, None) | (None, one) => one,
+        };
+    }
+
     /// Where the value of a cell falls in the range, 0 to 1; `None` for a cell with no finite
     /// value.
     pub fn fraction(&self, cell: usize) -> Option<f32> {
@@ -59,13 +67,28 @@ impl CellValues {
 
 /// Reads `<case>/<time>/<name>` for a mesh of `cells` cells.
 pub fn read(case: &Path, time: &str, name: &str, cells: usize) -> Result<CellValues, String> {
+    read_in(case, None, time, name, cells)
+}
+
+/// [`read`] for a region of the case (`<case>/<time>/<region>/<name>`), the main one when `None`.
+pub fn read_in(
+    case: &Path,
+    region: Option<&str>,
+    time: &str,
+    name: &str,
+    cells: usize,
+) -> Result<CellValues, String> {
     // The names come from folder listings, but a hostile folder can hold anything.
     let plain =
         |part: &str| !part.is_empty() && !part.contains(['/', '\\']) && part != ".." && part != ".";
     if !plain(time) || !plain(name) {
         return Err(trf("'{}/{}' is not a field of the case.", &[&time, &name]));
     }
-    let path = case.join(time).join(name);
+    let mut path = case.join(time);
+    if let Some(region) = region.filter(|r| plain(r)) {
+        path.push(region);
+    }
+    let path = path.join(name);
     let too_few = |n: usize| {
         trf(
             "{} has {} values, but the mesh has {} cells.",
@@ -121,11 +144,23 @@ pub fn spawn(
     cells: usize,
     wake: impl Fn() + Send + 'static,
 ) -> Receiver<Result<CellValues, String>> {
+    spawn_in(case, None, time, name, cells, wake)
+}
+
+/// [`spawn`] for a region of the case.
+pub fn spawn_in(
+    case: PathBuf,
+    region: Option<&'static str>,
+    time: String,
+    name: String,
+    cells: usize,
+    wake: impl Fn() + Send + 'static,
+) -> Receiver<Result<CellValues, String>> {
     let (tx, rx) = channel();
     let spawned = std::thread::Builder::new()
         .name("vortia-field".into())
         .spawn(move || {
-            let read = std::panic::catch_unwind(|| read(&case, &time, &name, cells))
+            let read = std::panic::catch_unwind(|| read_in(&case, region, &time, &name, cells))
                 .unwrap_or_else(|_| Err(tr("The field could not be read.").to_owned()));
             let _ = tx.send(read);
             wake();
@@ -260,6 +295,37 @@ mod tests {
         assert_eq!(field.fraction(1), Some(1.0));
         assert_eq!(field.fraction(2), Some(0.5));
         assert_eq!(field.fraction(9), None);
+    }
+
+    #[test]
+    fn a_region_has_its_fields_in_its_own_folder_and_shares_the_scale() {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            dir.path(),
+            "1",
+            "T",
+            "volScalarField",
+            "nonuniform List<scalar> 2(300 310)",
+        );
+        write(
+            dir.path(),
+            "1/solid",
+            "T",
+            "volScalarField",
+            "nonuniform List<scalar> 2(320 360)",
+        );
+        let mut fluid = read(dir.path(), "1", "T", 2).unwrap();
+        let mut solid = read_in(dir.path(), Some("solid"), "1", "T", 2).unwrap();
+        assert_eq!(solid.values, [320.0, 360.0]);
+        fluid.share_range(solid.range);
+        solid.share_range(fluid.range);
+        assert_eq!(fluid.range, Some((300.0, 360.0)));
+        assert_eq!(solid.range, fluid.range);
+        // Hotter in the solid than in the air, on one scale.
+        assert!(solid.fraction(1) > fluid.fraction(1));
+        let mut lone = read(dir.path(), "1", "T", 2).unwrap();
+        lone.share_range(None);
+        assert_eq!(lone.range, Some((300.0, 310.0)));
     }
 
     #[test]

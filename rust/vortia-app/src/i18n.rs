@@ -1283,6 +1283,20 @@ pub const ES: &[(&str, &str)] = &[
         "  ·  the mesh is larger than the viewer shows",
         "  ·  la malla es mayor de lo que muestra el visor",
     ),
+    ("Solid ({} cells)", "Sólido ({} celdas)"),
+    ("Solid", "Sólido"),
+    ("The case has no solid.", "El caso no tiene sólido."),
+    ("Conductivity", "Conductividad"),
+    ("Heat generated", "Calor generado"),
+    (
+        "Run the case to see the solid's temperatures.",
+        "Ejecuta el caso para ver las temperaturas del sólido.",
+    ),
+    ("Hottest", "Más caliente"),
+    ("Mean", "Media"),
+    ("Coldest", "Más frío"),
+    ("Heat out", "Calor saliente"),
+    ("Wall", "Pared"),
 ];
 
 #[cfg(test)]

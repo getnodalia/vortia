@@ -25,11 +25,37 @@ pub struct Section {
     pub axis: usize,
     pub offset: f32,
     pub polygons: Vec<Polygon>,
+    /// The same plane through the solid, when the case has one (`constant/solid`).
+    pub solid: Vec<Polygon>,
+}
+
+/// The case and, beside it, its solid region.
+#[derive(Clone, Debug)]
+pub struct Loaded {
+    pub fluid: Arc<Case>,
+    pub solid: Option<Arc<Case>>,
+}
+
+impl Loaded {
+    /// The number of cells of the solid, zero when there is none.
+    pub fn solid_cells(&self) -> usize {
+        self.solid.as_ref().map_or(0, |s| s.mesh().n_cells())
+    }
 }
 
 /// The section across `axis` (0, 1 or 2 for x, y, z) at `fraction` (0 to 1) of the way through
 /// the box of the mesh.
 pub fn compute(case: &Case, axis: usize, fraction: f64) -> Result<Section, String> {
+    compute_with(case, None, axis, fraction)
+}
+
+/// [`compute`] with the same plane through the solid too.
+pub fn compute_with(
+    case: &Case,
+    solid: Option<&Case>,
+    axis: usize,
+    fraction: f64,
+) -> Result<Section, String> {
     let bounds = case.bounds();
     let along = |v: Vec3| match axis {
         0 => Some(v.x),
@@ -49,34 +75,45 @@ pub fn compute(case: &Case, axis: usize, fraction: f64) -> Result<Section, Strin
         1 => (Vec3::new(0.0, offset, 0.0), Vec3::new(0.0, 1.0, 0.0)),
         _ => (Vec3::new(0.0, 0.0, offset), Vec3::new(0.0, 0.0, 1.0)),
     };
-    let polygons = case
-        .slice(origin, normal)
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .map(|p| Polygon {
-            cell: p.cell,
-            points: p
-                .points
-                .iter()
-                .map(|q| [q.x as f32, q.y as f32, q.z as f32])
-                .collect(),
-        })
-        .collect();
+    let cut = |case: &Case| -> Result<Vec<Polygon>, String> {
+        Ok(case
+            .slice(origin, normal)
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .map(|p| Polygon {
+                cell: p.cell,
+                points: p
+                    .points
+                    .iter()
+                    .map(|q| [q.x as f32, q.y as f32, q.z as f32])
+                    .collect(),
+            })
+            .collect())
+    };
     Ok(Section {
         axis,
         offset: offset as f32,
-        polygons,
+        polygons: cut(case)?,
+        solid: solid.map(cut).transpose()?.unwrap_or_default(),
     })
 }
 
 /// Reads the case on a thread; `wake` is called when it is ready.
-pub fn load(dir: PathBuf, wake: impl Fn() + Send + 'static) -> Receiver<Result<Arc<Case>, String>> {
+pub fn load(dir: PathBuf, wake: impl Fn() + Send + 'static) -> Receiver<Result<Loaded, String>> {
     let (tx, rx) = channel();
     let spawned = std::thread::Builder::new()
         .name("vortia-case".into())
         .spawn(move || {
             let read = std::panic::catch_unwind(|| {
-                Case::open(&dir).map(Arc::new).map_err(|e| e.to_string())
+                let fluid = Case::open(&dir).map(Arc::new).map_err(|e| e.to_string())?;
+                // A case with no solid, or one that cannot be read, is just the fluid.
+                let solid = dir
+                    .join("constant")
+                    .join("solid")
+                    .is_dir()
+                    .then(|| Case::open_region(&dir, "solid").ok().map(Arc::new))
+                    .flatten();
+                Ok(Loaded { fluid, solid })
             })
             .unwrap_or_else(|_| Err(tr("The case could not be read.").to_owned()));
             let _ = tx.send(read);
@@ -88,7 +125,7 @@ pub fn load(dir: PathBuf, wake: impl Fn() + Send + 'static) -> Receiver<Result<A
 
 /// Computes a section on a thread; `wake` is called when it is ready.
 pub fn spawn(
-    case: Arc<Case>,
+    case: Loaded,
     axis: usize,
     fraction: f64,
     wake: impl Fn() + Send + 'static,
@@ -97,8 +134,10 @@ pub fn spawn(
     let spawned = std::thread::Builder::new()
         .name("vortia-section".into())
         .spawn(move || {
-            let done = std::panic::catch_unwind(|| compute(&case, axis, fraction))
-                .unwrap_or_else(|_| Err(tr("The section could not be computed.").to_owned()));
+            let done = std::panic::catch_unwind(|| {
+                compute_with(&case.fluid, case.solid.as_deref(), axis, fraction)
+            })
+            .unwrap_or_else(|_| Err(tr("The section could not be computed.").to_owned()));
             let _ = tx.send(done);
             wake();
         });
@@ -144,6 +183,33 @@ mod tests {
         let top = compute(&case, 1, 1.0).unwrap();
         assert!((top.offset - 2.0).abs() < 1e-6);
         assert!(!top.polygons.is_empty());
+    }
+
+    #[test]
+    fn a_section_cuts_the_solid_by_the_same_plane() {
+        let (dir, case) = case();
+        let region = dir.path().join("constant").join("solid");
+        std::fs::create_dir_all(&region).unwrap();
+        let bounds = Aabb {
+            min: Vec3::new(1.0, 0.0, 0.0),
+            max: Vec3::new(3.0, 1.0, 1.0),
+        };
+        structured_box_raw(bounds, [2, 1, 1])
+            .unwrap()
+            .write_dir(region.join("polyMesh"))
+            .unwrap();
+        let solid = Case::open_region(dir.path(), "solid").unwrap();
+        // x = 1.6 crosses the solid's first cell; x = 0.4 misses it.
+        let through = compute_with(&case, Some(&solid), 0, 0.4).unwrap();
+        assert_eq!(through.polygons.len(), 2);
+        assert_eq!(through.solid.len(), 1);
+        let missed = compute_with(&case, Some(&solid), 0, 0.1).unwrap();
+        assert!(missed.solid.is_empty());
+        // No solid, nothing to cut.
+        assert!(compute(&case, 0, 0.4).unwrap().solid.is_empty());
+        // `load` finds it beside the fluid.
+        let loaded = load(dir.path().to_owned(), || {}).recv().unwrap().unwrap();
+        assert_eq!(loaded.solid_cells(), 2);
     }
 
     #[test]

@@ -99,6 +99,8 @@ pub struct Case {
     pub(crate) mesh: PolyMesh,
     pub(crate) geometry: MeshGeometry,
     pub(crate) cell_faces: Vec<Vec<usize>>,
+    /// The region this looks into (`solid`), `None` for the main one.
+    region: Option<String>,
 }
 
 impl Case {
@@ -106,6 +108,23 @@ impl Case {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref().to_owned();
         let mesh = PolyMesh::read_case(&path)?;
+        Ok(Self::with_mesh(path, mesh, None))
+    }
+
+    /// Reads a second region of the case, such as the `solid` of a conjugate
+    /// heat transfer: its mesh from `constant/<region>/polyMesh` and its
+    /// fields from `<time>/<region>/`.
+    pub fn open_region(path: impl AsRef<Path>, region: &str) -> Result<Self> {
+        if region.is_empty() || region.contains(['/', '\\']) || region.starts_with('.') {
+            return Err(PostError::Invalid(format!("'{region}' is not a region")));
+        }
+        let path = path.as_ref().to_owned();
+        let dir = path.join("constant").join(region).join("polyMesh");
+        let mesh = PolyMesh::from_raw(vortia_foamfile::RawPolyMesh::read_dir(dir)?)?;
+        Ok(Self::with_mesh(path, mesh, Some(region.to_owned())))
+    }
+
+    fn with_mesh(path: PathBuf, mesh: PolyMesh, region: Option<String>) -> Self {
         let geometry = MeshGeometry::compute(&mesh);
         let mut cell_faces = vec![Vec::new(); mesh.n_cells()];
         for (face, &cell) in mesh.owner().iter().enumerate() {
@@ -118,12 +137,13 @@ impl Case {
                 list.push(face);
             }
         }
-        Ok(Self {
+        Self {
             path,
             mesh,
             geometry,
             cell_faces,
-        })
+            region,
+        }
     }
 
     pub fn path(&self) -> &Path {
@@ -415,7 +435,10 @@ impl Case {
         if time.is_empty() || time.contains(['/', '\\']) || time == ".." || time == "." {
             return Err(PostError::Invalid(format!("'{time}' is not a time")));
         }
-        let dir = self.path.join(time);
+        let mut dir = self.path.join(time);
+        if let Some(region) = &self.region {
+            dir.push(region);
+        }
         if dir.is_dir() {
             Ok(dir)
         } else {
