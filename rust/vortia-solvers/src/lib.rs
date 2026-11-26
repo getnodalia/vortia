@@ -34,6 +34,7 @@ pub mod rho_simple;
 pub mod scalar_transport;
 pub mod set_fields;
 pub mod simple;
+pub mod solid;
 pub(crate) mod spalart;
 pub(crate) mod thermo;
 
