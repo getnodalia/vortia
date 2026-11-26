@@ -223,7 +223,7 @@ mod tests {
         let other = dir.path().join("part.step");
         std::fs::write(&other, "ISO-10303-21;").unwrap();
         let error = Stl::load(&other).unwrap_err().to_string();
-        assert!(error.contains("STL and OBJ"), "{error}");
+        assert!(error.contains("STL, OBJ and STEP"), "{error}");
         assert!(Stl::load(&dir.path().join("missing.obj")).is_err());
     }
 }

@@ -1,0 +1,15 @@
+[package]
+name = "vortia-cad"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "CAD files as surfaces for the mesher: STEP solids read and tessellated by Nodalia's own solidcore kernel"
+
+[dependencies]
+vortia-mesh = { path = "../vortia-mesh" }
+# Nodalia's STEP reader and tessellator (Apache-2.0), vendored in Torno's tree; pinned by revision.
+solidcore-step = { git = "https://github.com/getnodalia/torno", rev = "6d840f18cf019d251a9d2d2cd6448d0a1fbd9681" }
+solidcore-tess = { git = "https://github.com/getnodalia/torno", rev = "6d840f18cf019d251a9d2d2cd6448d0a1fbd9681" }
+
+[dev-dependencies]
+vortia-cases = { path = "../vortia-cases" }

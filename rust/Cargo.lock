@@ -31,6 +31,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "allocator-api2"
+version = "0.2.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
+
+[[package]]
 name = "android-activity"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1208,6 +1214,17 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
+version = "0.16.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "841d1cc9bed7f9236f321df977030373f4a4163ae1a7dbfe1a51a2c1a51d9100"
+dependencies = [
+ "allocator-api2",
+ "equivalent",
+ "foldhash 0.2.0",
+]
+
+[[package]]
+name = "hashbrown"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
@@ -2276,6 +2293,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "robust"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4e27ee8bb91ca0adcf0ecb116293afa12d393f9c2b9b9cd54d33e8078fe19839"
+
+[[package]]
 name = "rustc-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2642,6 +2665,81 @@ dependencies = [
 ]
 
 [[package]]
+name = "solidcore"
+version = "1.0.1"
+source = "git+https://github.com/getnodalia/torno?rev=6d840f18cf019d251a9d2d2cd6448d0a1fbd9681#6d840f18cf019d251a9d2d2cd6448d0a1fbd9681"
+dependencies = [
+ "serde",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "solidcore-convert"
+version = "0.1.0"
+source = "git+https://github.com/getnodalia/torno?rev=6d840f18cf019d251a9d2d2cd6448d0a1fbd9681#6d840f18cf019d251a9d2d2cd6448d0a1fbd9681"
+dependencies = [
+ "solidcore",
+ "solidcore-record",
+]
+
+[[package]]
+name = "solidcore-ops"
+version = "0.1.0"
+source = "git+https://github.com/getnodalia/torno?rev=6d840f18cf019d251a9d2d2cd6448d0a1fbd9681#6d840f18cf019d251a9d2d2cd6448d0a1fbd9681"
+dependencies = [
+ "solidcore",
+ "solidcore-convert",
+ "solidcore-record",
+]
+
+[[package]]
+name = "solidcore-record"
+version = "0.1.0"
+source = "git+https://github.com/getnodalia/torno?rev=6d840f18cf019d251a9d2d2cd6448d0a1fbd9681#6d840f18cf019d251a9d2d2cd6448d0a1fbd9681"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "solidcore-step"
+version = "0.1.0"
+source = "git+https://github.com/getnodalia/torno?rev=6d840f18cf019d251a9d2d2cd6448d0a1fbd9681#6d840f18cf019d251a9d2d2cd6448d0a1fbd9681"
+dependencies = [
+ "solidcore",
+ "solidcore-convert",
+ "solidcore-ops",
+ "solidcore-record",
+]
+
+[[package]]
+name = "solidcore-tess"
+version = "0.1.0"
+source = "git+https://github.com/getnodalia/torno?rev=6d840f18cf019d251a9d2d2cd6448d0a1fbd9681#6d840f18cf019d251a9d2d2cd6448d0a1fbd9681"
+dependencies = [
+ "rayon",
+ "serde",
+ "solidcore",
+ "solidcore-convert",
+ "solidcore-record",
+ "spade",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "spade"
+version = "2.15.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9699399fd9349b00b184f5635b074f9ec93afffef30c853f8c875b32c0f8c7fa"
+dependencies = [
+ "hashbrown 0.16.1",
+ "num-traits",
+ "robust",
+ "smallvec",
+]
+
+[[package]]
 name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2975,6 +3073,7 @@ dependencies = [
  "nodalia-update",
  "serde_json",
  "tempfile",
+ "vortia-cad",
  "vortia-cases",
  "vortia-core",
  "vortia-fields",
@@ -2985,6 +3084,16 @@ dependencies = [
  "vortia-sketch",
  "vortia-solvers",
  "zbus",
+]
+
+[[package]]
+name = "vortia-cad"
+version = "0.13.1"
+dependencies = [
+ "solidcore-step",
+ "solidcore-tess",
+ "vortia-cases",
+ "vortia-mesh",
 ]
 
 [[package]]
@@ -3004,6 +3113,7 @@ name = "vortia-cli"
 version = "0.13.1"
 dependencies = [
  "tempfile",
+ "vortia-cad",
  "vortia-cases",
  "vortia-core",
  "vortia-fields",
