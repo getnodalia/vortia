@@ -232,6 +232,15 @@ impl VortiaApp {
             0.0
         };
         let controls_width = if controls_left { 0.0 } else { controls_room };
+        // macOS: the window's content runs under its title bar, so the system's traffic lights sit
+        // over the left end of this bar and the bar keeps that room free. They are gone in full
+        // screen. The bar's own content starts 8 points in, which is part of the room.
+        let fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
+        let lights_room = if fullscreen {
+            0.0
+        } else {
+            super::lights_room()
+        };
         let icon = self.icon(ctx).id();
         let bar = TitleBar {
             app: "Vortia",
@@ -251,16 +260,22 @@ impl VortiaApp {
             },
             quick_access: &[],
             controls_width,
-            leading_width: if controls_left { controls_room } else { 0.0 },
+            leading_width: if controls_left {
+                controls_room
+            } else {
+                lights_room
+            },
         };
         let out = eng::title_bar(ui, look, &bar);
-        if own_controls() {
+        if own_controls() || super::lights_in_bar() {
             if out.drag.drag_started_by(egui::PointerButton::Primary) {
                 ctx.send_viewport_cmd(ViewportCommand::StartDrag);
             }
             if out.drag.double_clicked() {
                 ctx.send_viewport_cmd(ViewportCommand::Maximized(!maximized));
             }
+        }
+        if own_controls() {
             let focused = ctx.input(|i| i.focused);
             let mode = if ctx.global_style().visuals.dark_mode {
                 Mode::Dark

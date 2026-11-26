@@ -45,7 +45,9 @@ const MAX_LOG: usize = 5_000;
 const GRIP: f32 = 6.0;
 
 /// The viewport the app opens in. Linux draws its own window controls (NDL), so it asks for
-/// no decorations; macOS and Windows keep the system's.
+/// no decorations; Windows keeps the system's. macOS keeps its traffic lights but lets the window's
+/// content run under the title bar, so they sit on Vortia's own bar instead of on a system title
+/// bar above it.
 pub fn viewport() -> ViewportBuilder {
     let builder = ViewportBuilder::default()
         .with_title("Vortia")
@@ -55,6 +57,11 @@ pub fn viewport() -> ViewportBuilder {
         .with_icon(shell::window_icon());
     if own_controls() {
         builder.with_decorations(false).with_transparent(true)
+    } else if lights_in_bar() {
+        builder
+            .with_fullsize_content_view(true)
+            .with_titlebar_shown(false)
+            .with_title_shown(false)
     } else {
         builder
     }
@@ -62,6 +69,24 @@ pub fn viewport() -> ViewportBuilder {
 
 fn own_controls() -> bool {
     cfg!(all(unix, not(target_os = "macos")))
+}
+
+/// macOS: the system's traffic lights are painted over the left end of Vortia's title bar.
+fn lights_in_bar() -> bool {
+    cfg!(target_os = "macos")
+}
+
+/// The room the title bar keeps free at its left end for the traffic lights, on top of the 8
+/// points of padding the bar already has. Nothing where the lights are not over the bar.
+fn lights_room() -> f32 {
+    if !lights_in_bar() {
+        return 0.0;
+    }
+    let lights = nodalia_theme::titlebar::Placement {
+        owner: nodalia_theme::titlebar::Owner::System,
+        side: nodalia_theme::titlebar::Side::Left,
+    };
+    (lights.insets(true).left - 8.0).max(0.0)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1520,6 +1545,38 @@ mod tests {
         } else {
             assert!(icon.width > 0 && icon.height > 0);
             assert_eq!(icon.rgba.len(), (icon.width * icon.height * 4) as usize);
+        }
+    }
+
+    #[test]
+    fn each_system_draws_the_window_buttons_on_vortias_own_title_bar() {
+        // Linux draws NDL's controls itself, so it takes no decorations. macOS keeps its traffic
+        // lights but lets the content run under a hidden system title bar, so they sit on
+        // Vortia's bar and not on a separate bar above it. Windows keeps the system's.
+        let viewport = viewport();
+        if cfg!(target_os = "macos") {
+            assert_eq!(viewport.fullsize_content_view, Some(true));
+            assert_eq!(viewport.titlebar_shown, Some(false));
+            assert_eq!(viewport.title_shown, Some(false));
+            assert_ne!(viewport.decorations, Some(false));
+        } else if cfg!(target_os = "linux") {
+            assert_eq!(viewport.decorations, Some(false));
+            assert_eq!(viewport.fullsize_content_view, None);
+        } else {
+            assert_eq!(viewport.decorations, None);
+            assert_eq!(viewport.fullsize_content_view, None);
+        }
+    }
+
+    #[test]
+    fn the_title_bar_leaves_room_for_the_traffic_lights_only_on_macos() {
+        assert_eq!(lights_in_bar(), cfg!(target_os = "macos"));
+        assert!(!(lights_in_bar() && own_controls()));
+        if lights_in_bar() {
+            // The three lights end 70 points in on macOS 26, and the bar pads 8 of them itself.
+            assert!(lights_room() >= 62.0, "the bar covers the lights");
+        } else {
+            assert_eq!(lights_room(), 0.0);
         }
     }
 
