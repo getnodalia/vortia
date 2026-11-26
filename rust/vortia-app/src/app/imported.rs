@@ -203,7 +203,7 @@ fn tunnel_rows(ui: &mut Ui, [upstream, downstream, lateral]: [&mut f64; 3]) {
     row(ui, tr("Tunnel at each side"), |ui| value(ui, lateral, "L"));
 }
 
-fn body_fields(ui: &mut Ui, body: &mut Body, summary: &Summary, scale: f64) {
+pub(super) fn body_fields(ui: &mut Ui, body: &mut Body, summary: &Summary, scale: f64) {
     let extent = |axis: usize| {
         let at = |v: [f64; 3]| v.get(axis).copied().unwrap_or(0.0);
         (at(summary.high) - at(summary.low)) * scale

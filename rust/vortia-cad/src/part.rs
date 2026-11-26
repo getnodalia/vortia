@@ -6,6 +6,7 @@
 //! it, cuts it away or keeps what they share), so a wing, a body shell or a bluff cylinder is a
 //! few lines. Lengths are in metres.
 
+use crate::dxf::{Drawing, Outline};
 use solidcore_ops::body::{Body, make_box, make_cone, make_cylinder, make_sphere, make_torus};
 use solidcore_ops::boolean::{BooleanOp, boolean};
 use solidcore_ops::sweep::{Curve, DraftCorner, extrude, revolve};
@@ -110,6 +111,119 @@ fn outline(corners: &[[f64; 2]], place: impl Fn(&[f64; 2]) -> [f64; 3]) -> Resul
                 end: place(b),
             })
         })
+        .collect())
+}
+
+/// The outline of a NACA 4-digit wing section as a closed polygon `(x, y)`: the leading edge at
+/// the origin, the trailing edge at `(chord, 0)`, `points` along each side. Feed it to
+/// [`Shape::Extrude`] for a wing of constant section.
+pub fn naca4(code: u32, chord: f64, points: usize) -> Result<Vec<[f64; 2]>> {
+    if code > 9999 || code % 100 < 1 {
+        return Err(MeshError::Invalid(format!(
+            "a NACA 4-digit section is 0001 to 9999, not {code}"
+        )));
+    }
+    if !chord.is_finite() || chord <= 0.0 || !(4..=2_000).contains(&points) {
+        return Err(MeshError::Invalid(
+            "a wing section needs a positive chord and 4 to 2000 points along each side".into(),
+        ));
+    }
+    let m = f64::from(code / 1000) / 100.0;
+    let p = f64::from(code / 100 % 10) / 10.0;
+    let t = f64::from(code % 100) / 100.0;
+    if m > 0.0 && p == 0.0 {
+        return Err(MeshError::Invalid(
+            "a cambered section needs the position of its camber (the second digit)".into(),
+        ));
+    }
+    let side = |sign: f64| {
+        (0..=points).map(move |i| {
+            let x = 0.5 * (1.0 - (std::f64::consts::PI * i as f64 / points as f64).cos());
+            let yt = 5.0
+                * t
+                * (0.2969 * x.sqrt() - 0.1260 * x - 0.3516 * x * x + 0.2843 * x.powi(3)
+                    - 0.1036 * x.powi(4));
+            let (yc, dyc) = if m == 0.0 {
+                (0.0, 0.0)
+            } else if x < p {
+                (
+                    m / (p * p) * (2.0 * p * x - x * x),
+                    2.0 * m / (p * p) * (p - x),
+                )
+            } else {
+                let q = (1.0 - p) * (1.0 - p);
+                (
+                    m / q * (1.0 - 2.0 * p + 2.0 * p * x - x * x),
+                    2.0 * m / q * (p - x),
+                )
+            };
+            let (sin, cos) = dyc.atan().sin_cos();
+            [
+                chord * (x - sign * yt * sin),
+                chord * (yc + sign * yt * cos),
+            ]
+        })
+    };
+    let mut corners: Vec<[f64; 2]> = side(1.0).collect();
+    if let Some(last) = corners.last_mut() {
+        *last = [chord, 0.0];
+    }
+    if let Some(first) = corners.first_mut() {
+        *first = [0.0, 0.0];
+    }
+    // Back along the lower side, leaving out the two edges already there.
+    let lower: Vec<[f64; 2]> = side(-1.0).collect();
+    corners.extend(lower.iter().rev().skip(1).take(points.saturating_sub(1)));
+    Ok(corners)
+}
+
+/// The outline of a DXF drawing, in metres, for [`Shape::Extrude`]: the largest closed outline of
+/// the drawing, whose millimetres become metres. A circle is cut into 96 straight pieces.
+pub fn outline_from_drawing(drawing: &Drawing) -> Result<Vec<[f64; 2]>> {
+    let bounds = |points: &[[f64; 2]]| {
+        let (mut low, mut high) = ([f64::INFINITY; 2], [f64::NEG_INFINITY; 2]);
+        for p in points {
+            for k in 0..2 {
+                if let (Some(&c), Some(l), Some(h)) = (p.get(k), low.get_mut(k), high.get_mut(k)) {
+                    *l = l.min(c);
+                    *h = h.max(c);
+                }
+            }
+        }
+        (high[0] - low[0]) * (high[1] - low[1])
+    };
+    let polygons = drawing.outlines.iter().map(|outline| match outline {
+        Outline::Circle { center, radius, .. } => (0..96)
+            .map(|i| {
+                let a = std::f64::consts::TAU * f64::from(i) / 96.0;
+                [center.0 + radius * a.cos(), center.1 + radius * a.sin()]
+            })
+            .collect::<Vec<_>>(),
+        Outline::Loop(edges) => {
+            let mut corners: Vec<[f64; 2]> = Vec::new();
+            for &(x, y) in edges.iter().flat_map(|e| &e.points) {
+                if corners.last() != Some(&[x, y]) {
+                    corners.push([x, y]);
+                }
+            }
+            if corners.len() > 1 && corners.first() == corners.last() {
+                corners.pop();
+            }
+            corners
+        }
+    });
+    let mut best: Option<Vec<[f64; 2]>> = None;
+    for polygon in polygons {
+        if best.as_ref().is_none_or(|b| bounds(&polygon) > bounds(b)) {
+            best = Some(polygon);
+        }
+    }
+    let corners = best.ok_or_else(|| {
+        MeshError::Invalid("the drawing has no closed outline to push into a solid".into())
+    })?;
+    Ok(corners
+        .iter()
+        .map(|&[x, y]| [x * 1.0e-3, y * 1.0e-3])
         .collect())
 }
 

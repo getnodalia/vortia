@@ -13,6 +13,7 @@ use vortia_cases::{
 use vortia_sketch::Measure;
 
 use super::imported::Imported;
+use super::modelled::Modelled;
 use crate::region_editor::{self, Canvas, RegionEditor, Role};
 use crate::sketch_editor::{Outline, SketchEditor, Template};
 
@@ -29,10 +30,11 @@ pub(super) enum Kind {
     Sketch,
     Region,
     Imported,
+    Modelled,
 }
 
 impl Kind {
-    const ALL: [Kind; 10] = [
+    const ALL: [Kind; 11] = [
         Kind::Channel,
         Kind::Cavity,
         Kind::Plate,
@@ -43,6 +45,7 @@ impl Kind {
         Kind::Sketch,
         Kind::Region,
         Kind::Imported,
+        Kind::Modelled,
     ];
 
     fn title(self) -> &'static str {
@@ -57,6 +60,7 @@ impl Kind {
             Kind::Sketch => tr("From sketch"),
             Kind::Region => tr("Drawn region"),
             Kind::Imported => tr("Around a CAD file"),
+            Kind::Modelled => tr("Model a part"),
         }
     }
 
@@ -89,6 +93,9 @@ impl Kind {
             Kind::Imported => {
                 "A body read from a file in a wind tunnel built around it: an STL, OBJ or STEP surface is meshed in 3D by octree refinement (Spalart–Allmaras or k-ω SST), a DXF drawing, say the side of a car or a wing section, in 2D with triangles (laminar, incompressible). The drag is the force on the patch `body`."
             }
+            Kind::Modelled => {
+                "A part you model here with Nodalia's own kernel, like the ones of Torno and Forja: boxes, cylinders, cones, spheres, tori, a wing section or a DXF outline pushed along an axis, an outline turned about it, each added to the part, cut out of it or intersected with it. The flow around it is meshed in 3D by octree refinement (Spalart–Allmaras or k-ω SST); the part can also be saved as an STL. The drag is the force on the patch `body`."
+            }
             Kind::Region => {
                 "A closed outline you dimension in a sketch, with a name on every edge: `inlet` is where the fluid comes in, `outlet` where it leaves, `symmetry` a symmetry plane and any other name a wall. Meshed with triangles by Vortia itself and run as laminar, incompressible, steady flow (simpleFoam). The sketch is kept in the case."
             }
@@ -120,6 +127,8 @@ pub(super) struct NewCase {
     drawn: Drawn,
     /// The body or drawing read from a file.
     imported: Imported,
+    /// The part modelled here.
+    modelled: Modelled,
 }
 
 /// What the form asks for.
@@ -149,6 +158,7 @@ impl NewCase {
             region_file: String::new(),
             drawn: Drawn::default(),
             imported: Imported::default(),
+            modelled: Modelled::default(),
         };
         form.propose(base);
         form
@@ -173,7 +183,7 @@ impl NewCase {
             Kind::Jet => "jet",
             Kind::Sketch => "sketch",
             Kind::Region => "region",
-            Kind::Imported => "body",
+            Kind::Imported | Kind::Modelled => "body",
         };
         let free = (1..1000)
             .map(|n| {
@@ -206,6 +216,7 @@ impl NewCase {
             Kind::Sketch => Geometry::Nozzle(self.sketched_nozzle()?),
             Kind::Region => Geometry::Drawn(self.drawn_region()?),
             Kind::Imported => self.imported.geometry()?,
+            Kind::Modelled => self.modelled.geometry()?,
         })
     }
 
@@ -291,6 +302,7 @@ impl NewCase {
                 Kind::Sketch => self.sketch_fields(ui),
                 Kind::Region => self.region_fields(ui),
                 Kind::Imported => self.imported.ui(ui),
+                Kind::Modelled => self.modelled.ui(ui, p),
             }
             ui.add_space(space::SM);
             ui.horizontal(|ui| {
@@ -1076,6 +1088,11 @@ mod tests {
                 std::fs::write(&file, crate::app::imported::CIRCLE_DXF).unwrap();
                 form.imported.file = file.display().to_string();
                 form.imported.load();
+                form.propose(base.path());
+            }
+            if kind == Kind::Modelled {
+                // A part built, and a mesh as coarse as the form allows.
+                form.modelled.prepare_for_test();
                 form.propose(base.path());
             }
             let dir = form.create().unwrap();
