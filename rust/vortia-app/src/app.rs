@@ -826,6 +826,12 @@ impl VortiaApp {
             }
             return;
         }
+        if dialog == Dialog::About {
+            if self.about_window(ctx) {
+                self.dialog = None;
+            }
+            return;
+        }
         let title = match dialog {
             Dialog::Preferences => tr("Preferences"),
             Dialog::Shortcuts => tr("Keyboard shortcuts"),
@@ -857,15 +863,8 @@ impl VortiaApp {
                             }
                         });
                 }
-                Dialog::About => {
-                    ui.label(trf("Version {}", &[&env!("CARGO_PKG_VERSION")]));
-                    ui.add_space(space::SM);
-                    ui.label(tr(
-                        "A compressible-flow solver and its desktop app, written in Rust.",
-                    ));
-                    ui.add_space(space::SM);
-                    ui.label(RichText::new("GPL-3.0-or-later").color(muted(p)));
-                }
+                // About has its own window (`about_window`).
+                Dialog::About => {}
                 Dialog::Report => {
                     let application = match &self.screen {
                         Screen::Case(case) => case.application.clone(),
@@ -911,6 +910,64 @@ impl VortiaApp {
         if close || open_report {
             self.dialog = None;
         }
+    }
+}
+
+impl VortiaApp {
+    /// About, as every Nodalia app shows it (`nodalia_theme::about`) in the engineering suite's
+    /// faces: heading with the round close button, then the icon, name, version, what Vortia is,
+    /// its suite, the links and the licence. True when it should close.
+    fn about_window(&mut self, ctx: &Context) -> bool {
+        use nodalia_theme::about as ndl;
+        let look = engineering::about_look(&engineering::Look::new(palette(ctx)));
+        let icon = self.icon(ctx).clone();
+        let mut close = false;
+        let mut link = None;
+        let response = egui::Modal::new(Id::unique("about")).show(ctx, |ui| {
+            ui.set_width(ndl::measures::WIDTH);
+            close = ndl::heading(
+                ui,
+                &look,
+                tr("About Vortia"),
+                Id::NULL.with("vortia.about.close"),
+            )
+            .closed;
+            let version = trf("Version {}", &[&env!("CARGO_PKG_VERSION")]);
+            let links = [
+                ndl::Link {
+                    label: tr("Vortia page"),
+                    url: "https://getnodalia.com/vortia",
+                },
+                ndl::Link {
+                    label: tr("GitHub"),
+                    url: "https://github.com/getnodalia/vortia",
+                },
+                ndl::Link {
+                    label: tr("Report an issue"),
+                    url: "https://github.com/getnodalia/vortia/issues",
+                },
+            ];
+            let info = ndl::Info {
+                name: "Vortia",
+                version: &version,
+                tagline: tr("A compressible-flow solver and its desktop app, written in Rust."),
+                suite: tr("Part of the Nodalia suite of open engineering tools."),
+                links: &links,
+                footer: "GPL-3.0-or-later",
+            };
+            let page = ndl::page(ui, &look, &info, |ui, rect| {
+                egui::Image::new(&icon)
+                    .fit_to_exact_size(rect.size())
+                    .paint_at(ui, rect);
+            });
+            if let Some(i) = page.picked {
+                link = links.get(i).map(|l| l.url);
+            }
+        });
+        if let Some(url) = link {
+            ctx.open_url(egui::OpenUrl::new_tab(url));
+        }
+        close || response.should_close()
     }
 }
 
