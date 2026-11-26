@@ -596,6 +596,44 @@ pub const ES: &[(&str, &str)] = &[
         "The surface is not closed: {} open edges, {} shared by more than two triangles.",
         "La superficie no es cerrada: {} aristas abiertas, {} compartidas por más de dos triángulos.",
     ),
+    ("Repair the surface", "Reparar la superficie"),
+    (
+        "Welds the corners written twice, takes out triangles with no area and repeated ones, turns triangles to agree, and fills small holes. What it cannot decide is left and counted.",
+        "Une las esquinas escritas dos veces, quita los triángulos sin área y los repetidos, gira los triángulos para que concuerden y rellena los agujeros pequeños. Lo que no puede decidir se deja y se cuenta.",
+    ),
+    (
+        "{} corners welded into their neighbours",
+        "{} esquinas unidas a las vecinas",
+    ),
+    (
+        "{} triangles with no area removed",
+        "{} triángulos sin área quitados",
+    ),
+    (
+        "{} repeated triangles removed",
+        "{} triángulos repetidos quitados",
+    ),
+    (
+        "{} triangles turned to agree with their neighbours",
+        "{} triángulos girados para concordar con sus vecinos",
+    ),
+    (
+        "{} closed pieces turned right way out",
+        "{} piezas cerradas puestas del derecho",
+    ),
+    (
+        "{} holes filled with {} triangles",
+        "{} agujeros rellenados con {} triángulos",
+    ),
+    ("Nothing needed repairing.", "No hacía falta reparar nada."),
+    (
+        "The surface is now closed and consistently wound: {} triangles.",
+        "La superficie ya es cerrada y coherente: {} triángulos.",
+    ),
+    (
+        "Still not closed: {} open edges, {} shared by more than two triangles, {} edges wound against their neighbour.",
+        "Sigue sin cerrarse: {} aristas abiertas, {} compartidas por más de dos triángulos, {} aristas orientadas al revés que su vecina.",
+    ),
     (
         "Reference length (0: along the stream)",
         "Longitud de referencia (0: a lo largo de la corriente)",

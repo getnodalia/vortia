@@ -482,10 +482,8 @@ impl File<'_> {
             };
             match mode {
                 4 => {
-                    for t in order.chunks_exact(3) {
-                        if let [a, b, c] = *t {
-                            corner(a, b, c)?;
-                        }
+                    for &[a, b, c] in order.as_chunks::<3>().0 {
+                        corner(a, b, c)?;
                     }
                 }
                 5 => {

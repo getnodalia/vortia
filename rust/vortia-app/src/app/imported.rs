@@ -19,6 +19,8 @@ enum Loaded {
     Body {
         body: Box<Body>,
         summary: Summary,
+        /// What the last repair found and did, in the app's words.
+        repaired: Vec<String>,
     },
     Section {
         drawing: Box<Drawing>,
@@ -85,6 +87,7 @@ impl Imported {
                 Loaded::Body {
                     body: Box::new(Body::new(surface)),
                     summary,
+                    repaired: Vec::new(),
                 }
             })
         };
@@ -176,7 +179,7 @@ impl Imported {
                 );
                 ui.end_row();
                 match loaded {
-                    Loaded::Body { body, summary } => body_fields(ui, body, summary, scale),
+                    Loaded::Body { body, summary, .. } => body_fields(ui, body, summary, scale),
                     Loaded::Section {
                         drawing,
                         drawn,
@@ -185,11 +188,83 @@ impl Imported {
                     } => section_fields(ui, drawing, drawn, tunnel, cell_size),
                 }
             });
-        if let Loaded::Section { drawing, .. } = loaded {
-            ui.add_space(8.0);
-            preview(ui, drawing, 220.0);
+        match loaded {
+            Loaded::Section { drawing, .. } => {
+                ui.add_space(8.0);
+                preview(ui, drawing, 220.0);
+            }
+            Loaded::Body {
+                body,
+                summary,
+                repaired,
+            } => repair_ui(ui, body, summary, repaired),
         }
     }
+}
+
+/// The "Repair the surface" button, shown while the surface is not closed (or once it was
+/// repaired, to say what was done), and what the repair found.
+fn repair_ui(ui: &mut Ui, body: &mut Body, summary: &mut Summary, repaired: &mut Vec<String>) {
+    if !summary.closed() && ui.button(tr("Repair the surface")).on_hover_text(tr(
+        "Welds the corners written twice, takes out triangles with no area and repeated ones, turns triangles to agree, and fills small holes. What it cannot decide is left and counted.",
+    )).clicked()
+    {
+        match vortia_mesh::repair::repair(&body.surface, vortia_mesh::repair::Options::default()) {
+            Ok((surface, report)) => {
+                body.surface = surface;
+                *summary = report.after.clone();
+                *repaired = repair_lines(&report);
+            }
+            Err(e) => *repaired = vec![e.to_string()],
+        }
+    }
+    for line in repaired.iter() {
+        ui.label(line);
+    }
+}
+
+/// What a repair found and did, in the app's words.
+fn repair_lines(report: &vortia_mesh::repair::Report) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut done = |n: usize, template: &'static str| {
+        if n > 0 {
+            lines.push(trf(template, &[&n]));
+        }
+    };
+    done(report.welded, "{} corners welded into their neighbours");
+    done(report.degenerate, "{} triangles with no area removed");
+    done(report.repeated, "{} repeated triangles removed");
+    done(
+        report.reoriented,
+        "{} triangles turned to agree with their neighbours",
+    );
+    done(report.turned_out, "{} closed pieces turned right way out");
+    if report.holes_filled > 0 {
+        lines.push(trf(
+            "{} holes filled with {} triangles",
+            &[&report.holes_filled, &report.triangles_added],
+        ));
+    }
+    if !report.changed() {
+        lines.push(tr("Nothing needed repairing.").into());
+    }
+    let after = &report.after;
+    lines.push(if report.watertight() {
+        trf(
+            "The surface is now closed and consistently wound: {} triangles.",
+            &[&after.triangles],
+        )
+    } else {
+        trf(
+            "Still not closed: {} open edges, {} shared by more than two triangles, {} edges wound against their neighbour.",
+            &[
+                &after.open_edges,
+                &after.non_manifold_edges,
+                &report.inconsistent_after,
+            ],
+        )
+    });
+    lines
 }
 
 /// How far the tunnel reaches ahead of the body, behind it and at each side, in lengths of it.
@@ -393,6 +468,37 @@ mod tests {
         s += &quad([0, 0, 0], [0, 0, 1], [0, 1, 1], [0, 1, 0]);
         s += &quad([1, 0, 0], [1, 1, 0], [1, 1, 1], [1, 0, 1]);
         s + "endsolid cube\n"
+    }
+
+    #[test]
+    fn a_cube_missing_a_triangle_is_repaired_and_the_report_says_so() {
+        let dir = tempfile::tempdir().unwrap();
+        // Drop the last facet: a triangular hole in the cube.
+        let text = cube();
+        let cut = text.rfind("facet normal").unwrap();
+        let cut = text[..cut].rfind("facet normal").unwrap();
+        let open = format!("{}endsolid cube\n", &text[..cut]);
+        let path = written(&dir, "open.stl", &open);
+        let mut form = Imported {
+            file: path.display().to_string(),
+            ..Imported::default()
+        };
+        form.load();
+        let Some(Loaded::Body { body, summary, .. }) = &mut form.loaded else {
+            panic!("the file reads: {:?}", form.problem);
+        };
+        assert!(!summary.closed());
+        let (surface, report) =
+            vortia_mesh::repair::repair(&body.surface, vortia_mesh::repair::Options::default())
+                .unwrap();
+        assert!(report.watertight(), "{report:?}");
+        let lines = repair_lines(&report);
+        assert!(
+            lines.iter().any(|l| l.contains("holes filled")),
+            "{lines:?}"
+        );
+        assert!(lines.last().unwrap().contains("closed"), "{lines:?}");
+        assert!(surface.summary().closed());
     }
 
     fn written(dir: &tempfile::TempDir, name: &str, text: &str) -> std::path::PathBuf {

@@ -33,6 +33,7 @@ pub mod gmsh;
 pub mod obj;
 pub mod ply;
 pub mod polymesh;
+pub mod repair;
 pub mod stl;
 pub mod tri2d;
 pub mod wall;
