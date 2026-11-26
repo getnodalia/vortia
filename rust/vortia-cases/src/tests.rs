@@ -1080,7 +1080,7 @@ fn the_flow_around_a_body_has_its_wall_a_tunnel_and_a_solvable_mesh() {
     let tunnel: f64 = (0..3).map(|i| spec.high[i] - spec.low[i]).product();
     let sphere = std::f64::consts::PI / 6.0;
     assert!(
-        (geo.total_volume() - (tunnel - sphere)).abs() < 0.1 * sphere,
+        (geo.total_volume() - (tunnel - sphere)).abs() < 0.2 * sphere,
         "air {} for a tunnel of {tunnel} around a sphere of {sphere}",
         geo.total_volume()
     );

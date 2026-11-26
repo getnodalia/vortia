@@ -13,8 +13,10 @@
 mod assemble;
 mod grid;
 mod octree;
+mod snap;
 
 pub use octree::Region;
+pub use snap::SnapStats;
 
 use vortia_foamfile::RawPolyMesh;
 
@@ -79,6 +81,8 @@ pub struct BodySpec {
     pub sides: [Side; 6],
     /// The name of the patch on the body.
     pub body: String,
+    /// Whether the wall is moved onto the surface (otherwise it stays stepped).
+    pub snap: bool,
 }
 
 impl BodySpec {
@@ -105,6 +109,7 @@ impl BodySpec {
                 side("zmax"),
             ],
             body: "body".into(),
+            snap: true,
         }
     }
 }
@@ -119,6 +124,8 @@ pub struct BodyStats {
     pub faces: usize,
     /// The faces on the body.
     pub body_faces: usize,
+    /// What snapping the wall to the surface did (all zero when it was off).
+    pub snapping: snap::SnapStats,
 }
 
 fn invalid<T>(message: impl Into<String>) -> Result<T> {
@@ -199,7 +206,13 @@ pub fn mesh_around(surface: &Stl, spec: &BodySpec) -> Result<(RawPolyMesh, BodyS
             max_cells: spec.max_cells,
         },
     )?;
-    assemble::assemble(&tree, &grid, spec)
+    let (mut mesh, mut stats) = assemble::assemble(&tree, &grid, spec)?;
+    if spec.snap {
+        let finest =
+            size.iter().copied().fold(0.0, f64::max) / f64::from(1u32 << spec.surface_level);
+        stats.snapping = snap::snap(&mut mesh, &grid, 2.5 * finest);
+    }
+    Ok((mesh, stats))
 }
 
 #[cfg(test)]

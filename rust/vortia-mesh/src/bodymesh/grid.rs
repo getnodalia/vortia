@@ -237,6 +237,47 @@ impl TriGrid {
         })
     }
 
+    /// The point of the surface nearest to `p`, when one lies within `reach`.
+    pub(super) fn nearest(
+        &self,
+        p: [f64; 3],
+        reach: f64,
+        scratch: &mut Vec<u32>,
+    ) -> Option<[f64; 3]> {
+        // Look in growing boxes: the nearest point found in a box of half-width r is the true
+        // one once it lies within r of `p`.
+        let mut r = reach / 8.0;
+        loop {
+            let r_now = r.min(reach);
+            self.near(
+                [p[0] - r_now, p[1] - r_now, p[2] - r_now],
+                [p[0] + r_now, p[1] + r_now, p[2] + r_now],
+                scratch,
+            );
+            let mut best: Option<(f64, [f64; 3])> = None;
+            for &t in scratch.iter() {
+                let Some(t) = self.tris.get(t as usize) else {
+                    continue;
+                };
+                let q = closest_on_triangle(t, p);
+                let d = sub(q, p);
+                let d2 = dot(d, d);
+                if best.is_none_or(|(b, _)| d2 < b) {
+                    best = Some((d2, q));
+                }
+            }
+            if let Some((d2, q)) = best
+                && d2.sqrt() <= r_now
+            {
+                return Some(q);
+            }
+            if r_now >= reach {
+                return best.filter(|(d2, _)| d2.sqrt() <= reach).map(|(_, q)| q);
+            }
+            r *= 2.0;
+        }
+    }
+
     /// Whether the point is inside the surface (which is taken to be closed).
     pub(super) fn inside(&self, p: [f64; 3], scratch: &mut Vec<u32>) -> bool {
         if p[1] < self.lo[1] || p[1] > self.hi[1] || p[2] < self.lo[2] || p[2] > self.hi[2] {
@@ -259,6 +300,48 @@ impl TriGrid {
         }
         crossings % 2 == 1
     }
+}
+
+/// The point of the triangle nearest to `p` (Ericson, *Real-Time Collision Detection*, 5.1.5).
+fn closest_on_triangle(t: &Tri, p: [f64; 3]) -> [f64; 3] {
+    let add =
+        |a: [f64; 3], b: [f64; 3], s: f64| [a[0] + s * b[0], a[1] + s * b[1], a[2] + s * b[2]];
+    let ab = sub(t.b, t.a);
+    let ac = sub(t.c, t.a);
+    let ap = sub(p, t.a);
+    let (d1, d2) = (dot(ab, ap), dot(ac, ap));
+    if d1 <= 0.0 && d2 <= 0.0 {
+        return t.a;
+    }
+    let bp = sub(p, t.b);
+    let (d3, d4) = (dot(ab, bp), dot(ac, bp));
+    if d3 >= 0.0 && d4 <= d3 {
+        return t.b;
+    }
+    let vc = d1 * d4 - d3 * d2;
+    if vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0 {
+        return add(t.a, ab, d1 / (d1 - d3));
+    }
+    let cp = sub(p, t.c);
+    let (d5, d6) = (dot(ab, cp), dot(ac, cp));
+    if d6 >= 0.0 && d5 <= d6 {
+        return t.c;
+    }
+    let vb = d5 * d2 - d1 * d6;
+    if vb <= 0.0 && d2 >= 0.0 && d6 <= 0.0 {
+        return add(t.a, ac, d2 / (d2 - d6));
+    }
+    let va = d3 * d6 - d5 * d4;
+    if va <= 0.0 && d4 - d3 >= 0.0 && d5 - d6 >= 0.0 {
+        let w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+        return add(t.b, sub(t.c, t.b), w);
+    }
+    let sum = va + vb + vc;
+    if sum == 0.0 {
+        return t.a;
+    }
+    let (v, w) = (vb / sum, vc / sum);
+    add(add(t.a, ab, v), ac, w)
 }
 
 /// The sign of the 2D orientation of `p` against the edge `a -> b` in the (y, z) plane, the

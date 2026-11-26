@@ -118,7 +118,8 @@ fn the_cube_the_mesh_lacks_is_exactly_the_cube() {
 #[test]
 fn the_mesh_around_a_sphere_is_closed_and_the_volume_is_right() {
     let body = sphere([0.0; 3], 1.0, 3);
-    let spec = BodySpec::tunnel([-4.0; 3], [4.0; 3], [8; 3], 3);
+    let mut spec = BodySpec::tunnel([-4.0; 3], [4.0; 3], [8; 3], 3);
+    spec.snap = false;
     let (raw, _) = mesh_around(&body, &spec).unwrap();
     let (mesh, geo) = mesh_of(raw);
     let report = check(&mesh, &geo);
@@ -255,4 +256,59 @@ fn a_pocket_inside_a_hollow_body_is_not_meshed() {
     // The air is the domain less the whole outer cube: the cavity is shut in and left out.
     let volume: f64 = geo.cell_volumes.iter().sum();
     assert!((volume - (64.0 - 8.0)).abs() < 1e-9, "volume {volume}");
+}
+
+#[test]
+fn snapping_puts_the_wall_on_the_sphere_and_keeps_the_mesh_valid() {
+    let body = sphere([0.0; 3], 1.0, 4);
+    let mut spec = BodySpec::tunnel([-4.0; 3], [4.0; 3], [8; 3], 3);
+    spec.snap = false;
+    let (stepped_raw, _) = mesh_around(&body, &spec).unwrap();
+    let (stepped, stepped_geo) = mesh_of(stepped_raw);
+    spec.snap = true;
+    let (raw, stats) = mesh_around(&body, &spec).unwrap();
+    let (mesh, geo) = mesh_of(raw);
+    let report = check(&mesh, &geo);
+    assert!(report.is_ok(), "{:?}", report.failed_checks());
+    assert_eq!(report.open_cells, 0);
+    assert_eq!(mesh.n_cells(), stepped.n_cells());
+    assert!(stats.snapping.wall_points > 100, "{:?}", stats.snapping);
+    assert!(
+        stats.snapping.snapped * 10 >= stats.snapping.wall_points * 5,
+        "most wall points reach the surface: {:?}",
+        stats.snapping
+    );
+
+    // The wall points lie on the sphere (the facets of the surface are inside it by a hair).
+    let wall = mesh.patch("body").unwrap();
+    let mut worst = 0.0f64;
+    for f in wall.faces() {
+        for p in mesh.face_points(f) {
+            worst = worst.max((p.norm() - 1.0).abs());
+        }
+    }
+    assert!(worst < 0.1, "a wall point is {worst} from the sphere");
+
+    // The wall area is the sphere's much more closely than the steps'.
+    let area = |m: &PolyMesh, g: &MeshGeometry| -> f64 {
+        m.patch("body")
+            .unwrap()
+            .faces()
+            .map(|f| g.face_areas[f].norm())
+            .sum()
+    };
+    let exact = 4.0 * std::f64::consts::PI;
+    let (a_snapped, a_stepped) = (area(&mesh, &geo), area(&stepped, &stepped_geo));
+    assert!(
+        (a_snapped - exact).abs() < (a_stepped - exact).abs(),
+        "snapped {a_snapped}, stepped {a_stepped}, sphere {exact}"
+    );
+    // The air takes what the sphere leaves, within a few percent.
+    let volume: f64 = geo.cell_volumes.iter().sum();
+    let sphere_volume = 4.0 / 3.0 * std::f64::consts::PI;
+    assert!(
+        ((512.0 - volume) - sphere_volume).abs() / sphere_volume < 0.04,
+        "the snapped wall takes {}",
+        512.0 - volume
+    );
 }
