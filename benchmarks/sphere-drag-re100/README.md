@@ -62,6 +62,27 @@ So the small tunnel was worth about 2 % of the +4 % found above. The unconfined 
 viscous share stays at 52 %. Non-orthogonal correctors (0 to 3) change nothing at level 3, so
 the skew of the snapped cells is not the cause.
 
+## With prism layers (2026-11-26)
+
+`vortia new body ... layers=N layer-growth=R [yplus=Y]` stacks N thin cells on the snapped wall
+(`vortia-mesh::bodymesh::layers`): each wall point is moved out along its normal, the stack is at
+most half the wall face it grows out of, and it is made thinner when a cell would turn inside
+out. Without `yplus` the first layer is a tenth of the surface cell.
+
+| Tunnel | Level | Layers | Cells | C_D plain | C_D with layers |
+|---|---|---|---|---|---|
+| small | 3 | 3, growth 1.3 | 21 887 | 1.1070 | 1.1191 |
+| small | 3 | 5, growth 1.2, y+ = 1 | 24 383 | 1.1070 | 1.1198 |
+| large | 3 | 4, growth 1.2 | 66 223 | 1.0842 | 1.0966 |
+| large | 4 | 4, growth 1.2 | 124 495 | 1.1010 | 1.1076 |
+
+The layers move the drag **up** by 0.6 to 2 %, never down, and the viscous share stays about
+half. So the first-order wall gradient on a cell as thick as the boundary layer was **not** what
+made the snapped sphere read high: the remaining candidates are the faceted snapped wall itself
+(its area and curvature) and the solver's treatment of hanging nodes. The layered meshes are
+valid (no inverted or open cells) but thin cells on a skewed wall raise the worst
+non-orthogonality to about 80 degrees on the faces between neighbouring layer cells.
+
 ## What this says, and what it does not
 
 * The mesher produces closed, solvable meshes with the right body volume, and the sphere's

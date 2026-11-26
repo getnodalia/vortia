@@ -601,6 +601,12 @@ pub const ES: &[(&str, &str)] = &[
     ("Base cells along the length", "Celdas base a lo largo"),
     ("Refinements at the body", "Refinados en el cuerpo"),
     ("Refinements in the wake", "Refinados en la estela"),
+    ("Prism layers on the wall", "Capas prismáticas en la pared"),
+    ("Growth of each layer", "Crecimiento de cada capa"),
+    (
+        "First layer for y+ (0: a tenth of the cell)",
+        "Primera capa para y+ (0: una décima de la celda)",
+    ),
     ("Laminar", "Laminar"),
     ("The drawing", "El dibujo"),
     ("{} closed outlines", "{} contornos cerrados"),

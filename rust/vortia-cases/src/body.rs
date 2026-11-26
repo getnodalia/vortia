@@ -7,11 +7,11 @@
 //! the one the model was drawn for. The four lateral sides are symmetry planes (a tunnel with
 //! slip walls), which is why they are kept far from the body.
 //!
-//! The wall is snapped onto the surface (no prism layers yet). The drag of a smooth body is
-//! within a few percent of published values on the sphere benchmark, not better; refine the
-//! surface and check that the numbers stop moving before trusting them.
+//! The wall is snapped onto the surface and can carry prism layers (thin cells stacked on it).
+//! The drag of a smooth body is within a few percent of published values on the sphere
+//! benchmark; refine the surface and check that the numbers stop moving before trusting them.
 
-use vortia_mesh::bodymesh::{self, BodySpec, Region, SideKind};
+use vortia_mesh::bodymesh::{self, BodySpec, LayerSpec, Region, SideKind};
 use vortia_mesh::stl::Stl;
 
 use crate::channel::laminar_settings;
@@ -58,6 +58,13 @@ pub struct Body {
     pub model: BodyModel,
     /// Free-stream turbulence intensity (a fraction of the speed), for k-ω SST.
     pub intensity: f64,
+    /// Prism layers on the wall (0 for none).
+    pub layers: usize,
+    /// How much thicker each layer is than the one under it.
+    pub layer_growth: f64,
+    /// The y+ the first layer is sized for (from a flat-plate friction estimate); 0 sizes it as
+    /// a tenth of the surface cell instead.
+    pub yplus: f64,
 }
 
 impl Body {
@@ -76,6 +83,9 @@ impl Body {
             wake: 3.0,
             model: BodyModel::SpalartAllmaras,
             intensity: 0.01,
+            layers: 0,
+            layer_growth: 1.2,
+            yplus: 0.0,
         }
     }
 
@@ -89,6 +99,9 @@ impl Body {
             "lateral" => self.lateral = value,
             "wake" => self.wake = value,
             "intensity" => self.intensity = value,
+            "layer-growth" => self.layer_growth = value,
+            "yplus" => self.yplus = value,
+            "layers" => self.layers = crate::whole(name, value)?,
             "cells" => self.cells = crate::whole(name, value)?,
             "levels" => {
                 self.levels = u8::try_from(crate::whole(name, value)?).unwrap_or(u8::MAX);
@@ -187,6 +200,35 @@ impl Body {
                     summary.high[2] + pad,
                 ],
                 level: self.wake_levels.min(self.levels),
+            });
+        }
+        if self.layers > 0 {
+            if self.layers > bodymesh::MAX_LAYERS {
+                return Err(CaseError::Invalid(format!(
+                    "at most {} prism layers can be grown",
+                    bodymesh::MAX_LAYERS
+                )));
+            }
+            let growth = size("the layer growth", self.layer_growth, 3.0)?;
+            if growth < 1.0 {
+                return Err(CaseError::Invalid(
+                    "each layer is at least as thick as the one under it (growth 1 to 3)".into(),
+                ));
+            }
+            let first = if self.yplus > 0.0 {
+                let yplus = size("the target y+", self.yplus, 1.0e5)?;
+                let reynolds = size("the Reynolds number", self.reynolds, 1.0e10)?;
+                // y = y+ nu / u_tau, with u_tau = U sqrt(cf / 2) and the flat-plate cf.
+                let friction = 0.026 * reynolds.powf(-1.0 / 7.0);
+                yplus * length / (reynolds * (0.5 * friction).sqrt())
+            } else {
+                0.1 * base / f64::from(1u32 << self.levels)
+            };
+            spec.layers = Some(LayerSpec {
+                count: self.layers,
+                first,
+                ratio: growth,
+                reach: 0.5,
             });
         }
         Ok(spec)

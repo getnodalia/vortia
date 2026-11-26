@@ -10,8 +10,8 @@ finitos propio, mallador 2D propio e interfaz egui. No usa OpenFOAM, MPI, Python
   `.dat.h5` no están implementados.
 - **Lector `.cas.h5`:** verificado solo con un fichero de prueba generado por nosotros,
   no con un caso real de Fluent.
-- **Física ausente:** transferencia de calor conjugada, LES, multifase y capas de prisma
-  siguen sin existir (el mallador octree de cuerpos es de primera etapa: la esfera a Re = 100 da una resistencia un 3-4 % por encima del valor publicado) (ver [`architecture/simulation-depth.md`](architecture/simulation-depth.md)).
+- **Física ausente:** transferencia de calor conjugada, LES y multifase
+  siguen sin existir (el mallador octree de cuerpos tiene capas de prisma sobre paredes cerradas, no sobre un cuerpo que toca un plano; la esfera a Re = 100 da una resistencia un 1-4 % por encima del valor publicado, con o sin capas) (ver [`architecture/simulation-depth.md`](architecture/simulation-depth.md)).
 
 ## Aplicación
 

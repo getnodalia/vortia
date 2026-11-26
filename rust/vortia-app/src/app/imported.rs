@@ -252,6 +252,25 @@ pub(super) fn body_fields(ui: &mut Ui, body: &mut Body, summary: &Summary, scale
     row(ui, tr("Refinements in the wake"), |ui| {
         ui.add(DragValue::new(&mut body.wake_levels).range(0..=8));
     });
+    row(ui, tr("Prism layers on the wall"), |ui| {
+        ui.add(DragValue::new(&mut body.layers).range(0..=20));
+    });
+    if body.layers > 0 {
+        row(ui, tr("Growth of each layer"), |ui| {
+            ui.add(
+                DragValue::new(&mut body.layer_growth)
+                    .range(1.0..=3.0)
+                    .speed(0.01),
+            );
+        });
+        row(
+            ui,
+            tr("First layer for y+ (0: a tenth of the cell)"),
+            |ui| {
+                ui.add(DragValue::new(&mut body.yplus).range(0.0..=1000.0));
+            },
+        );
+    }
     row(ui, tr("Turbulence"), |ui| {
         ui.horizontal(|ui| {
             for (model, name) in [
