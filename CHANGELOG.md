@@ -7,6 +7,9 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 
 ## [Unreleased]
 
+### Añadido
+- **Elegir las aristas con el ratón (editor CAD):** «Redondear aristas» y «Achaflanar aristas» muestran las aristas de la pieza en el visor (los pliegues y los bordes de su malla, `vortia-app::edgepick`, soldando los vértices repetidos de una costura) y se eligen pulsando sobre ellas, sin teclear puntos; solo se pueden señalar las que miran al espectador, no las de la cara oculta. Cada arista elegida se guarda como el punto medio de su tramo, que el kernel encuentra en su arista (a menos de un milímetro). Probado: un bloque da sus doce aristas y un cilindro sus dos aros, el punto medio de cada tramo redondea y achaflana su arista, el puntero encuentra la arista sobre la que está y no la de detrás, y lo elegido sobre la pieza es lo que redondea la operación; no se ha visto en una ventana real.
+
 ## [0.14.0] — 2026-11-26
 
 ### Documentación

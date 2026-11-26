@@ -17,12 +17,17 @@ use vortia_mesh::stl::{Stl, Summary};
 
 use super::imported::body_fields;
 use super::newcase::{row, value};
+use crate::edgepick::{self, FeatureEdge};
 use crate::i18n::{tr, trf};
 use crate::surface::Surface;
 use crate::viewer::{Source, Viewer};
 
 /// How far a facet of the model may stand off the exact surface, as a share of its size.
 const CHORD: f64 = 0.001;
+
+/// The finer chord of the picture edges are picked on: a point on a piece of a curved edge stands
+/// off the true edge by less than the kernel's reach for it.
+const PICK_CHORD: f64 = 1.0e-4;
 
 /// The height of the picture of the part.
 const VIEW_HEIGHT: f32 = 360.0;
@@ -32,6 +37,17 @@ struct Built {
     stl: Stl,
     summary: Summary,
     viewer: Viewer,
+}
+
+/// A round or a chamfer being filled in by clicking the edges of the part before it.
+struct PickView {
+    /// The feature the clicks go to.
+    feature: usize,
+    /// The features before it, which the picture shows.
+    of: Option<Part>,
+    job: Option<Receiver<Result<Stl, String>>>,
+    viewer: Option<Viewer>,
+    problem: Option<String>,
 }
 
 /// What the helpers that fill an outline remember.
@@ -60,6 +76,7 @@ enum Edit {
     Remove(usize),
     Up(usize),
     Down(usize),
+    Pick(usize),
 }
 
 /// The form of a case made around a part modelled here.
@@ -79,6 +96,7 @@ pub(super) struct Modelled {
     part_file: String,
     saved: Option<(bool, String)>,
     helpers: Helpers,
+    pick: Option<PickView>,
 }
 
 impl Default for Modelled {
@@ -95,6 +113,7 @@ impl Default for Modelled {
             part_file: String::new(),
             saved: None,
             helpers: Helpers::default(),
+            pick: None,
         }
     }
 }
@@ -102,7 +121,11 @@ impl Default for Modelled {
 /// The surface of a part, or why it cannot be made. Runs on a thread: a kernel that stops on a
 /// part is an error the person can read, not a crash.
 fn build(part: &Part) -> Result<Stl, String> {
-    std::panic::catch_unwind(|| part.surface(CHORD))
+    build_with(part, CHORD)
+}
+
+fn build_with(part: &Part, chord: f64) -> Result<Stl, String> {
+    std::panic::catch_unwind(|| part.surface(chord))
         .unwrap_or_else(|_| {
             Err(vortia_mesh::MeshError::Invalid(
                 tr("The kernel stopped on this part: change the last feature.").into(),
@@ -160,9 +183,17 @@ fn corners_ui(
         });
 }
 
-/// The points that name the edges of a round or a chamfer.
-fn points_ui(ui: &mut Ui, id: egui::Id, points: &mut Vec<[f64; 3]>) {
+/// The points that name the edges of a round or a chamfer. Whether the person asked to pick them
+/// in the viewer.
+fn points_ui(ui: &mut Ui, id: egui::Id, points: &mut Vec<[f64; 3]>, picking: bool) -> bool {
+    let mut pick = false;
     ui.vertical(|ui| {
+        if ui
+            .add_enabled(!picking, egui::Button::new(tr("Pick in the viewer")))
+            .clicked()
+        {
+            pick = true;
+        }
         ui.label(tr(
             "The edge nearest each point, within a millimetre, is rounded: type a point on it, such as the middle of the edge.",
         ));
@@ -187,6 +218,7 @@ fn points_ui(ui: &mut Ui, id: egui::Id, points: &mut Vec<[f64; 3]>) {
             points.push(points.last().copied().unwrap_or([0.0; 3]));
         }
     });
+    pick
 }
 
 /// The wing section and the DXF outline buttons of an extruded outline.
@@ -251,7 +283,15 @@ fn join_title(join: Join) -> &'static str {
     }
 }
 
-fn shape_fields(ui: &mut Ui, id: egui::Id, shape: &mut Shape, helpers: &mut Helpers) {
+/// The fields of a feature. Returns whether the person asked to pick its edges in the viewer.
+fn shape_fields(
+    ui: &mut Ui,
+    id: egui::Id,
+    shape: &mut Shape,
+    helpers: &mut Helpers,
+    picking: bool,
+) -> bool {
+    let mut pick = false;
     egui::Grid::new(id)
         .num_columns(2)
         .spacing([space::MD, space::SM])
@@ -320,7 +360,7 @@ fn shape_fields(ui: &mut Ui, id: egui::Id, shape: &mut Shape, helpers: &mut Help
             Shape::Round { points, size } | Shape::Chamfer { points, size } => {
                 row(ui, tr("Size"), |ui| value(ui, size, "m"));
                 row(ui, tr("A point on each edge"), |ui| {
-                    points_ui(ui, id.with("points"), points)
+                    pick = points_ui(ui, id.with("points"), points, picking);
                 });
             }
             Shape::Revolve {
@@ -356,6 +396,7 @@ fn shape_fields(ui: &mut Ui, id: egui::Id, shape: &mut Shape, helpers: &mut Help
                 });
             }
         });
+    pick
 }
 
 /// A new feature of each kind, in a size that shows on the screen.
@@ -424,6 +465,15 @@ fn wing() -> Option<Feature> {
     })
 }
 
+/// Adds the middle of `edge` to the points, or takes away the points already on it.
+fn toggle(points: &mut Vec<[f64; 3]>, edge: &FeatureEdge) {
+    let before = points.len();
+    points.retain(|p| edge.distance(p) >= 1.0e-4);
+    if points.len() == before && points.len() < part::MAX_PICKS {
+        points.push(edge.middle());
+    }
+}
+
 impl Modelled {
     /// What the kernel made, or what went wrong.
     fn accept(&mut self, made: Result<Stl, String>) {
@@ -485,6 +535,94 @@ impl Modelled {
         match spawned {
             Ok(_) => self.job = Some(rx),
             Err(_) => self.problem = Some(tr("The part could not be built.").into()),
+        }
+    }
+
+    /// Starts choosing the edges of feature `i` (a round or a chamfer) by clicking them on the
+    /// part as it is before that feature.
+    fn start_pick(&mut self, i: usize) {
+        if i == 0 {
+            return;
+        }
+        if let Some(Feature {
+            shape: Shape::Round { points, .. } | Shape::Chamfer { points, .. },
+            ..
+        }) = self.part.features.get_mut(i)
+        {
+            // The placeholder a new round starts with is not an edge anyone chose.
+            if points.as_slice() == [[0.0; 3]] {
+                points.clear();
+            }
+            self.pick = Some(PickView {
+                feature: i,
+                of: None,
+                job: None,
+                viewer: None,
+                problem: None,
+            });
+        }
+    }
+
+    /// Builds the part before the feature being picked, and takes it in when it is done.
+    fn refresh_pick(&mut self, ctx: &egui::Context) {
+        let Some(pick) = &mut self.pick else {
+            return;
+        };
+        let before = self.part.features.get(..pick.feature).map(|features| Part {
+            features: features.to_vec(),
+        });
+        let still_rounding = matches!(
+            self.part.features.get(pick.feature).map(|f| &f.shape),
+            Some(Shape::Round { .. } | Shape::Chamfer { .. })
+        );
+        let Some(before) = before.filter(|_| still_rounding) else {
+            self.pick = None;
+            return;
+        };
+        if let Some(rx) = &pick.job {
+            match rx.try_recv() {
+                Ok(Ok(stl)) => {
+                    pick.job = None;
+                    pick.problem = None;
+                    let edges = edgepick::feature_edges(&stl);
+                    let surface = Surface::from_stl(tr("Part"), &stl);
+                    let mut viewer = match pick.viewer.take() {
+                        Some(mut old) => {
+                            old.replace_surface(surface);
+                            old
+                        }
+                        None => Viewer::new(surface),
+                    };
+                    viewer.pick_among(Some(edges));
+                    pick.viewer = Some(viewer);
+                }
+                Ok(Err(problem)) => {
+                    pick.job = None;
+                    pick.viewer = None;
+                    pick.problem = Some(problem);
+                }
+                Err(TryRecvError::Empty) => ctx.request_repaint_after(Duration::from_millis(100)),
+                Err(TryRecvError::Disconnected) => {
+                    pick.job = None;
+                    pick.problem = Some(tr("The part could not be built.").into());
+                }
+            }
+        }
+        if pick.job.is_some() || pick.of.as_ref() == Some(&before) {
+            return;
+        }
+        pick.of = Some(before.clone());
+        let (tx, rx) = channel();
+        let wake = ctx.clone();
+        let spawned = std::thread::Builder::new()
+            .name("vortia-pick".into())
+            .spawn(move || {
+                let _ = tx.send(build_with(&before, PICK_CHORD));
+                wake.request_repaint();
+            });
+        match spawned {
+            Ok(_) => pick.job = Some(rx),
+            Err(_) => pick.problem = Some(tr("The part could not be built.").into()),
         }
     }
 
@@ -559,6 +697,7 @@ impl Modelled {
     fn feature_list(&mut self, ui: &mut Ui) {
         let mut edit = None;
         let last = self.part.features.len().saturating_sub(1);
+        let picking = self.pick.as_ref().map(|p| p.feature);
         for (i, feature) in self.part.features.iter_mut().enumerate() {
             let id = ui.make_persistent_id(("modelled_feature", i));
             ui.group(|ui| {
@@ -592,15 +731,32 @@ impl Modelled {
                         edit = Some(Edit::Remove(i));
                     }
                 });
-                shape_fields(ui, id, &mut feature.shape, &mut self.helpers);
+                if shape_fields(
+                    ui,
+                    id,
+                    &mut feature.shape,
+                    &mut self.helpers,
+                    picking == Some(i),
+                ) && i > 0
+                {
+                    edit = Some(Edit::Pick(i));
+                }
             });
         }
         match edit {
             Some(Edit::Remove(i)) => {
+                self.pick = None;
                 self.part.features.remove(i);
             }
-            Some(Edit::Up(i)) if i > 0 => self.part.features.swap(i, i - 1),
-            Some(Edit::Down(i)) if i < last => self.part.features.swap(i, i + 1),
+            Some(Edit::Up(i)) if i > 0 => {
+                self.pick = None;
+                self.part.features.swap(i, i - 1);
+            }
+            Some(Edit::Down(i)) if i < last => {
+                self.pick = None;
+                self.part.features.swap(i, i + 1);
+            }
+            Some(Edit::Pick(i)) => self.start_pick(i),
             _ => {}
         }
     }
@@ -615,6 +771,10 @@ impl Modelled {
         }
         if let Some(problem) = &self.problem {
             ui.colored_label(ui.visuals().error_fg_color, problem);
+        }
+        if self.pick.is_some() {
+            self.pick_picture(ui, p);
+            return;
         }
         let Some(built) = &mut self.built else {
             return;
@@ -647,6 +807,62 @@ impl Modelled {
                 &self.source,
             );
         });
+    }
+
+    /// The part as it is before the round or chamfer being filled in, with its edges to click.
+    fn pick_picture(&mut self, ui: &mut Ui, p: &Palette) {
+        let Some(pick) = &mut self.pick else {
+            return;
+        };
+        let mut done = false;
+        ui.horizontal_wrapped(|ui| {
+            ui.label(tr(
+                "Click the edges to round or bevel; click a chosen edge again to let it go. The picture shows the part as it is before this step.",
+            ));
+            if ui.button(tr("Finish picking")).clicked() {
+                done = true;
+            }
+        });
+        if let Some(problem) = &pick.problem {
+            ui.colored_label(ui.visuals().error_fg_color, problem);
+        }
+        if pick.job.is_some() {
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label(tr("Building the part…"));
+            });
+        }
+        let feature = pick.feature;
+        let chosen = match self.part.features.get(feature).map(|f| &f.shape) {
+            Some(Shape::Round { points, .. } | Shape::Chamfer { points, .. }) => points.clone(),
+            _ => Vec::new(),
+        };
+        let mut clicked = None;
+        if let Some(viewer) = &mut pick.viewer {
+            viewer.set_chosen(&chosen);
+            let width = ui.available_width();
+            ui.allocate_ui(egui::vec2(width, VIEW_HEIGHT), |ui| {
+                viewer.show(
+                    ui,
+                    for_egui::color(p.surface_sunken),
+                    for_egui::color(p.text_secondary),
+                    component::CONTROL_RADIUS.round().clamp(0.0, 255.0) as u8,
+                    &self.source,
+                );
+            });
+            clicked = viewer.take_click();
+        }
+        if let Some(edge) = clicked
+            && let Some(Feature {
+                shape: Shape::Round { points, .. } | Shape::Chamfer { points, .. },
+                ..
+            }) = self.part.features.get_mut(feature)
+        {
+            toggle(points, &edge);
+        }
+        if done {
+            self.pick = None;
+        }
     }
 
     /// The part file: saving and opening it.
@@ -722,6 +938,7 @@ impl Modelled {
 
     pub(super) fn ui(&mut self, ui: &mut Ui, p: &Palette) {
         self.refresh(&ui.ctx().clone());
+        self.refresh_pick(&ui.ctx().clone());
         self.add_buttons(ui);
         self.file_row(ui);
         ui.add_space(space::SM);
@@ -869,5 +1086,84 @@ mod tests {
         }
         assert!(form.built.is_some(), "{:?}", form.problem);
         assert!(form.geometry().is_ok());
+    }
+
+    #[test]
+    fn edges_picked_on_the_part_before_a_round_are_the_ones_it_rounds() {
+        let ctx = egui::Context::default();
+        let palette = nodalia_theme::Mode::Dark.palette_with(crate::app::ACCENT);
+        let mut form = Modelled::default();
+        form.part.features.push(Feature {
+            shape: Shape::Box {
+                origin: [0.0; 3],
+                size: [1.0; 3],
+            },
+            join: Join::Add,
+        });
+        form.part.features.push(Feature {
+            shape: new_shape(7).unwrap(),
+            join: Join::Add,
+        });
+        form.start_pick(1);
+        // The placeholder point a new round starts with is not an edge.
+        assert!(matches!(
+            form.part.features.get(1).map(|f| &f.shape),
+            Some(Shape::Round { points, .. }) if points.is_empty()
+        ));
+        let run = |form: &mut Modelled| {
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| form.ui(ui, &palette));
+            output.textures_delta.clear();
+        };
+        for _ in 0..600 {
+            run(&mut form);
+            let ready = form.pick.as_ref().is_some_and(|p| p.viewer.is_some());
+            if ready {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert!(
+            form.pick.as_ref().is_some_and(|p| p.viewer.is_some()),
+            "{:?}",
+            form.pick.as_ref().map(|p| &p.problem)
+        );
+        // What the viewer would hand over for a click on an edge of the block.
+        let block = build_with(
+            &Part {
+                features: form.part.features.get(..1).unwrap_or(&[]).to_vec(),
+            },
+            PICK_CHORD,
+        )
+        .unwrap();
+        let edges = edgepick::feature_edges(&block);
+        assert_eq!(edges.len(), 12);
+        let edge = edges.first().unwrap().clone();
+        for shape in form.part.features.iter_mut().skip(1).map(|f| &mut f.shape) {
+            if let Shape::Round { points, .. } = shape {
+                toggle(points, &edge);
+                assert_eq!(points.len(), 1);
+            }
+        }
+        for _ in 0..600 {
+            run(&mut form);
+            if form.job.is_none() && form.of.as_ref() == Some(&form.part) {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert!(form.problem.is_none(), "{:?}", form.problem);
+        let volume = form.built.as_ref().and_then(|b| b.summary.volume).unwrap();
+        let rounded = 1.0 - (1.0 - std::f64::consts::FRAC_PI_4) * 0.05 * 0.05;
+        assert!(
+            (volume - rounded).abs() < 1.0e-3,
+            "{volume} against {rounded}"
+        );
+        // Clicking the same edge again lets it go.
+        for shape in form.part.features.iter_mut().skip(1).map(|f| &mut f.shape) {
+            if let Shape::Round { points, .. } = shape {
+                toggle(points, &edge);
+                assert!(points.is_empty());
+            }
+        }
     }
 }

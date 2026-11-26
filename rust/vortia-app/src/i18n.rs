@@ -533,6 +533,12 @@ pub const ES: &[(&str, &str)] = &[
     ("File to export to", "Archivo de destino"),
     ("Save as STL", "Guardar como STL"),
     ("Save as STEP", "Guardar como STEP"),
+    ("Pick in the viewer", "Elegir en el visor"),
+    (
+        "Click the edges to round or bevel; click a chosen edge again to let it go. The picture shows the part as it is before this step.",
+        "Pulsa las aristas que redondear o achaflanar; vuelve a pulsar una elegida para soltarla. La imagen muestra la pieza tal como está antes de este paso.",
+    ),
+    ("Finish picking", "Terminar de elegir"),
     ("Saved {}", "Guardado {}"),
     (
         "Model a part first: add a feature.",
