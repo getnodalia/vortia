@@ -8,6 +8,7 @@ description = "CAD files for the meshers: STEP solids as surfaces through Nodali
 [dependencies]
 vortia-mesh = { path = "../vortia-mesh" }
 vortia-sketch = { path = "../vortia-sketch" }
+serde_json = { version = "1", features = ["float_roundtrip"] }
 # Nodalia's DXF reader (MIT OR Apache-2.0), shared with Forja; pinned by revision.
 nodalia-dxf = { git = "https://github.com/getnodalia/foundation", rev = "a6eb9c3d814ac584f03725b2a0b1dabf70655b2d" }
 # Nodalia's STEP reader and tessellator (Apache-2.0), vendored in Torno's tree; pinned by revision.

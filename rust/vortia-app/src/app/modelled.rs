@@ -27,9 +27,6 @@ const CHORD: f64 = 0.001;
 /// The height of the picture of the part.
 const VIEW_HEIGHT: f32 = 360.0;
 
-/// The most features a part holds in the form.
-const MAX_FEATURES: usize = 64;
-
 /// The model, as the kernel made it.
 struct Built {
     stl: Stl,
@@ -78,6 +75,8 @@ pub(super) struct Modelled {
     problem: Option<String>,
     source: Source,
     save_to: String,
+    /// The part file being typed.
+    part_file: String,
     saved: Option<(bool, String)>,
     helpers: Helpers,
 }
@@ -93,6 +92,7 @@ impl Default for Modelled {
             problem: None,
             source: Source::default(),
             save_to: String::new(),
+            part_file: String::new(),
             saved: None,
             helpers: Helpers::default(),
         }
@@ -160,6 +160,35 @@ fn corners_ui(
         });
 }
 
+/// The points that name the edges of a round or a chamfer.
+fn points_ui(ui: &mut Ui, id: egui::Id, points: &mut Vec<[f64; 3]>) {
+    ui.vertical(|ui| {
+        ui.label(tr(
+            "The edge nearest each point, within a millimetre, is rounded: type a point on it, such as the middle of the edge.",
+        ));
+        let mut remove = None;
+        egui::ScrollArea::vertical()
+            .id_salt(id.with("scroll"))
+            .max_height(140.0)
+            .show(ui, |ui| {
+                for (i, point) in points.iter_mut().enumerate() {
+                    ui.horizontal(|ui| {
+                        vec3(ui, point);
+                        if ui.small_button(tr("Remove corner")).clicked() {
+                            remove = Some(i);
+                        }
+                    });
+                }
+            });
+        if let Some(i) = remove {
+            points.remove(i);
+        }
+        if points.len() < part::MAX_PICKS && ui.button(tr("Add an edge")).clicked() {
+            points.push(points.last().copied().unwrap_or([0.0; 3]));
+        }
+    });
+}
+
 /// The wing section and the DXF outline buttons of an extruded outline.
 fn outline_helpers(ui: &mut Ui, corners: &mut Vec<[f64; 2]>, helpers: &mut Helpers) {
     ui.horizontal_wrapped(|ui| {
@@ -209,6 +238,8 @@ fn shape_title(shape: &Shape) -> &'static str {
         Shape::Torus { .. } => tr("Torus"),
         Shape::Extrude { .. } => tr("Extruded outline"),
         Shape::Revolve { .. } => tr("Turned outline"),
+        Shape::Round { .. } => tr("Round edges"),
+        Shape::Chamfer { .. } => tr("Chamfer edges"),
     }
 }
 
@@ -286,6 +317,12 @@ fn shape_fields(ui: &mut Ui, id: egui::Id, shape: &mut Shape, helpers: &mut Help
                     });
                 });
             }
+            Shape::Round { points, size } | Shape::Chamfer { points, size } => {
+                row(ui, tr("Size"), |ui| value(ui, size, "m"));
+                row(ui, tr("A point on each edge"), |ui| {
+                    points_ui(ui, id.with("points"), points)
+                });
+            }
             Shape::Revolve {
                 corners,
                 center,
@@ -359,9 +396,21 @@ fn new_shape(which: usize) -> Option<Shape> {
             center: [0.0; 3],
             angle: tau,
         },
+        7 => Shape::Round {
+            points: vec![[0.0; 3]],
+            size: 0.05,
+        },
+        8 => Shape::Chamfer {
+            points: vec![[0.0; 3]],
+            size: 0.05,
+        },
         _ => return None,
     })
 }
+
+/// How many kinds of shape [`new_shape`] makes, the last two rounding and bevelling what is there.
+#[cfg(test)]
+const KINDS: usize = 9;
 
 /// A wing of constant NACA 2412 section, a metre of chord and two of span.
 fn wing() -> Option<Feature> {
@@ -471,7 +520,7 @@ impl Modelled {
     fn add_buttons(&mut self, ui: &mut Ui) {
         ui.horizontal_wrapped(|ui| {
             ui.label(tr("Add"));
-            let full = self.part.features.len() >= MAX_FEATURES;
+            let full = self.part.features.len() >= part::MAX_FEATURES;
             let names = [
                 tr("Box"),
                 tr("Cylinder"),
@@ -480,6 +529,8 @@ impl Modelled {
                 tr("Torus"),
                 tr("Extruded outline"),
                 tr("Turned outline"),
+                tr("Round edges"),
+                tr("Chamfer edges"),
             ];
             for (which, name) in names.into_iter().enumerate() {
                 if ui.add_enabled(!full, egui::Button::new(name)).clicked()
@@ -516,8 +567,11 @@ impl Modelled {
                         egui::RichText::new(format!("{}  {}", i + 1, shape_title(&feature.shape)))
                             .strong(),
                     );
-                    if i == 0 {
-                        // The first has nothing to cut or keep: it starts the part.
+                    if i == 0
+                        || matches!(feature.shape, Shape::Round { .. } | Shape::Chamfer { .. })
+                    {
+                        // The first has nothing to cut or keep: it starts the part. A round or
+                        // a chamfer works on what is there.
                         feature.join = Join::Add;
                     } else {
                         egui::ComboBox::from_id_salt(id.with("join"))
@@ -595,6 +649,39 @@ impl Modelled {
         });
     }
 
+    /// The part file: saving and opening it.
+    fn file_row(&mut self, ui: &mut Ui) {
+        ui.horizontal_wrapped(|ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut self.part_file)
+                    .hint_text(tr("A part file (.vortia-part)"))
+                    .desired_width(260.0),
+            );
+            let path = std::path::PathBuf::from(self.part_file.trim());
+            if ui.button(tr("Open part")).clicked() {
+                self.saved = Some(match Part::open(&path) {
+                    Ok(part) => {
+                        self.part = part;
+                        (true, trf("Opened {}", &[&path.display()]))
+                    }
+                    Err(e) => (false, e.to_string()),
+                });
+            }
+            if ui
+                .add_enabled(
+                    !self.part.features.is_empty(),
+                    egui::Button::new(tr("Save part")),
+                )
+                .clicked()
+            {
+                self.saved = Some(match self.part.save(&path) {
+                    Ok(()) => (true, trf("Saved {}", &[&path.display()])),
+                    Err(e) => (false, e.to_string()),
+                });
+            }
+        });
+    }
+
     fn export(&mut self, ui: &mut Ui) {
         let Some(built) = &self.built else {
             return;
@@ -613,6 +700,9 @@ impl Modelled {
                 });
             }
         });
+    }
+
+    fn note(&self, ui: &mut Ui) {
         if let Some((ok, message)) = &self.saved {
             let colour = if *ok {
                 ui.visuals().text_color()
@@ -626,6 +716,7 @@ impl Modelled {
     pub(super) fn ui(&mut self, ui: &mut Ui, p: &Palette) {
         self.refresh(&ui.ctx().clone());
         self.add_buttons(ui);
+        self.file_row(ui);
         ui.add_space(space::SM);
         if self.part.features.is_empty() {
             ui.label(tr(
@@ -636,6 +727,7 @@ impl Modelled {
         ui.add_space(space::SM);
         self.picture(ui, p);
         self.export(ui);
+        self.note(ui);
         if let Some(built) = &self.built {
             ui.add_space(space::SM);
             ui.label(tr("The flow comes along x."));
@@ -706,9 +798,9 @@ mod tests {
 
     #[test]
     fn every_kind_of_shape_is_offered_and_none_more() {
-        assert!((0..7).all(|i| new_shape(i).is_some()));
-        assert!(new_shape(7).is_none());
-        // Each one builds on its own.
+        assert!((0..KINDS).all(|i| new_shape(i).is_some()));
+        assert!(new_shape(KINDS).is_none());
+        // Each solid builds on its own.
         for i in 0..7 {
             let part = Part {
                 features: vec![Feature {
@@ -718,6 +810,34 @@ mod tests {
             };
             assert!(build(&part).is_ok(), "shape {i}");
         }
+    }
+
+    #[test]
+    fn a_rounded_edge_is_a_feature_after_the_solid_it_rounds() {
+        let mut form = Modelled::default();
+        form.part.features.push(Feature {
+            shape: new_shape(0).unwrap(),
+            join: Join::Add,
+        });
+        // The top front edge of the box, 1 × 0.5 × 0.5 m.
+        form.part.features.push(Feature {
+            shape: Shape::Round {
+                points: vec![[0.5, 0.0, 0.5]],
+                size: 0.05,
+            },
+            join: Join::Add,
+        });
+        form.of = Some(form.part.clone());
+        form.accept(build(&form.part));
+        assert!(form.problem.is_none(), "{:?}", form.problem);
+        let volume = form.built.as_ref().unwrap().summary.volume.unwrap();
+        let exact = 0.25 - (1.0 - std::f64::consts::FRAC_PI_4) * 0.0025;
+        assert!((volume - exact).abs() < 2.0e-4, "{volume} against {exact}");
+        // Moved before the solid, it has nothing to round and says so.
+        form.part.features.swap(0, 1);
+        form.of = Some(form.part.clone());
+        form.accept(build(&form.part));
+        assert!(form.problem.is_some());
     }
 
     #[test]

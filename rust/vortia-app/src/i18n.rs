@@ -450,6 +450,21 @@ pub const ES: &[(&str, &str)] = &[
     ("Drawn region", "Región dibujada"),
     ("Around a CAD file", "Alrededor de un archivo CAD"),
     (
+        "A part file (.vortia-part)",
+        "Un archivo de pieza (.vortia-part)",
+    ),
+    ("Open part", "Abrir pieza"),
+    ("Round edges", "Redondear aristas"),
+    ("Chamfer edges", "Achaflanar aristas"),
+    ("A point on each edge", "Un punto de cada arista"),
+    ("Add an edge", "Añadir una arista"),
+    (
+        "The edge nearest each point, within a millimetre, is rounded: type a point on it, such as the middle of the edge.",
+        "Se redondea la arista más cercana a cada punto, a menos de un milímetro: escribe un punto de ella, como el medio de la arista.",
+    ),
+    ("Save part", "Guardar pieza"),
+    ("Opened {}", "Abierto {}"),
+    (
         "The kernel stopped on this part: change the last feature.",
         "El núcleo se detuvo con esta pieza: cambia la última operación.",
     ),
