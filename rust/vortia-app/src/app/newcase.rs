@@ -12,6 +12,7 @@ use vortia_cases::{
 };
 use vortia_sketch::Measure;
 
+use super::imported::Imported;
 use crate::region_editor::{self, Canvas, RegionEditor, Role};
 use crate::sketch_editor::{Outline, SketchEditor, Template};
 
@@ -27,10 +28,11 @@ pub(super) enum Kind {
     Jet,
     Sketch,
     Region,
+    Imported,
 }
 
 impl Kind {
-    const ALL: [Kind; 9] = [
+    const ALL: [Kind; 10] = [
         Kind::Channel,
         Kind::Cavity,
         Kind::Plate,
@@ -40,6 +42,7 @@ impl Kind {
         Kind::Jet,
         Kind::Sketch,
         Kind::Region,
+        Kind::Imported,
     ];
 
     fn title(self) -> &'static str {
@@ -53,6 +56,7 @@ impl Kind {
             Kind::Jet => tr("Jet into the atmosphere"),
             Kind::Sketch => tr("From sketch"),
             Kind::Region => tr("Drawn region"),
+            Kind::Imported => tr("Around a CAD file"),
         }
     }
 
@@ -81,6 +85,9 @@ impl Kind {
             }
             Kind::Sketch => {
                 "A duct whose wall you dimension in a sketch: lines and arcs held by lengths, heights and radii, meshed by Vortia itself and run as a nozzle (rhoSimpleFoam). The sketch is kept in the case."
+            }
+            Kind::Imported => {
+                "A body read from a file in a wind tunnel built around it: an STL, OBJ or STEP surface is meshed in 3D by octree refinement (Spalart–Allmaras or k-ω SST), a DXF drawing, say the side of a car or a wing section, in 2D with triangles (laminar, incompressible). The drag is the force on the patch `body`."
             }
             Kind::Region => {
                 "A closed outline you dimension in a sketch, with a name on every edge: `inlet` is where the fluid comes in, `outlet` where it leaves, `symmetry` a symmetry plane and any other name a wall. Meshed with triangles by Vortia itself and run as laminar, incompressible, steady flow (simpleFoam). The sketch is kept in the case."
@@ -111,6 +118,8 @@ pub(super) struct NewCase {
     region_file: String,
     /// The flow and mesh settings of the drawn region; its edges come from the sketch.
     drawn: Drawn,
+    /// The body or drawing read from a file.
+    imported: Imported,
 }
 
 /// What the form asks for.
@@ -139,6 +148,7 @@ impl NewCase {
             region: RegionEditor::default(),
             region_file: String::new(),
             drawn: Drawn::default(),
+            imported: Imported::default(),
         };
         form.propose(base);
         form
@@ -163,6 +173,7 @@ impl NewCase {
             Kind::Jet => "jet",
             Kind::Sketch => "sketch",
             Kind::Region => "region",
+            Kind::Imported => "body",
         };
         let free = (1..1000)
             .map(|n| {
@@ -194,6 +205,7 @@ impl NewCase {
             Kind::Jet => Geometry::Jet(self.jet.clone()),
             Kind::Sketch => Geometry::Nozzle(self.sketched_nozzle()?),
             Kind::Region => Geometry::Drawn(self.drawn_region()?),
+            Kind::Imported => self.imported.geometry()?,
         })
     }
 
@@ -278,6 +290,7 @@ impl NewCase {
                 Kind::Jet => jet_fields(ui, &mut self.jet),
                 Kind::Sketch => self.sketch_fields(ui),
                 Kind::Region => self.region_fields(ui),
+                Kind::Imported => self.imported.ui(ui),
             }
             ui.add_space(space::SM);
             ui.horizontal(|ui| {
@@ -1057,6 +1070,18 @@ mod tests {
             let mut form = NewCase::new(base.path());
             form.kind = kind;
             form.propose(base.path());
+            if kind == Kind::Imported {
+                // The one kind that needs a file: a circle drawn in millimetres.
+                let file = base.path().join("circle.dxf");
+                std::fs::write(
+                    &file,
+                    "0\nSECTION\n2\nHEADER\n9\n$INSUNITS\n70\n4\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n0\nCIRCLE\n8\n0\n10\n0\n20\n0\n40\n10\n0\nENDSEC\n0\nEOF\n",
+                )
+                .unwrap();
+                form.imported.file = file.display().to_string();
+                form.imported.load();
+                form.propose(base.path());
+            }
             let dir = form.create().unwrap();
             assert!(dir.starts_with(base.path()));
             assert!(dir.join("system/controlDict").is_file(), "{kind:?}");

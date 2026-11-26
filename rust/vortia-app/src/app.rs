@@ -28,6 +28,7 @@ use crate::summary::{self, Summary};
 use crate::surface;
 use crate::viewer::{Source, Viewer};
 
+mod imported;
 mod newcase;
 mod preferences;
 mod results;
