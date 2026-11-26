@@ -314,3 +314,219 @@ fn a_drawing_with_more_corners_than_a_sketch_holds_is_thinned_and_says_so() {
     let (lo, hi) = drawing.bounds().unwrap();
     assert!((hi.0 - 30.0).abs() < 0.1 && (lo.1 + 20.0).abs() < 0.1);
 }
+
+/// A drawing with block definitions (each `(name, base point, entities)`) and entities.
+fn with_blocks(blocks: &[(&str, (f64, f64), String)], entities: &str) -> String {
+    let mut section = String::new();
+    for (name, base, body) in blocks {
+        let _ = write!(
+            section,
+            "0\nBLOCK\n8\n0\n2\n{name}\n70\n0\n10\n{}\n20\n{}\n30\n0\n3\n{name}\n{body}0\nENDBLK\n8\n0\n",
+            base.0, base.1
+        );
+    }
+    format!(
+        "0\nSECTION\n2\nHEADER\n9\n$INSUNITS\n70\n4\n0\nENDSEC\n0\nSECTION\n2\nBLOCKS\n{section}0\nENDSEC\n0\nSECTION\n2\nENTITIES\n{entities}0\nENDSEC\n0\nEOF\n"
+    )
+}
+
+/// An INSERT of `block` at `at`, scaled by `scale`, turned `rotation` degrees, and repeated in
+/// `array` columns and rows `step` apart.
+fn insert(
+    layer: &str,
+    block: &str,
+    at: (f64, f64),
+    scale: (f64, f64),
+    rotation: f64,
+    array: (i64, i64),
+    step: (f64, f64),
+) -> String {
+    format!(
+        "0\nINSERT\n8\n{layer}\n2\n{block}\n10\n{}\n20\n{}\n41\n{}\n42\n{}\n43\n1\n50\n{rotation}\n70\n{}\n71\n{}\n44\n{}\n45\n{}\n",
+        at.0, at.1, scale.0, scale.1, array.0, array.1, step.0, step.1
+    )
+}
+
+fn single(layer: &str, block: &str, at: (f64, f64)) -> String {
+    insert(layer, block, at, (1.0, 1.0), 0.0, (1, 1), (0.0, 0.0))
+}
+
+fn square(layer: &str, side: f64) -> String {
+    [
+        line(layer, (0.0, 0.0), (side, 0.0)),
+        line(layer, (side, 0.0), (side, side)),
+        line(layer, (side, side), (0.0, side)),
+        line(layer, (0.0, side), (0.0, 0.0)),
+    ]
+    .concat()
+}
+
+#[test]
+fn a_block_is_drawn_where_it_is_placed() {
+    let text = with_blocks(
+        &[("plate", (0.0, 0.0), square("0", 2.0))],
+        &single("0", "plate", (10.0, 5.0)),
+    );
+    let drawing = dxf::parse(text.as_bytes()).unwrap();
+    assert_eq!(drawing.outlines.len(), 1);
+    let (lo, hi) = drawing.bounds().unwrap();
+    assert!(
+        (lo.0 - 10.0).abs() < 1e-9 && (lo.1 - 5.0).abs() < 1e-9,
+        "{lo:?}"
+    );
+    assert!(
+        (hi.0 - 12.0).abs() < 1e-9 && (hi.1 - 7.0).abs() < 1e-9,
+        "{hi:?}"
+    );
+}
+
+#[test]
+fn a_block_keeps_its_base_point_at_the_insertion_point() {
+    // Based at its middle, a 2 × 2 square placed at (10, 10) spans 9 to 11.
+    let text = with_blocks(
+        &[("plate", (1.0, 1.0), square("0", 2.0))],
+        &single("0", "plate", (10.0, 10.0)),
+    );
+    let (lo, hi) = dxf::parse(text.as_bytes()).unwrap().bounds().unwrap();
+    assert!(
+        (lo.0 - 9.0).abs() < 1e-9 && (hi.0 - 11.0).abs() < 1e-9,
+        "{lo:?} {hi:?}"
+    );
+    assert!(
+        (lo.1 - 9.0).abs() < 1e-9 && (hi.1 - 11.0).abs() < 1e-9,
+        "{lo:?} {hi:?}"
+    );
+}
+
+#[test]
+fn a_block_is_scaled_then_turned_about_its_insertion_point() {
+    // A unit square doubled and turned a quarter turn lies to the left of the point and above it.
+    let text = with_blocks(
+        &[("unit", (0.0, 0.0), square("0", 1.0))],
+        &insert(
+            "0",
+            "unit",
+            (0.0, 0.0),
+            (2.0, 2.0),
+            90.0,
+            (1, 1),
+            (0.0, 0.0),
+        ),
+    );
+    let (lo, hi) = dxf::parse(text.as_bytes()).unwrap().bounds().unwrap();
+    assert!(
+        (lo.0 + 2.0).abs() < 1e-9 && hi.0.abs() < 1e-9,
+        "{lo:?} {hi:?}"
+    );
+    assert!(
+        lo.1.abs() < 1e-9 && (hi.1 - 2.0).abs() < 1e-9,
+        "{lo:?} {hi:?}"
+    );
+}
+
+#[test]
+fn an_array_places_a_copy_in_every_cell() {
+    let text = with_blocks(
+        &[("unit", (0.0, 0.0), square("0", 1.0))],
+        &insert("0", "unit", (0.0, 0.0), (1.0, 1.0), 0.0, (3, 2), (5.0, 4.0)),
+    );
+    let drawing = dxf::parse(text.as_bytes()).unwrap();
+    assert_eq!(drawing.outlines.len(), 6);
+    let (lo, hi) = drawing.bounds().unwrap();
+    assert!(
+        lo.0.abs() < 1e-9 && (hi.0 - 11.0).abs() < 1e-9,
+        "{lo:?} {hi:?}"
+    );
+    assert!(
+        lo.1.abs() < 1e-9 && (hi.1 - 5.0).abs() < 1e-9,
+        "{lo:?} {hi:?}"
+    );
+}
+
+#[test]
+fn blocks_inside_blocks_are_followed_and_layer_zero_takes_the_layer_of_the_reference() {
+    let inner = square("0", 1.0);
+    let outer = single("0", "inner", (3.0, 0.0));
+    let text = with_blocks(
+        &[("inner", (0.0, 0.0), inner), ("outer", (0.0, 0.0), outer)],
+        &single("holes", "outer", (10.0, 0.0)),
+    );
+    let drawing = dxf::parse(text.as_bytes()).unwrap();
+    assert_eq!(drawing.outlines.len(), 1);
+    let edges = loop_edges(&drawing.outlines[0]);
+    assert!(edges.iter().all(|e| e.layer == "holes"), "{edges:?}");
+    let (lo, _) = drawing.bounds().unwrap();
+    assert!((lo.0 - 13.0).abs() < 1e-9, "{lo:?}");
+}
+
+#[test]
+fn a_block_that_holds_itself_does_not_loop_for_ever() {
+    let text = with_blocks(
+        &[(
+            "ouroboros",
+            (0.0, 0.0),
+            [square("0", 1.0), single("0", "ouroboros", (2.0, 0.0))].concat(),
+        )],
+        &single("0", "ouroboros", (0.0, 0.0)),
+    );
+    let drawing = dxf::parse(text.as_bytes()).unwrap();
+    assert!(!drawing.outlines.is_empty() && drawing.outlines.len() <= 16);
+}
+
+#[test]
+fn a_reference_to_a_block_that_is_not_there_is_said_not_ignored() {
+    let text = with_blocks(
+        &[],
+        &[square("0", 1.0), single("0", "ghost", (0.0, 0.0))].concat(),
+    );
+    let drawing = dxf::parse(text.as_bytes()).unwrap();
+    assert!(
+        drawing.notes.iter().any(|n| n.contains("ghost")),
+        "{:?}",
+        drawing.notes
+    );
+}
+
+#[test]
+fn a_stretched_circle_is_an_outline_and_a_uniformly_scaled_one_stays_a_circle() {
+    let hole = circle("0", (0.0, 0.0), 1.0);
+    let round = with_blocks(
+        &[("hole", (0.0, 0.0), hole.clone())],
+        &insert("0", "hole", (5.0, 5.0), (3.0, 3.0), 0.0, (1, 1), (0.0, 0.0)),
+    );
+    let drawing = dxf::parse(round.as_bytes()).unwrap();
+    match &drawing.outlines[0] {
+        Outline::Circle { center, radius, .. } => {
+            assert!((center.0 - 5.0).abs() < 1e-9 && (radius - 3.0).abs() < 1e-9);
+        }
+        Outline::Loop(_) => panic!("a circle scaled the same both ways stays a circle"),
+    }
+    let oval = with_blocks(
+        &[("hole", (0.0, 0.0), hole)],
+        &insert("0", "hole", (0.0, 0.0), (4.0, 1.0), 0.0, (1, 1), (0.0, 0.0)),
+    );
+    let drawing = dxf::parse(oval.as_bytes()).unwrap();
+    let (lo, hi) = drawing.bounds().unwrap();
+    assert!(
+        (hi.0 - lo.0 - 8.0).abs() < 0.05 && (hi.1 - lo.1 - 2.0).abs() < 0.05,
+        "{lo:?} {hi:?}"
+    );
+}
+
+#[test]
+fn an_array_larger_than_the_limit_is_refused() {
+    let text = with_blocks(
+        &[("unit", (0.0, 0.0), circle("0", (0.0, 0.0), 1.0))],
+        &insert(
+            "0",
+            "unit",
+            (0.0, 0.0),
+            (1.0, 1.0),
+            0.0,
+            (200, 200),
+            (2.0, 2.0),
+        ),
+    );
+    let err = dxf::parse(text.as_bytes()).unwrap_err().to_string();
+    assert!(err.contains("blocks"), "{err}");
+}
