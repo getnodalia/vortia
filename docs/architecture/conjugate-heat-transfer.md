@@ -58,7 +58,7 @@ new boundary condition.
 | C3 | Fluid wall Robin condition from the solid and the coupling loop | A conducting sphere in a stream reaches a steady `T` whose heat balance closes to 1 % between the two sides |
 | C4 | `vortia new body ... solid=` and the report | The case runs from the command line and the report prints heat flow and peak temperature |
 | C5 | The window: the solid in the tree, the 3D view | A screenshot of a heated body with its cut |
-| C6 | Validation against OpenFOAM's `chtMultiRegionFoam` on a heated block in a channel | Interface temperature and heat flow within a few per cent; recorded in `docs/VALIDATION.md` |
+| C6 | Validation: a heated sphere against hand calculation (done); against OpenFOAM's `chtMultiRegionFoam` on a heated block in a channel (needs OpenFOAM, not run) | Interior temperature and film within a few per cent of theory; recorded in `docs/VALIDATION.md` (case 9) |
 
 C2 can start at once and is independent of C1; C3 needs both.
 
