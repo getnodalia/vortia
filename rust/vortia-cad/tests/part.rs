@@ -442,3 +442,52 @@ fn a_step_file_is_written_to_disk_and_an_empty_part_is_refused() {
 
     assert!(Part { features: vec![] }.to_step("nothing").is_err());
 }
+
+#[test]
+fn a_sketched_outline_becomes_a_solid_in_metres_and_an_open_one_is_refused() {
+    // 40 x 20 mm with one corner rounded to 5 mm, drawn clockwise-agnostic and in millimetres.
+    let mut sketch = vortia_sketch::Sketch::default();
+    sketch
+        .draw_rectangle((0.0, 0.0), (40.0, 20.0), 1.0e-6)
+        .unwrap();
+    let corner = sketch.point_near(40.0, 20.0, 1.0e-6).unwrap();
+    sketch.fillet(corner, 5.0).unwrap();
+    let corners = vortia_cad::part::outline_from_sketch(&sketch).unwrap();
+    // Counter-clockwise, in metres.
+    let twice: f64 = corners
+        .iter()
+        .zip(corners.iter().cycle().skip(1))
+        .map(|(p, q)| p[0] * q[1] - q[0] * p[1])
+        .sum();
+    assert!(twice > 0.0);
+    assert!(
+        corners
+            .iter()
+            .all(|c| c[0] <= 0.040 + 1e-9 && c[1] <= 0.020 + 1e-9)
+    );
+    let part = Part {
+        features: vec![feature(
+            Shape::Extrude {
+                corners,
+                z: 0.0,
+                height: 0.1,
+            },
+            Join::Add,
+        )],
+    };
+    let surface = part.surface(0.0005).unwrap();
+    let v = volume(&surface).abs();
+    // The rectangle less what the round takes off the corner: r^2 (1 - pi/4).
+    let area = 0.040 * 0.020 - 0.005 * 0.005 * (1.0 - std::f64::consts::FRAC_PI_4);
+    assert!(
+        (v - area * 0.1).abs() / (area * 0.1) < 0.01,
+        "{v} against {}",
+        area * 0.1
+    );
+
+    // A line that does not close is not an outline.
+    let mut open = vortia_sketch::Sketch::default();
+    open.draw_line((0.0, 0.0), (10.0, 0.0), 1.0e-6).unwrap();
+    assert!(vortia_cad::part::outline_from_sketch(&open).is_err());
+    assert!(vortia_cad::part::outline_from_sketch(&vortia_sketch::Sketch::default()).is_err());
+}
