@@ -118,7 +118,7 @@ checks for updates once a day and from its menu.
 
 `vortia` makes, runs and inspects cases without the interface: `vortia new`,
 `vortia solve`, `vortia probe`, `vortia sample`, `vortia patch`, `vortia flux`,
-`vortia wall`, `vortia streamline`, `vortia export`. `vortia help` lists them.
+`vortia wall`, `vortia solid`, `vortia streamline`, `vortia export`. `vortia help` lists them.
 
 ## Verification
 

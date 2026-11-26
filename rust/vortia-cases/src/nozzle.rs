@@ -607,6 +607,7 @@ impl Nozzle {
             files,
             block_mesh_dict,
             raw_mesh,
+            solid_mesh: None,
             application: "rhoSimpleFoam",
         })
     }

@@ -67,7 +67,8 @@ const USAGE: &str = "usage: vortia new channel|cavity|plate|airfoil|nozzle|nozzl
     \x20      vortia airfoil CASE [-time T] [-csv FILE]\n\
     \x20      vortia compare NUMBER BASELINE REPORT... [-csv FILE]\n\
     \x20      vortia volume CASE FIELD [TIME]\n\
-    \x20      vortia wall CASE PATCH [TIME]\n\n\
+    \x20      vortia wall CASE PATCH [TIME]\n\
+    \x20      vortia solid CASE [TIME]\n\n\
     new          make a case in DIR: a channel, a planar nozzle or an axisymmetric one,\n\
     \x20            with its mesh, fields and settings (NAME=VALUE changes a size or a condition)\n\
     sketch       a dimensioned wall profile (lines, arcs and dimensions) in a file: start one from a\n\
@@ -100,7 +101,9 @@ const USAGE: &str = "usage: vortia new channel|cavity|plate|airfoil|nozzle|nozzl
     compare      one number of saved reports (section or forces) against the first or another,\n\
     \x20            with a warning where their definitions differ; refuses a report that was edited\n\
     volume       volume, integral, average and range of FIELD over the domain\n\
-    wall         shear stress, y+, forces and heat flux on a wall patch";
+    wall         shear stress, y+, forces and heat flux on a wall patch\n\
+    solid        the solid of a conjugate heat transfer case: its temperatures, and the heat\n\
+    \x20            generated and the heat that leaves through its wall";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();

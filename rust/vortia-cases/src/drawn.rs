@@ -235,6 +235,7 @@ impl Drawn {
             files,
             block_mesh_dict: String::new(),
             raw_mesh: Some(raw),
+            solid_mesh: None,
             application: "simpleFoam",
         })
     }

@@ -53,6 +53,7 @@ pub fn run(args: &[&str]) -> Option<ExitCode> {
                 |p| finish(streamline(case, field, p, backward, time)),
             )
         }
+        ["solid", case, time @ ..] if time.len() <= 1 => finish(solid(case, time.first().copied())),
         ["patch", case, patch, field, time @ ..] if time.len() <= 1 => {
             finish(patch_stats(case, patch, field, time.first().copied()))
         }
@@ -284,6 +285,26 @@ fn volume(case: &str, field: &str, time: Option<&str>) -> Result<String, String>
         numbers(&s.average),
         numbers(&s.min),
         numbers(&s.max),
+    ))
+}
+
+/// The solid of a conjugate heat transfer case: its temperatures and the heat through its wall.
+fn solid(case: &str, time: Option<&str>) -> Result<String, String> {
+    let (case, time) = open(case, time)?;
+    let r = vortia_solvers::conjugate::report(case.path(), &time).map_err(|e| e.to_string())?;
+    Ok(format!(
+        "Time {}  solid ({} cells, {:e} m3, k {} W/mK)\n    temperature     min {:.4} mean {:.4} max {:.4} K\n    wall            area {:e} m2, mean temperature {:.4} K\n    heat generated  {:e} W\n    heat out        {:e} W through the wall\n",
+        shown(&time),
+        r.cells,
+        r.volume,
+        r.conductivity,
+        r.t_min,
+        r.t_mean,
+        r.t_max,
+        r.wall_area,
+        r.wall_mean,
+        r.generated,
+        r.heat_out,
     ))
 }
 
