@@ -474,6 +474,8 @@ pub const ES: &[(&str, &str)] = &[
     ("Use this wing section", "Usar este perfil alar"),
     ("A .dxf drawing", "Un dibujo .dxf"),
     ("Use its largest outline", "Usar su contorno mayor"),
+    ("Draw the outline", "Dibujar el contorno"),
+    ("Use the drawn outline", "Usar el contorno dibujado"),
     ("Box", "Caja"),
     ("Cylinder", "Cilindro"),
     ("Cone", "Cono"),

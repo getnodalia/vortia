@@ -16,9 +16,10 @@ use vortia_cases::{Body, Geometry};
 use vortia_mesh::stl::{Stl, Summary};
 
 use super::imported::body_fields;
-use super::newcase::{row, value};
+use super::newcase::{region_canvas, region_toolbar, row, value};
 use crate::edgepick::{self, FeatureEdge};
 use crate::i18n::{tr, trf};
+use crate::region_editor::{self, RegionEditor};
 use crate::surface::Surface;
 use crate::viewer::{Source, Viewer};
 
@@ -57,6 +58,9 @@ struct Helpers {
     chord: f64,
     /// The DXF file being typed.
     file: String,
+    /// The outline being drawn, and the saved sketch file typed to open into it.
+    region: RegionEditor,
+    sketch_file: String,
     problem: Option<String>,
 }
 
@@ -66,6 +70,8 @@ impl Default for Helpers {
             naca: 2412,
             chord: 1.0,
             file: String::new(),
+            region: RegionEditor::new(region_editor::Outline::Blank),
+            sketch_file: String::new(),
             problem: None,
         }
     }
@@ -222,7 +228,7 @@ fn points_ui(ui: &mut Ui, id: egui::Id, points: &mut Vec<[f64; 3]>, picking: boo
 }
 
 /// The wing section and the DXF outline buttons of an extruded outline.
-fn outline_helpers(ui: &mut Ui, corners: &mut Vec<[f64; 2]>, helpers: &mut Helpers) {
+fn outline_helpers(ui: &mut Ui, id: egui::Id, corners: &mut Vec<[f64; 2]>, helpers: &mut Helpers) {
     ui.horizontal_wrapped(|ui| {
         ui.label(tr("NACA"));
         ui.add(DragValue::new(&mut helpers.naca).range(1..=9999));
@@ -256,8 +262,55 @@ fn outline_helpers(ui: &mut Ui, corners: &mut Vec<[f64; 2]>, helpers: &mut Helpe
             }
         }
     });
+    egui::CollapsingHeader::new(tr("Draw the outline"))
+        .id_salt(id.with("draw"))
+        .show(ui, |ui| draw_outline(ui, corners, helpers));
     if let Some(problem) = &helpers.problem {
         ui.colored_label(ui.visuals().error_fg_color, problem);
+    }
+}
+
+/// The sketch editor of a new case, drawn here for an outline: millimetres on the screen, metres
+/// in the part. For a turned outline `x` is the distance from the axis and `y` is along it.
+fn draw_outline(ui: &mut Ui, corners: &mut Vec<[f64; 2]>, helpers: &mut Helpers) {
+    ui.horizontal_wrapped(|ui| {
+        ui.label(tr("Start from"));
+        for outline in region_editor::Outline::ALL {
+            if ui
+                .selectable_label(helpers.region.outline == outline, outline.title())
+                .clicked()
+                && helpers.region.outline != outline
+            {
+                helpers.region.restart(outline);
+            }
+        }
+        ui.add(
+            egui::TextEdit::singleline(&mut helpers.sketch_file)
+                .hint_text(tr("A saved sketch"))
+                .desired_width(220.0),
+        );
+        if ui.button(tr("Open sketch")).clicked() {
+            // A refusal stays in the editor's `problem`, shown below.
+            let _ = helpers
+                .region
+                .open(std::path::Path::new(helpers.sketch_file.trim()));
+        }
+    });
+    region_toolbar(ui, &mut helpers.region);
+    region_canvas(ui, &mut helpers.region);
+    if let Some(problem) = &helpers.region.problem {
+        ui.colored_label(ui.visuals().error_fg_color, problem);
+    } else if let Some(why) = helpers.region.open_because() {
+        ui.colored_label(ui.visuals().warn_fg_color, why);
+    }
+    if ui.button(tr("Use the drawn outline")).clicked() {
+        match part::outline_from_sketch(helpers.region.sketch()) {
+            Ok(outline) => {
+                *corners = outline;
+                helpers.problem = None;
+            }
+            Err(e) => helpers.problem = Some(e.to_string()),
+        }
     }
 }
 
@@ -353,7 +406,7 @@ fn shape_fields(
                             ["x", "y"],
                             tr("The corners in order, in the plane of the outline."),
                         );
-                        outline_helpers(ui, corners, helpers);
+                        outline_helpers(ui, id.with("helpers"), corners, helpers);
                     });
                 });
             }
@@ -1165,5 +1218,44 @@ mod tests {
                 assert!(points.is_empty());
             }
         }
+    }
+
+    #[test]
+    fn a_saved_sketch_opened_in_the_outline_editor_becomes_the_outline() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("plate.vortia-sketch");
+        let mut sketch = vortia_sketch::Sketch::default();
+        sketch
+            .draw_rectangle((0.0, 0.0), (60.0, 30.0), 1.0e-6)
+            .unwrap();
+        sketch.save(&file).unwrap();
+
+        let mut helpers = Helpers::default();
+        helpers.region.open(&file).unwrap();
+        assert!(helpers.region.problem.is_none());
+        // The editor is drawn (toolbar, canvas, status) without panicking.
+        let ctx = egui::Context::default();
+        let mut corners: Vec<[f64; 2]> = Vec::new();
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            draw_outline(ui, &mut corners, &mut helpers)
+        });
+        output.textures_delta.clear();
+        assert!(corners.is_empty(), "nothing is taken until the button is");
+
+        let outline = part::outline_from_sketch(helpers.region.sketch()).unwrap();
+        let mut part = Part::default();
+        part.features.push(Feature {
+            shape: Shape::Extrude {
+                corners: outline,
+                z: 0.0,
+                height: 0.01,
+            },
+            join: Join::Add,
+        });
+        let surface = part.surface(0.001).unwrap();
+        assert!(surface.summary().closed());
+        let (low, high) = (surface.summary().low, surface.summary().high);
+        assert!((high[0] - low[0] - 0.06).abs() < 1e-6);
+        assert!((high[1] - low[1] - 0.03).abs() < 1e-6);
     }
 }

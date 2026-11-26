@@ -347,26 +347,9 @@ impl NewCase {
                     .open(std::path::Path::new(self.region_file.trim()));
             }
         });
-        self.region_toolbar(ui);
+        region_toolbar(ui, &mut self.region);
         region_canvas(ui, &mut self.region);
-        if let Some(problem) = &self.region.problem {
-            ui.colored_label(ui.visuals().error_fg_color, problem);
-        } else if let Some(why) = self.region.open_because() {
-            ui.colored_label(ui.visuals().warn_fg_color, why);
-        } else if let Some(missing) = self.region.missing() {
-            ui.colored_label(ui.visuals().warn_fg_color, missing);
-        }
-        if let Some(free) = self.region.freedom() {
-            let text = if free == 0 {
-                tr("Fully defined: nothing can move.").to_owned()
-            } else {
-                trf(
-                    "{} degrees of freedom: dimension or constrain more.",
-                    &[&free],
-                )
-            };
-            ui.label(egui::RichText::new(text).weak());
-        }
+        region_status(ui, &self.region);
         ui.add_space(space::SM);
         let mut edit = None;
         let mut remove = None;
@@ -426,106 +409,6 @@ impl NewCase {
         if let Some((entity, name)) = rename {
             let _ = self.region.rename(entity, &name);
         }
-    }
-
-    /// The tools, in the three groups a CAD sketch has: draw, modify and hold. What a tool needs
-    /// beside the clicks (sides, radius, distance, a relation) is set on the line under them.
-    fn region_toolbar(&mut self, ui: &mut Ui) {
-        use region_editor::Tool;
-        let editor = &mut self.region;
-        ui.horizontal_wrapped(|ui| {
-            for (title, tools) in [
-                (tr("Draw"), &Tool::DRAW[..]),
-                (tr("Modify"), &Tool::MODIFY[..]),
-                (tr("Hold"), &Tool::HOLD[..]),
-            ] {
-                ui.label(egui::RichText::new(title).weak());
-                for &tool in tools {
-                    if tool_button(ui, tool.icon(), tool.title(), editor.tool == tool).clicked()
-                        && editor.tool != tool
-                    {
-                        editor.set_tool(tool);
-                    }
-                }
-                ui.add_space(space::MD);
-            }
-        });
-        ui.horizontal_wrapped(|ui| {
-            match editor.tool {
-                Tool::Polygon => {
-                    ui.label(tr("Sides"));
-                    ui.add(DragValue::new(&mut editor.sides).range(3..=vortia_sketch::MAX_SIDES));
-                }
-                Tool::Fillet => {
-                    ui.label(tr("Radius"));
-                    ui.add(
-                        DragValue::new(&mut editor.radius)
-                            .speed(0.5)
-                            .range(0.1..=10000.0)
-                            .suffix(" mm"),
-                    );
-                }
-                Tool::Chamfer => {
-                    ui.label(tr("Distance"));
-                    ui.add(
-                        DragValue::new(&mut editor.distance)
-                            .speed(0.5)
-                            .range(0.1..=10000.0)
-                            .suffix(" mm"),
-                    );
-                }
-                Tool::Dimension => {
-                    for (measure, label) in [
-                        (Measure::Distance, tr("Distance")),
-                        (Measure::Along, tr("Along x")),
-                        (Measure::Height, tr("Height")),
-                    ] {
-                        ui.selectable_value(&mut editor.measure, measure, label);
-                    }
-                }
-                Tool::Constrain => {
-                    for relation in region_editor::Relation::ALL {
-                        if tool_button(
-                            ui,
-                            Some(relation.icon()),
-                            relation.title(),
-                            editor.relation == relation,
-                        )
-                        .clicked()
-                            && editor.relation != relation
-                        {
-                            editor.relation = relation;
-                            editor.cancel();
-                        }
-                    }
-                }
-                _ => {}
-            }
-            ui.add_space(space::MD);
-            ui.label(tr("Grid"));
-            ui.add(
-                DragValue::new(&mut editor.grid)
-                    .speed(0.5)
-                    .range(0.0..=1000.0)
-                    .suffix(" mm"),
-            );
-            if ui.button(tr("Fit view")).clicked() {
-                editor.fit();
-            }
-            if ui
-                .add_enabled(editor.can_undo(), egui::Button::new(tr("Undo")))
-                .clicked()
-            {
-                editor.undo();
-            }
-            if ui
-                .add_enabled(editor.can_redo(), egui::Button::new(tr("Redo")))
-                .clicked()
-            {
-                editor.redo();
-            }
-        });
-        ui.label(egui::RichText::new(editor.tool.hint(editor.progress(), editor.relation)).weak());
     }
 
     fn sketch_fields(&mut self, ui: &mut Ui) {
@@ -598,6 +481,127 @@ impl NewCase {
             // A refused edit keeps the sketch as it was and says why above the dimensions.
             let _ = self.sketch.set_dimension(index, v);
         }
+    }
+}
+
+/// The tools, in the three groups a CAD sketch has: draw, modify and hold. What a tool needs
+/// beside the clicks (sides, radius, distance, a relation) is set on the line under them.
+pub(super) fn region_toolbar(ui: &mut Ui, editor: &mut RegionEditor) {
+    use region_editor::Tool;
+    ui.horizontal_wrapped(|ui| {
+        for (title, tools) in [
+            (tr("Draw"), &Tool::DRAW[..]),
+            (tr("Modify"), &Tool::MODIFY[..]),
+            (tr("Hold"), &Tool::HOLD[..]),
+        ] {
+            ui.label(egui::RichText::new(title).weak());
+            for &tool in tools {
+                if tool_button(ui, tool.icon(), tool.title(), editor.tool == tool).clicked()
+                    && editor.tool != tool
+                {
+                    editor.set_tool(tool);
+                }
+            }
+            ui.add_space(space::MD);
+        }
+    });
+    ui.horizontal_wrapped(|ui| {
+        match editor.tool {
+            Tool::Polygon => {
+                ui.label(tr("Sides"));
+                ui.add(DragValue::new(&mut editor.sides).range(3..=vortia_sketch::MAX_SIDES));
+            }
+            Tool::Fillet => {
+                ui.label(tr("Radius"));
+                ui.add(
+                    DragValue::new(&mut editor.radius)
+                        .speed(0.5)
+                        .range(0.1..=10000.0)
+                        .suffix(" mm"),
+                );
+            }
+            Tool::Chamfer => {
+                ui.label(tr("Distance"));
+                ui.add(
+                    DragValue::new(&mut editor.distance)
+                        .speed(0.5)
+                        .range(0.1..=10000.0)
+                        .suffix(" mm"),
+                );
+            }
+            Tool::Dimension => {
+                for (measure, label) in [
+                    (Measure::Distance, tr("Distance")),
+                    (Measure::Along, tr("Along x")),
+                    (Measure::Height, tr("Height")),
+                ] {
+                    ui.selectable_value(&mut editor.measure, measure, label);
+                }
+            }
+            Tool::Constrain => {
+                for relation in region_editor::Relation::ALL {
+                    if tool_button(
+                        ui,
+                        Some(relation.icon()),
+                        relation.title(),
+                        editor.relation == relation,
+                    )
+                    .clicked()
+                        && editor.relation != relation
+                    {
+                        editor.relation = relation;
+                        editor.cancel();
+                    }
+                }
+            }
+            _ => {}
+        }
+        ui.add_space(space::MD);
+        ui.label(tr("Grid"));
+        ui.add(
+            DragValue::new(&mut editor.grid)
+                .speed(0.5)
+                .range(0.0..=1000.0)
+                .suffix(" mm"),
+        );
+        if ui.button(tr("Fit view")).clicked() {
+            editor.fit();
+        }
+        if ui
+            .add_enabled(editor.can_undo(), egui::Button::new(tr("Undo")))
+            .clicked()
+        {
+            editor.undo();
+        }
+        if ui
+            .add_enabled(editor.can_redo(), egui::Button::new(tr("Redo")))
+            .clicked()
+        {
+            editor.redo();
+        }
+    });
+    ui.label(egui::RichText::new(editor.tool.hint(editor.progress(), editor.relation)).weak());
+}
+
+/// What is wrong or missing in the drawing, and how much of it is still free to move.
+pub(super) fn region_status(ui: &mut Ui, editor: &RegionEditor) {
+    if let Some(problem) = &editor.problem {
+        ui.colored_label(ui.visuals().error_fg_color, problem);
+    } else if let Some(why) = editor.open_because() {
+        ui.colored_label(ui.visuals().warn_fg_color, why);
+    } else if let Some(missing) = editor.missing() {
+        ui.colored_label(ui.visuals().warn_fg_color, missing);
+    }
+    if let Some(free) = editor.freedom() {
+        let text = if free == 0 {
+            tr("Fully defined: nothing can move.").to_owned()
+        } else {
+            trf(
+                "{} degrees of freedom: dimension or constrain more.",
+                &[&free],
+            )
+        };
+        ui.label(egui::RichText::new(text).weak());
     }
 }
 
@@ -684,7 +688,7 @@ fn tool_button(ui: &mut Ui, icon: Option<&str>, text: &str, active: bool) -> egu
 
 /// The drawing of the region, which the tool in use acts on: each edge is in the colour of what
 /// its name makes it, with the name beside it.
-fn region_canvas(ui: &mut Ui, editor: &mut RegionEditor) {
+pub(super) fn region_canvas(ui: &mut Ui, editor: &mut RegionEditor) {
     let width = ui.available_width().clamp(240.0, 1100.0);
     let (rect, response) =
         ui.allocate_exact_size(egui::vec2(width, 440.0), egui::Sense::click_and_drag());

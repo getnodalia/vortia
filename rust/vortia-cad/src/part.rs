@@ -243,6 +243,50 @@ pub fn outline_from_drawing(drawing: &Drawing) -> Result<Vec<[f64; 2]>> {
         .collect())
 }
 
+/// The outer outline of a sketch, in metres, for [`Shape::Extrude`] or [`Shape::Revolve`]: the
+/// sketch is read as a region (every line and arc in a closed loop), its boundary is the largest
+/// loop, arcs are cut into steps of at most 3 degrees, and its millimetres become metres. The
+/// corners come out counter-clockwise.
+pub fn outline_from_sketch(sketch: &vortia_sketch::Sketch) -> Result<Vec<[f64; 2]>> {
+    let loops = sketch
+        .loops(3.0)
+        .map_err(|e| MeshError::Invalid(format!("the sketch is not a closed outline: {e}")))?;
+    let outer = loops
+        .first()
+        .ok_or_else(|| MeshError::Invalid("the sketch has no closed outline".into()))?;
+    let mut corners: Vec<[f64; 2]> = Vec::new();
+    for &(x, y) in outer.iter().flat_map(|e| &e.points) {
+        if corners.last() != Some(&[x, y]) {
+            corners.push([x, y]);
+        }
+    }
+    if corners.len() > 1 && corners.first() == corners.last() {
+        corners.pop();
+    }
+    if corners.len() < 3 {
+        return Err(MeshError::Invalid(
+            "the sketch outline has fewer than three corners".into(),
+        ));
+    }
+    if corners.len() > MAX_CORNERS {
+        return Err(MeshError::Invalid(format!(
+            "the sketch outline has more than {MAX_CORNERS} corners"
+        )));
+    }
+    let twice_area: f64 = corners
+        .iter()
+        .zip(corners.iter().cycle().skip(1))
+        .map(|(p, q)| p[0] * q[1] - q[0] * p[1])
+        .sum();
+    if twice_area < 0.0 {
+        corners.reverse();
+    }
+    Ok(corners
+        .iter()
+        .map(|&[x, y]| [x * 1.0e-3, y * 1.0e-3])
+        .collect())
+}
+
 /// The most corners an outline may have.
 pub const MAX_CORNERS: usize = 10_000;
 
