@@ -112,6 +112,41 @@ impl Stl {
         }
     }
 
+    /// The surface as a binary STL: the triangles with their normals, coordinates in single precision.
+    pub fn to_binary(&self) -> Vec<u8> {
+        let mut out = vec![0u8; HEADER];
+        let label = b"Vortia surface";
+        if let Some(head) = out.get_mut(..label.len()) {
+            head.copy_from_slice(label);
+        }
+        out.extend_from_slice(
+            &u32::try_from(self.triangles.len())
+                .unwrap_or(u32::MAX)
+                .to_le_bytes(),
+        );
+        for tri in &self.triangles {
+            let [a, b, c] = tri.map(|i| self.corner(i));
+            let n = cross(sub(b, a), sub(c, a));
+            let length = dot(n, n).sqrt();
+            let unit = if length > 0.0 {
+                n.map(|v| v / length)
+            } else {
+                [0.0; 3]
+            };
+            for v in [unit, a, b, c].into_iter().flatten() {
+                out.extend_from_slice(&(v as f32).to_le_bytes());
+            }
+            out.extend_from_slice(&[0, 0]);
+        }
+        out
+    }
+
+    /// Writes the surface to `path` as a binary STL.
+    pub fn write(&self, path: &Path) -> Result<()> {
+        std::fs::write(path, self.to_binary())
+            .map_err(|e| MeshError::Invalid(format!("{}: {e}", path.display())))
+    }
+
     /// Multiplies every coordinate by `factor` (a unit change, such as 0.001 for millimetres).
     pub fn scale(&mut self, factor: f64) -> Result<()> {
         if !factor.is_finite() || factor <= 0.0 {
@@ -350,6 +385,16 @@ mod tests {
             [d, a, e],
             [d, e, h],
         ]
+    }
+
+    #[test]
+    fn a_surface_written_as_binary_reads_back_the_same() {
+        let stl = Stl::parse(ascii(&cube()).as_bytes()).unwrap();
+        let bytes = stl.to_binary();
+        assert_eq!(bytes.len(), HEADER + 4 + FACET * 12);
+        let back = Stl::parse(&bytes).unwrap();
+        assert_eq!(back.summary(), stl.summary());
+        assert!(back.summary().closed());
     }
 
     fn ascii(tris: &[[[f64; 3]; 3]]) -> String {

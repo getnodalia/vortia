@@ -147,3 +147,68 @@ fn an_outline_pushed_up_and_an_outline_turned_make_solids() {
         assert!(bad.surface(0.001).is_err());
     }
 }
+
+#[test]
+fn a_wing_is_a_section_pushed_along_its_span() {
+    let section = vortia_cad::part::naca4(12, 1.0, 40).unwrap();
+    assert_eq!(section.first(), Some(&[0.0, 0.0]));
+    assert!(section.contains(&[1.0, 0.0]));
+    let wing = Part {
+        features: vec![feature(
+            Shape::Extrude {
+                corners: section,
+                z: 0.0,
+                height: 2.0,
+            },
+            Join::Add,
+        )],
+    };
+    let surface = wing.surface(0.001).unwrap();
+    assert!(surface.summary().closed(), "{:?}", surface.summary());
+    // A NACA 0012 covers 8.2 % of its chord squared.
+    let v = volume(&surface).abs();
+    assert!((v - 2.0 * 0.0822).abs() / (2.0 * 0.0822) < 0.02, "{v}");
+}
+
+#[test]
+fn a_wing_section_that_is_not_a_naca_4_digit_is_refused() {
+    use vortia_cad::part::naca4;
+    assert!(naca4(10_000, 1.0, 40).is_err());
+    assert!(naca4(0, 1.0, 40).is_err());
+    assert!(naca4(2_400, 1.0, 40).is_err()); // 2412 is fine, 2400 has no thickness
+    assert!(naca4(2_012, 1.0, 40).is_err()); // camber without a position
+    assert!(naca4(12, 0.0, 40).is_err());
+    assert!(naca4(12, 1.0, 3).is_err());
+    assert!(naca4(2_412, 2.0, 40).is_ok());
+}
+
+#[test]
+fn the_largest_outline_of_a_drawing_becomes_a_solid_in_metres() {
+    // A circle of radius 10 mm drawn in millimetres, and a smaller one inside it.
+    let text = "0\nSECTION\n2\nHEADER\n9\n$INSUNITS\n70\n4\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n\
+                0\nCIRCLE\n8\n0\n10\n0\n20\n0\n40\n10\n\
+                0\nCIRCLE\n8\n0\n10\n0\n20\n0\n40\n2\n0\nENDSEC\n0\nEOF\n";
+    let drawing = vortia_cad::dxf::parse(text.as_bytes()).unwrap();
+    let corners = vortia_cad::part::outline_from_drawing(&drawing).unwrap();
+    assert_eq!(corners.len(), 96);
+    assert!(
+        corners
+            .iter()
+            .all(|c| ((c[0] * c[0] + c[1] * c[1]).sqrt() - 0.01).abs() < 1.0e-9)
+    );
+    let part = Part {
+        features: vec![feature(
+            Shape::Extrude {
+                corners,
+                z: 0.0,
+                height: 0.1,
+            },
+            Join::Add,
+        )],
+    };
+    let surface = part.surface(0.001).unwrap();
+    let v = volume(&surface).abs();
+    let exact = std::f64::consts::PI * 1.0e-4 * 0.1;
+    assert!((v - exact).abs() / exact < 0.01, "{v} against {exact}");
+    assert!(vortia_cad::part::outline_from_drawing(&vortia_cad::dxf::Drawing::default()).is_err());
+}

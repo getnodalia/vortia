@@ -29,6 +29,7 @@ use crate::surface;
 use crate::viewer::{Source, Viewer};
 
 mod imported;
+mod modelled;
 mod newcase;
 mod preferences;
 mod results;

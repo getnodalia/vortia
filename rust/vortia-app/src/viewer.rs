@@ -145,6 +145,13 @@ impl Viewer {
         }
     }
 
+    /// Puts another surface in place of this one and keeps the camera where it was, so a part
+    /// being modelled does not jump back to its first view at every change.
+    pub fn replace_surface(&mut self, surface: Surface) {
+        self.visible = vec![true; surface.patches.len()];
+        self.surface = surface;
+    }
+
     /// Colours the surface with a field of the case (`None`: the colours of the patches), at a
     /// time (`None`: the latest written).
     pub fn colour_by(&mut self, field: Option<&str>, time: Option<&str>) {
