@@ -7,6 +7,11 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 
 ## [Unreleased]
 
+## [0.13.1] — 2026-11-26
+
+### Corregido
+- **macOS: los botones de la ventana van sobre la barra superior de Vortia:** la ventana mantenía una barra de título del sistema encima de la barra propia. Ahora se oculta (`fullsize_content_view`, como Forja) y los botones nativos se pintan sobre el extremo izquierdo de la barra, que les deja sitio, mueve la ventana al arrastrar y la amplía con doble clic. Linux (controles NDL) y Windows (los del sistema) no cambian.
+
 ## [0.13.0] — 2026-11-25
 
 ### Añadido
