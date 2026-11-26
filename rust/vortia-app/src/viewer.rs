@@ -492,9 +492,12 @@ impl Viewer {
             .fixed_pos(rect.right_top() + vec2(-8.0, 8.0))
             .pivot(egui::Align2::RIGHT_TOP)
             .show(&ctx, |ui| {
-                ui.set_max_width(LEGEND);
+                ui.set_max_width(LEGEND + 24.0);
+                // An area's room is what it took last frame, so ask for the picture's height
+                // or the scroll area inside would never grow past its first size.
+                ui.set_max_height((rect.height() - 16.0).max(80.0));
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
-                    ui.set_width(if open { LEGEND - 12.0 } else { 90.0 });
+                    ui.set_width(if open { LEGEND + 6.0 } else { 90.0 });
                     ui.horizontal(|ui| {
                         let label = if open { tr("Hide") } else { tr("Display") };
                         toggle = ui.small_button(label).clicked();
@@ -533,6 +536,7 @@ impl Viewer {
                 .pivot(egui::Align2::LEFT_BOTTOM)
                 .show(&ctx, |ui| {
                     egui::Frame::popup(ui.style()).show(ui, |ui| {
+                        ui.set_width(LEGEND - 12.0);
                         scale_bar(ui, &what, range, muted);
                     });
                 });
