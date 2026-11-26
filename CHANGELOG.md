@@ -7,6 +7,10 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 
 ## [Unreleased]
 
+### Añadido
+
+- **Conducción de calor en un sólido (primer paso de la transferencia de calor conjugada):** `vortia-solvers::solid::Solid` resuelve `−∇·(k ∇T) = q` en una región sólida estacionaria y devuelve, por cara y por parche, la temperatura y el calor que sale. Los contornos son los de un ingeniero térmico: aislado o de simetría, temperatura fija, flujo de calor impuesto, película convectiva (`h` y ambiente) y la interfaz, la misma película con `h` y temperatura de referencia dadas cara por cara por el fluido; una cara con película pone la resistencia `1/h` en serie con la media celda de conducción, así que es exacta para un perfil lineal en cualquier malla. Probado: una placa entre dos temperaturas da el perfil recto y el flujo de Fourier exactos; con generación entre dos caras frías, el máximo `q L²/(8k)` y todo el calor generado sale por los extremos; temperatura fija con película da las resistencias en serie; el flujo impuesto sube el extremo `q L/k`; una aleta delgada sigue el perfil cosh y el calor `k A m θ tanh(mL)` (1 %); el calor generado en un bloque sale por sus películas distintas (balance cerrado a 1e-6); y un sólido sin sentido se rechaza con el motivo. Aún no está acoplado al fluido: es el paso C2 de `docs/architecture/conjugate-heat-transfer.md`.
+
 ## [0.15.0] — 2026-11-26
 
 ### Añadido
