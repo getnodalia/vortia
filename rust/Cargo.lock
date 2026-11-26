@@ -3134,6 +3134,8 @@ name = "vortia-cad"
 version = "0.13.1"
 dependencies = [
  "nodalia-dxf",
+ "solidcore-ops",
+ "solidcore-record",
  "solidcore-step",
  "solidcore-tess",
  "tempfile",

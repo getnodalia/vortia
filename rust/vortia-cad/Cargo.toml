@@ -12,6 +12,8 @@ vortia-sketch = { path = "../vortia-sketch" }
 nodalia-dxf = { git = "https://github.com/getnodalia/foundation", rev = "a6eb9c3d814ac584f03725b2a0b1dabf70655b2d" }
 # Nodalia's STEP reader and tessellator (Apache-2.0), vendored in Torno's tree; pinned by revision.
 solidcore-step = { git = "https://github.com/getnodalia/torno", rev = "6d840f18cf019d251a9d2d2cd6448d0a1fbd9681" }
+solidcore-record = { git = "https://github.com/getnodalia/torno", rev = "6d840f18cf019d251a9d2d2cd6448d0a1fbd9681" }
+solidcore-ops = { git = "https://github.com/getnodalia/torno", rev = "6d840f18cf019d251a9d2d2cd6448d0a1fbd9681" }
 solidcore-tess = { git = "https://github.com/getnodalia/torno", rev = "6d840f18cf019d251a9d2d2cd6448d0a1fbd9681" }
 
 [dev-dependencies]

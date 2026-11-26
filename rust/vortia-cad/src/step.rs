@@ -8,6 +8,8 @@
 
 use std::path::Path;
 
+use solidcore_ops::placed_bodies;
+use solidcore_record::step::product;
 use solidcore_step::{p21, topology};
 use solidcore_tess::{MeshTolerance, plan};
 use vortia_mesh::stl::Stl;
@@ -19,6 +21,14 @@ pub const MAX_BYTES: u64 = 256 << 20;
 pub const MAX_TRIANGLES: usize = 20_000_000;
 /// The chord tolerance, as a share of the body's box diagonal, when none is asked for.
 pub const DEFAULT_CHORD: f64 = 1.0 / 1000.0;
+
+/// A body that stands where it was drawn.
+const IDENTITY: [[f64; 4]; 4] = [
+    [1.0, 0.0, 0.0, 0.0],
+    [0.0, 1.0, 0.0, 0.0],
+    [0.0, 0.0, 1.0, 0.0],
+    [0.0, 0.0, 0.0, 1.0],
+];
 
 /// What was read.
 #[derive(Clone, Debug, PartialEq)]
@@ -78,6 +88,16 @@ pub fn parse(bytes: &[u8], chord: f64) -> Result<StepSurface> {
         ));
     }
 
+    // Where each body stands in the file's world: an assembly places a part once per instance.
+    let placements = match product::read(&exchange).map(|s| placed_bodies(&s)) {
+        Ok(Ok(placed)) => placed,
+        Ok(Err(e)) => {
+            notes.push(format!("the assembly could not be placed: {e}"));
+            Vec::new()
+        }
+        // A file with no product structure is a bare solid or two, where they were drawn.
+        Err(_) => Vec::new(),
+    };
     let mut out = Stl {
         vertices: Vec::new(),
         triangles: Vec::new(),
@@ -128,19 +148,32 @@ pub fn parse(bytes: &[u8], chord: f64) -> Result<StepSurface> {
             ));
         }
         let _ = stats;
-        let base = u32::try_from(out.vertices.len())
-            .map_err(|_| MeshError::Invalid("the surface has too many vertices".into()))?;
-        // STEP lengths are read in millimetres; Vortia works in metres.
-        out.vertices.extend(
-            welded
-                .positions
-                .iter()
-                .map(|p| [p.x * 1.0e-3, p.y * 1.0e-3, p.z * 1.0e-3]),
-        );
-        out.triangles
-            .extend(welded.triangles.iter().map(|t| t.map(|i| i + base)));
-        if out.triangles.len() > MAX_TRIANGLES {
-            return invalid("the surface has more triangles than the mesher takes");
+        let mut transforms: Vec<_> = placements
+            .iter()
+            .filter(|p| p.entity == solid.item)
+            .map(|p| p.transform)
+            .collect();
+        if transforms.is_empty() {
+            transforms.push(IDENTITY);
+        }
+        for m in transforms {
+            let base = u32::try_from(out.vertices.len())
+                .map_err(|_| MeshError::Invalid("the surface has too many vertices".into()))?;
+            // STEP lengths are read in millimetres; Vortia works in metres. A placement is
+            // `p' = p·A + t` in the kernel's row convention.
+            out.vertices.extend(welded.positions.iter().map(|p| {
+                let at = |c: usize| {
+                    let row =
+                        |r: usize| m.get(r).and_then(|row| row.get(c)).copied().unwrap_or(0.0);
+                    (p.x * row(0) + p.y * row(1) + p.z * row(2) + row(3)) * 1.0e-3
+                };
+                [at(0), at(1), at(2)]
+            }));
+            out.triangles
+                .extend(welded.triangles.iter().map(|t| t.map(|i| i + base)));
+            if out.triangles.len() > MAX_TRIANGLES {
+                return invalid("the surface has more triangles than the mesher takes");
+            }
         }
     }
     if out.triangles.is_empty() {
