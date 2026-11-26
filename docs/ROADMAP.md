@@ -2,7 +2,7 @@
 
 Leyenda: ✅ completado · 🟡 en curso · ⬜ pendiente · 🧪 validado con backend real
 
-**Versión publicada:** 0.14.0 (Rust solo: interfaz egui, motor de volúmenes finitos y mallador propios). El plan vigente, con el análisis de lo que falta frente a las herramientas profesionales, está en [`docs/architecture/professional-roadmap.md`](architecture/professional-roadmap.md); las fases de abajo son el histórico original.
+**Versión publicada:** 0.15.0 (Rust solo: interfaz egui, motor de volúmenes finitos y mallador propios). El plan vigente, con el análisis de lo que falta frente a las herramientas profesionales, está en [`docs/architecture/professional-roadmap.md`](architecture/professional-roadmap.md); las fases de abajo son el histórico original.
 
 ## Dirección
 
