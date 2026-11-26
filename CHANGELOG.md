@@ -16,6 +16,9 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 ### Añadido
 - **Flujo alrededor de un cuerpo (`vortia new body DIR FICHERO.stl`), primera etapa:** un mallador octree propio (`vortia-mesh::bodymesh`) corta un túnel en cubos que se afinan hacia una superficie cerrada y su estela, con balance 2:1 y nodos colgantes cerrados, y quita los cubos del cuerpo; el caso sale con parches `body`, `inlet`, `outlet` y cuatro lados de simetría, y se resuelve con `simpleFoam` (laminar, Spalart–Allmaras o k-ω SST). Es la base para importar CAD y simular coches o alas (plan en `docs/architecture/cad-and-external-flow.md`). **Límites:** sin capas de prisma todavía, no hay lector de STEP/OBJ/DXF ni editor CAD aún (solo STL), y la esfera a Re = 100 se queda a unos 5 % del valor publicado (ver arriba). Detalle en `benchmarks/sphere-drag-re100/`.
 
+### Corregido
+- **Cinta de Resultados: los iconos vuelven y las etiquetas ya no se pisan:** los ocho botones (Resumen, Paredes, Fuerzas, Sondas, Línea, Sección, Comparar y Guardar informe) pedían iconos en volumen que la cinta no sabía dibujar y salían solo con texto. Ahora se dibujan, y la celda de una herramienta se ensancha si su etiqueta no cabe («Comparar» y «Guardar informe» se superponían). Lo segundo viene de `nodalia-theme` (nodalia-design #86).
+
 ## [0.13.1] — 2026-11-26
 
 ### Corregido
