@@ -21,7 +21,7 @@ mod snap;
 pub use layers::{LayerSpec, LayerStats, MAX_LAYERS, add_layers};
 pub use octree::Region;
 pub use parts::{MAX_PARTS, part_patches, patch_name};
-pub use regions::{InterfaceMatch, match_interface};
+pub use regions::{FaceMesh, InterfaceMatch, match_interface};
 pub use snap::SnapStats;
 
 use vortia_foamfile::RawPolyMesh;

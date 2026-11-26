@@ -225,11 +225,46 @@ pub struct InterfaceMatch {
     pub solid_face: Vec<usize>,
 }
 
-fn centre(mesh: &RawPolyMesh, face: usize) -> [f64; 3] {
-    let ring = mesh.faces.face(face);
+/// A mesh whose patch faces can be looked at, read from a case or being built.
+pub trait FaceMesh {
+    fn mesh_points(&self) -> &[Vec3];
+    fn mesh_face(&self, face: usize) -> &[usize];
+    /// The faces of the patch called `name`.
+    fn mesh_patch(&self, name: &str) -> Option<std::ops::Range<usize>>;
+}
+
+impl FaceMesh for RawPolyMesh {
+    fn mesh_points(&self) -> &[Vec3] {
+        &self.points
+    }
+    fn mesh_face(&self, face: usize) -> &[usize] {
+        self.faces.face(face)
+    }
+    fn mesh_patch(&self, name: &str) -> Option<std::ops::Range<usize>> {
+        self.patches
+            .iter()
+            .find(|p| p.name == name)
+            .map(|p| p.start_face..p.start_face + p.n_faces)
+    }
+}
+
+impl FaceMesh for crate::PolyMesh {
+    fn mesh_points(&self) -> &[Vec3] {
+        self.points()
+    }
+    fn mesh_face(&self, face: usize) -> &[usize] {
+        self.face(face)
+    }
+    fn mesh_patch(&self, name: &str) -> Option<std::ops::Range<usize>> {
+        self.patch(name).map(|p| p.faces())
+    }
+}
+
+fn centre(mesh: &impl FaceMesh, face: usize) -> [f64; 3] {
+    let ring = mesh.mesh_face(face);
     let mut m = [0.0; 3];
     for p in ring {
-        if let Some(v) = mesh.points.get(*p) {
+        if let Some(v) = mesh.mesh_points().get(*p) {
             m = [m[0] + v.x, m[1] + v.y, m[2] + v.z];
         }
     }
@@ -237,11 +272,8 @@ fn centre(mesh: &RawPolyMesh, face: usize) -> [f64; 3] {
     [m[0] / n, m[1] / n, m[2] / n]
 }
 
-fn patch_faces(mesh: &RawPolyMesh, name: &str) -> Result<std::ops::Range<usize>> {
-    mesh.patches
-        .iter()
-        .find(|p| p.name == name)
-        .map(|p| p.start_face..p.start_face + p.n_faces)
+fn patch_faces(mesh: &impl FaceMesh, name: &str) -> Result<std::ops::Range<usize>> {
+    mesh.mesh_patch(name)
         .ok_or_else(|| MeshError::Invalid(format!("the mesh has no patch '{name}'")))
 }
 
@@ -250,9 +282,9 @@ fn patch_faces(mesh: &RawPolyMesh, name: &str) -> Result<std::ops::Range<usize>>
 /// is taken to be the one whose centre is within a millionth of the face's size; a face with no
 /// partner, or two faces on one, is an error saying where.
 pub fn match_interface(
-    fluid: &RawPolyMesh,
+    fluid: &impl FaceMesh,
     walls: &[&str],
-    solid: &RawPolyMesh,
+    solid: &impl FaceMesh,
     interface: &str,
 ) -> Result<InterfaceMatch> {
     let theirs = patch_faces(solid, interface)?;
@@ -260,10 +292,10 @@ pub fn match_interface(
     let mut all = Vec::new();
     for f in theirs.clone() {
         let c = centre(solid, f);
-        let ring = solid.faces.face(f);
+        let ring = solid.mesh_face(f);
         let reach = ring
             .iter()
-            .filter_map(|&p| solid.points.get(p))
+            .filter_map(|&p| solid.mesh_points().get(p))
             .map(|v| ((v.x - c[0]).powi(2) + (v.y - c[1]).powi(2) + (v.z - c[2]).powi(2)).sqrt())
             .fold(0.0, f64::max);
         size = size.max(reach);

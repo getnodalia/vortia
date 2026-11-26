@@ -13,6 +13,9 @@
 //! wall follows the same law as the stress: `α_eff` there is
 //! `ν/Pr + ν_t,w/Prt`.
 //!
+//! A wall whose `T` condition is `conjugate` is the face of a solid in `constant/solid`; the
+//! solid's temperature is solved with the fluid's and written beside it ([`crate::conjugate`]).
+//!
 //! This is the constant-`Prt` law without a thermal sublayer correction, so
 //! it is as good as `Prt` is for the fluid: close for gases and for a
 //! boundary layer in water only to the extent that `Pr` is near one.
@@ -22,6 +25,7 @@ use vortia_fv::{FvGeometry, Performance};
 use vortia_mesh::PolyMesh;
 
 use crate::case::{Case, read_dict};
+use crate::conjugate::{Conjugate, has_solid};
 use crate::error::{Result, SolverError};
 use crate::rans::{EquationSetup, InletSource, Kind, ModelField, solve, transport};
 
@@ -39,6 +43,8 @@ pub(crate) struct Heat {
     nu: f64,
     pr: f64,
     prt: f64,
+    /// The solid this temperature is tied to, when a wall is `conjugate`.
+    solid: Option<Conjugate>,
 }
 
 /// A number of `transportProperties`, with or without its dimensions.
@@ -83,15 +89,49 @@ impl Heat {
                 ref_value: Vec::new(),
                 fraction: Vec::new(),
             }),
+            "conjugate" => Some(Kind::Coupled {
+                ref_value: Vec::new(),
+                fraction: Vec::new(),
+            }),
             _ => None,
         })?;
         let setup = EquationSetup::read(case, "T", "alphaEff", relax("T"))?;
+        let coupled: Vec<usize> = t
+            .kinds
+            .iter()
+            .enumerate()
+            .filter(|(_, k)| matches!(k, Kind::Coupled { .. }))
+            .map(|(i, _)| i)
+            .collect();
+        let solid = match (coupled.is_empty(), has_solid(case)) {
+            (true, _) => None,
+            (false, false) => {
+                return Err(SolverError::Setup(
+                    "T has a conjugate wall but the case has no constant/solid region".into(),
+                ));
+            }
+            (false, true) => {
+                let rho_cp = number(&props, "rhoCp").ok_or_else(|| {
+                    SolverError::Setup(
+                        "transportProperties needs rhoCp (the fluid's density times its specific heat, in J/m3K) to couple a solid"
+                            .into(),
+                    )
+                })?;
+                if !(rho_cp.is_finite() && rho_cp > 0.0) {
+                    return Err(SolverError::Setup(
+                        "transportProperties: rhoCp must be positive".into(),
+                    ));
+                }
+                Some(Conjugate::read(case, mesh, start, &coupled, rho_cp)?)
+            }
+        };
         Ok(Some(Self {
             t,
             setup,
             nu,
             pr,
             prt,
+            solid,
         }))
     }
 
@@ -112,10 +152,25 @@ impl Heat {
         phi: &[f64],
         nu_eff_faces: &[f64],
         log: &mut dyn FnMut(&str),
-    ) -> Result<(String, Performance)> {
+    ) -> Result<Vec<(String, Performance)>> {
         let gamma = self.alpha_eff(nu_eff_faces);
+        let delta = self.setup.wall_delta(fv);
+        if let Some(solid) = &self.solid {
+            solid.apply_to_fluid(mesh, &mut self.t, &gamma, delta);
+        }
         let eqn = transport(mesh, fv, &self.t, &self.setup, phi, &gamma)?;
-        solve(mesh, eqn, &mut self.t, &self.setup, &[], "T", log)
+        let mut solves = vec![solve(mesh, eqn, &mut self.t, &self.setup, &[], "T", log)?];
+        if let Some(solid) = self.solid.as_mut() {
+            let perf = solid.solve_solid(mesh, &self.t, &gamma, delta)?;
+            log(&Conjugate::log_line(&perf));
+            let (from_fluid, into_solid) = solid.balance(mesh, fv, &self.t, &gamma, delta);
+            log(&format!(
+                "conjugate: {from_fluid:.6e} W leave the fluid, {into_solid:.6e} W enter the solid, hottest solid cell {:.4} K\n",
+                solid.peak()
+            ));
+            solves.push(perf);
+        }
+        Ok(solves)
     }
 
     /// Writes `T` into `dir/time`.
@@ -123,6 +178,9 @@ impl Heat {
         let mut out = self.t.to_write(mesh);
         out.drop_zero_gradient_values();
         out.write(dir, time)?;
+        if let Some(solid) = &self.solid {
+            solid.write(dir, time)?;
+        }
         Ok(())
     }
 }

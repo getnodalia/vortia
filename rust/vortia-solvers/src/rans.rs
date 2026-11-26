@@ -94,6 +94,13 @@ pub(crate) enum Kind {
     AlphatWall {
         prt: f64,
     },
+    /// A wall against a solid (`conjugate`): the fluid sees the solid's temperature
+    /// `ref_value` through a fraction `fraction` that the coupling sets from the two
+    /// conductances, and nothing follows the flow.
+    Coupled {
+        ref_value: Vec<f64>,
+        fraction: Vec<f64>,
+    },
 }
 
 /// Where a `Mixed` condition takes its reference value from.
@@ -223,6 +230,15 @@ impl ModelField {
                     };
                 }
             }
+            if let Kind::Coupled {
+                ref_value,
+                fraction,
+            } = &mut kind
+            {
+                // Until the coupling has run, the wall is a zero gradient at the file's value.
+                *fraction = vec![0.0; patch.size];
+                *ref_value = given.clone().unwrap_or_else(|| vec![0.0; patch.size]);
+            }
             if matches!(kind, Kind::Fixed(_)) {
                 let v = given.clone().ok_or_else(|| {
                     SolverError::Setup(format!(
@@ -268,6 +284,10 @@ impl ModelField {
                     ref_value,
                     fraction,
                     ..
+                }
+                | Kind::Coupled {
+                    ref_value,
+                    fraction,
                 } => ScalarBc::Mixed {
                     fraction: fraction.clone(),
                     ref_value: ref_value.clone(),
@@ -311,6 +331,10 @@ impl ModelField {
                         ref_value,
                         fraction,
                         ..
+                    }
+                    | Kind::Coupled {
+                        ref_value,
+                        fraction,
                     } => inside.map(|inside| {
                         let r = ref_value.get(i).copied().unwrap_or(0.0);
                         let w = fraction.get(i).copied().unwrap_or(0.0);
@@ -464,6 +488,11 @@ pub(crate) struct EquationSetup {
 }
 
 impl EquationSetup {
+    /// The delta coefficients of the boundary faces as the Laplacian of this equation takes them.
+    pub(crate) fn wall_delta<'a>(&self, fv: &'a FvGeometry) -> &'a [f64] {
+        self.sn_grad.without_correction().coeffs(fv)
+    }
+
     /// Whether the Laplacian is corrected for non-orthogonality.
     pub(crate) fn is_corrected(&self) -> bool {
         self.sn_grad == SnGrad::Corrected

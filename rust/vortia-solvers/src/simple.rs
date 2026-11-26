@@ -423,14 +423,14 @@ pub fn run(case: &Case, mut log: impl FnMut(&str)) -> Result<Vec<Step>> {
                 Some(t) => t.nu_eff(&mesh, &fv).2,
                 None => vec![nu; mesh.n_faces()],
             };
-            solves.push(h.solve(&mesh, &fv, &phi, &faces, &mut log)?);
+            solves.extend(h.solve(&mesh, &fv, &phi, &faces, &mut log)?);
         }
 
         let converged = !residuals.is_empty()
             && converged(
                 &residuals,
                 &solves,
-                &["U", "p", "epsilon", "omega", "k", "nuTilda", "T"],
+                &["U", "p", "epsilon", "omega", "k", "nuTilda", "T", "Tsolid"],
             );
         let written = run.writes(step) || converged;
         if written {
