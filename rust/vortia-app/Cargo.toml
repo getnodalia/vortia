@@ -35,4 +35,4 @@ tempfile = "3"
 
 # The shell's global menu, over D-Bus.
 [target.'cfg(target_os = "linux")'.dependencies]
-zbus = "5"
+zbus = "6"
