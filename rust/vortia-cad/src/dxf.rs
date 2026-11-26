@@ -13,7 +13,8 @@
 //!   cylinder) and a wind tunnel is drawn around them, with the patches a flow around a body
 //!   needs.
 //!
-//! Not read: blocks (`INSERT`), text, dimensions and hatches are left out, and so is everything
+//! Blocks (`INSERT`) are drawn where they are placed, with their scale, turn and arrays. Not read:
+//! text, dimensions and hatches are left out, and so is everything
 //! in paper space or on a layer that is switched off; [`Drawing::notes`] says how many.
 
 use std::collections::BTreeMap;
@@ -127,37 +128,159 @@ pub fn parse(bytes: &[u8]) -> Result<Drawing> {
         .map(|l| l.name)
         .collect();
 
-    let mut pieces: Vec<Piece> = Vec::new();
-    let mut circles: Vec<(String, P, f64)> = Vec::new();
-    let mut left_out: BTreeMap<String, usize> = BTreeMap::new();
+    let mut reader = Reader {
+        to_mm,
+        off,
+        blocks: document
+            .blocks
+            .iter()
+            .filter(|b| !b.name.is_empty())
+            .map(|b| (b.name.to_owned(), b))
+            .collect(),
+        pieces: Vec::new(),
+        circles: Vec::new(),
+        left_out: BTreeMap::new(),
+        inserted: 0,
+    };
     for record in &document.entities {
-        let entity = Entity::read(record);
-        if entity.common.paper_space || !entity.common.visible || off.contains(&entity.common.layer)
-        {
-            continue;
+        reader.entity(record, &Xf::IDENTITY, None, 0)?;
+    }
+    let Reader {
+        pieces,
+        circles,
+        left_out,
+        ..
+    } = reader;
+    if !left_out.is_empty() {
+        let list: Vec<String> = left_out.iter().map(|(k, n)| format!("{n} {k}")).collect();
+        notes.push(format!("left out: {}", list.join(", ")));
+    }
+    let outlines = outlines(pieces, circles, &mut notes)?;
+    if outlines.is_empty() {
+        return Err(invalid(
+            "the drawing has no closed outline: draw the section as lines, arcs, polylines or a circle that close on themselves",
+        ));
+    }
+    Ok(Drawing { outlines, notes })
+}
+
+/// A flat transform of the plane, applied to points in millimetres: `x' = a x + c y + e`,
+/// `y' = b x + d y + f`.
+#[derive(Clone, Copy, Debug)]
+struct Xf {
+    a: f64,
+    b: f64,
+    c: f64,
+    d: f64,
+    e: f64,
+    f: f64,
+}
+
+impl Xf {
+    const IDENTITY: Xf = Xf {
+        a: 1.0,
+        b: 0.0,
+        c: 0.0,
+        d: 1.0,
+        e: 0.0,
+        f: 0.0,
+    };
+
+    fn apply(&self, p: P) -> P {
+        (
+            self.a * p.0 + self.c * p.1 + self.e,
+            self.b * p.0 + self.d * p.1 + self.f,
+        )
+    }
+
+    /// `self` after `inner`: the point goes through `inner` first.
+    fn after(&self, inner: &Xf) -> Xf {
+        let (e, f) = self.apply((inner.e, inner.f));
+        Xf {
+            a: self.a * inner.a + self.c * inner.b,
+            b: self.b * inner.a + self.d * inner.b,
+            c: self.a * inner.c + self.c * inner.d,
+            d: self.b * inner.c + self.d * inner.d,
+            e,
+            f,
         }
-        let layer = entity.common.layer.clone();
+    }
+
+    /// How much it stretches along x and along y.
+    fn stretch(&self) -> (f64, f64) {
+        (self.a.hypot(self.b), self.c.hypot(self.d))
+    }
+}
+
+/// The most block references a drawing may expand, arrays counted copy by copy.
+pub const MAX_INSERTS: usize = 10_000;
+/// The deepest blocks may be inside blocks.
+const MAX_DEPTH: usize = 8;
+
+/// What is gathered from the entities, the block references expanded in place.
+struct Reader<'b, 'd> {
+    to_mm: f64,
+    off: Vec<String>,
+    blocks: BTreeMap<String, &'b nodalia_dxf::model::Block<'d>>,
+    pieces: Vec<Piece>,
+    circles: Vec<(String, P, f64)>,
+    left_out: BTreeMap<String, usize>,
+    inserted: usize,
+}
+
+impl Reader<'_, '_> {
+    fn piece(&mut self, layer: &str, points: Vec<P>, closed: bool, xf: &Xf) {
+        self.pieces.push(Piece {
+            layer: layer.to_owned(),
+            points: points.into_iter().map(|p| xf.apply(p)).collect(),
+            closed,
+        });
+    }
+
+    /// A circle, kept whole while the transform keeps it round and cut into a closed outline
+    /// when a block was stretched more along one axis than the other.
+    fn circle(&mut self, layer: &str, center: P, radius: f64, xf: &Xf) {
+        let (sx, sy) = xf.stretch();
+        if (sx - sy).abs() <= 1.0e-9 * sx.max(sy) {
+            self.circles
+                .push((layer.to_owned(), xf.apply(center), radius * sx));
+        } else {
+            let points = arc(center, radius, 0.0, std::f64::consts::TAU);
+            self.piece(layer, points, true, xf);
+        }
+    }
+
+    fn entity(
+        &mut self,
+        record: &nodalia_dxf::model::EntityRecord<'_>,
+        xf: &Xf,
+        inherit: Option<&str>,
+        depth: usize,
+    ) -> Result<()> {
+        let entity = Entity::read(record);
+        // What a block draws on layer 0 takes the layer of the reference to it.
+        let layer = match inherit {
+            Some(from) if entity.common.layer == "0" => from.to_owned(),
+            _ => entity.common.layer.clone(),
+        };
+        if entity.common.paper_space || !entity.common.visible || self.off.contains(&layer) {
+            return Ok(());
+        }
+        let to_mm = self.to_mm;
         let normal = entity.common.extrusion;
         let xy = |p: Point| {
             let w = ocs_to_wcs(normal, p);
             (w[0] * to_mm, w[1] * to_mm)
         };
-        let mut piece = |points: Vec<P>, closed: bool| {
-            pieces.push(Piece {
-                layer: layer.clone(),
-                points,
-                closed,
-            });
-        };
         match &entity.kind {
             EntityKind::Line { start, end } => {
                 // A line is in world coordinates.
                 let p = |q: &Point| (q[0] * to_mm, q[1] * to_mm);
-                piece(vec![p(start), p(end)], false);
+                self.piece(&layer, vec![p(start), p(end)], false, xf);
             }
             EntityKind::Circle { center, radius } => {
                 let c = xy(*center);
-                circles.push((layer.clone(), c, radius * to_mm));
+                self.circle(&layer, c, radius * to_mm, xf);
             }
             EntityKind::Arc {
                 center,
@@ -178,7 +301,7 @@ pub fn parse(bytes: &[u8]) -> Result<Drawing> {
                 .into_iter()
                 .map(|p| xy([p.0, p.1, center[2]]))
                 .collect();
-                piece(points, false);
+                self.piece(&layer, points, false, xf);
             }
             EntityKind::Ellipse {
                 center,
@@ -191,7 +314,7 @@ pub fn parse(bytes: &[u8]) -> Result<Drawing> {
                     .into_iter()
                     .map(|p| (p.0 * to_mm, p.1 * to_mm))
                     .collect();
-                piece(points, false);
+                self.piece(&layer, points, false, xf);
             }
             EntityKind::LwPolyline(poly) => {
                 let corners: Vec<(P, f64)> = poly
@@ -203,7 +326,7 @@ pub fn parse(bytes: &[u8]) -> Result<Drawing> {
                     .into_iter()
                     .map(|p| xy([p.0, p.1, poly.elevation]))
                     .collect();
-                piece(points, poly.closed);
+                self.piece(&layer, points, poly.closed, xf);
             }
             EntityKind::Polyline(poly) if !poly.is_mesh() && !poly.is_polyface() => {
                 let corners: Vec<(P, f64)> = poly
@@ -223,36 +346,93 @@ pub fn parse(bytes: &[u8]) -> Result<Drawing> {
                         }
                     })
                     .collect();
-                piece(points, poly.closed());
+                self.piece(&layer, points, poly.closed(), xf);
             }
             EntityKind::Spline(spline) => {
                 let points: Vec<P> = spline_points(spline)
                     .into_iter()
                     .map(|p| (p.0 * to_mm, p.1 * to_mm))
                     .collect();
-                piece(points, spline.flags & 1 != 0);
+                self.piece(&layer, points, spline.flags & 1 != 0, xf);
             }
+            EntityKind::Insert(insert) => self.insert(insert, &layer, xf, depth)?,
             _ => {
-                *left_out.entry(record.kind.to_owned()).or_default() += 1;
+                *self.left_out.entry(record.kind.to_owned()).or_default() += 1;
             }
         }
-        if pieces.len() > MAX_PIECES {
+
+        if self.pieces.len() > MAX_PIECES {
             return Err(invalid(format!(
                 "the drawing has more than {MAX_PIECES} lines, arcs and polylines"
             )));
         }
+        Ok(())
     }
-    if !left_out.is_empty() {
-        let list: Vec<String> = left_out.iter().map(|(k, n)| format!("{n} {k}")).collect();
-        notes.push(format!("left out: {}", list.join(", ")));
+
+    /// Draws the block an INSERT names, once for each copy of its array.
+    fn insert(
+        &mut self,
+        insert: &nodalia_dxf::model::Insert,
+        layer: &str,
+        xf: &Xf,
+        depth: usize,
+    ) -> Result<()> {
+        let Some(&block) = self.blocks.get(&insert.block) else {
+            *self
+                .left_out
+                .entry(format!("INSERT of the unknown block '{}'", insert.block))
+                .or_default() += 1;
+            return Ok(());
+        };
+        if depth >= MAX_DEPTH {
+            *self
+                .left_out
+                .entry("INSERT nested too deep".to_owned())
+                .or_default() += 1;
+            return Ok(());
+        }
+        let to_mm = self.to_mm;
+        let (sin, cos) = insert.rotation.to_radians().sin_cos();
+        let (sx, sy) = (insert.scale[0], insert.scale[1]);
+        // The linear part: scale, then turn.
+        let (a, b, c, d) = (cos * sx, sin * sx, -sin * sy, cos * sy);
+        let base = block.base();
+        let (bx, by) = (base[0] * to_mm, base[1] * to_mm);
+        let columns = insert.columns.clamp(1, MAX_INSERTS as i64);
+        let rows = insert.rows.clamp(1, MAX_INSERTS as i64);
+        for row in 0..rows {
+            for column in 0..columns {
+                self.inserted += 1;
+                if self.inserted > MAX_INSERTS {
+                    return Err(invalid(format!(
+                        "the drawing places more than {MAX_INSERTS} blocks"
+                    )));
+                }
+                // The array's steps are along the reference's own axes, turned with it.
+                let (u, v) = (
+                    column as f64 * insert.column_spacing,
+                    row as f64 * insert.row_spacing,
+                );
+                let at = (
+                    (insert.insert[0] + cos * u - sin * v) * to_mm,
+                    (insert.insert[1] + sin * u + cos * v) * to_mm,
+                );
+                let place = Xf {
+                    a,
+                    b,
+                    c,
+                    d,
+                    e: at.0 - (a * bx + c * by),
+                    f: at.1 - (b * bx + d * by),
+                };
+                let whole = xf.after(&place);
+                for record in &block.entities {
+                    self.entity(record, &whole, Some(layer), depth + 1)?;
+                }
+            }
+        }
+        Ok(())
     }
-    let outlines = outlines(pieces, circles, &mut notes)?;
-    if outlines.is_empty() {
-        return Err(invalid(
-            "the drawing has no closed outline: draw the section as lines, arcs, polylines or a circle that close on themselves",
-        ));
-    }
-    Ok(Drawing { outlines, notes })
 }
 
 /// The factor from the file's unit to millimetres, and a note when the unit is a guess.
