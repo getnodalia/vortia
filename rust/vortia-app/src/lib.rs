@@ -21,6 +21,7 @@ pub mod conditions;
 pub mod controldict;
 pub mod convergence;
 pub mod edgepick;
+pub mod facepaint;
 pub mod fieldview;
 pub mod flowlines;
 #[cfg(target_os = "linux")]

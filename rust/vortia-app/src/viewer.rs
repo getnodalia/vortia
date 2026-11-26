@@ -14,6 +14,7 @@ use std::sync::mpsc::Receiver;
 use vortia_post::Case;
 
 use crate::edgepick::{self, FeatureEdge};
+use crate::facepaint::FacePaint;
 use crate::fieldview::{self, CellValues};
 use crate::flowlines::{self, FlowLines};
 use crate::section::{self, Section};
@@ -113,6 +114,10 @@ pub struct Viewer {
     picture_note: Option<(bool, String)>,
     /// The edges of a modelled part that can be picked with the mouse, when it is being done.
     picking: Option<Picking>,
+    /// A number for each face of some walls, painted in place of the field.
+    paint: Option<FacePaint>,
+    /// Whether the choices over the picture are open.
+    legend_open: bool,
 }
 
 /// The edges a person is choosing among, and what they did with them.
@@ -142,6 +147,8 @@ impl Viewer {
             time: None,
             values: None,
             values_rx: None,
+            paint: None,
+            legend_open: true,
             requested: None,
             lines: false,
             arrows: false,
@@ -197,6 +204,15 @@ impl Viewer {
     pub fn colour_by(&mut self, field: Option<&str>, time: Option<&str>) {
         self.field = field.map(str::to_owned);
         self.time = time.map(str::to_owned);
+    }
+
+    /// Paints a number for each face of some walls on the surface (`None`: back to the field).
+    pub fn paint(&mut self, paint: Option<FacePaint>) {
+        self.paint = paint;
+    }
+
+    pub fn painted(&self) -> Option<&FacePaint> {
+        self.paint.as_ref()
     }
 
     pub fn values(&self) -> Option<&Result<CellValues, String>> {
@@ -458,19 +474,69 @@ impl Viewer {
         source: &Source,
     ) {
         self.sync_field(&ui.ctx().clone(), source);
+        // The picture takes all the room; the choices float over its corner.
         let room = ui.available_size();
-        ui.horizontal_top(|ui| {
-            let picture = Vec2::new(
-                (room.x - LEGEND - ui.spacing().item_spacing.x).max(100.0),
-                room.y,
-            );
-            self.picture(ui, picture, background, muted, radius);
-            ui.allocate_ui_with_layout(
-                vec2(LEGEND, room.y),
-                egui::Layout::top_down(egui::Align::Min),
-                |ui| self.legend(ui, muted, source),
-            );
-        });
+        self.picture(ui, room, background, muted, radius);
+        self.overlay(ui, muted, source);
+    }
+
+    /// The choices over the picture's top right corner: a button that opens them, and the
+    /// colour scale along the bottom while they are shut.
+    fn overlay(&mut self, ui: &mut egui::Ui, muted: Color32, source: &Source) {
+        let rect = self.picture_rect;
+        let ctx = ui.ctx().clone();
+        let open = self.legend_open;
+        let mut toggle = false;
+        egui::Area::new(egui::Id::unique("viewer-overlay"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(rect.right_top() + vec2(-8.0, 8.0))
+            .pivot(egui::Align2::RIGHT_TOP)
+            .show(&ctx, |ui| {
+                ui.set_max_width(LEGEND);
+                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                    ui.set_width(if open { LEGEND - 12.0 } else { 90.0 });
+                    ui.horizontal(|ui| {
+                        let label = if open { tr("Hide") } else { tr("Display") };
+                        toggle = ui.small_button(label).clicked();
+                    });
+                    if open {
+                        ui.add_space(4.0);
+                        egui::ScrollArea::vertical()
+                            .id_salt("viewer-legend")
+                            .max_height((rect.height() - 70.0).max(80.0))
+                            .show(ui, |ui| self.legend(ui, muted, source));
+                    }
+                });
+            });
+        if toggle {
+            self.legend_open = !self.legend_open;
+        }
+        // With the choices shut the colour scale still says what the colours mean.
+        let scale = match (&self.paint, &self.values) {
+            (Some(paint), _) => Some((paint.name.clone(), paint.range())),
+            (None, Some(Ok(values))) => Some((
+                if values.kind == "vector" {
+                    format!("{}, length", values.name)
+                } else {
+                    values.name.clone()
+                },
+                values.range,
+            )),
+            _ => None,
+        };
+        if !self.legend_open
+            && let Some((what, range)) = scale
+        {
+            egui::Area::new(egui::Id::unique("viewer-scale"))
+                .order(egui::Order::Foreground)
+                .fixed_pos(rect.left_bottom() + vec2(8.0, -8.0))
+                .pivot(egui::Align2::LEFT_BOTTOM)
+                .show(&ctx, |ui| {
+                    egui::Frame::popup(ui.style()).show(ui, |ui| {
+                        scale_bar(ui, &what, range, muted);
+                    });
+                });
+        }
     }
 
     fn picture(
@@ -513,23 +579,45 @@ impl Viewer {
         let mut mesh = Mesh::default();
         mesh.reserve_triangles(triangles.len());
         mesh.reserve_vertices(triangles.len().saturating_mul(3));
+        // The wall of the paint each patch is, when it is one.
+        let wall_of: Vec<Option<usize>> = self
+            .surface
+            .patches
+            .iter()
+            .map(|patch| self.paint.as_ref().and_then(|p| p.wall_index(&patch.name)))
+            .collect();
         for triangle in &triangles {
-            let color = match &self.values {
-                Some(Ok(values)) => match values.fraction(triangle.cell) {
+            let color = if let Some(paint) = &self.paint {
+                let fraction = wall_of
+                    .get(triangle.patch)
+                    .copied()
+                    .flatten()
+                    .and_then(|wall| paint.fraction(wall, triangle.face));
+                match fraction {
                     Some(t) => {
                         let [r, g, b] = fieldview::scale(t);
-                        // A light touch of shading: the colour is the information.
                         shade(Color32::from_rgb(r, g, b), 0.85 + 0.15 * triangle.light)
                     }
-                    None => Color32::from_rgb(0x55, 0x5b, 0x63),
-                },
-                _ => {
-                    let kind = self
-                        .surface
-                        .patches
-                        .get(triangle.patch)
-                        .map_or("", |p| p.kind.as_str());
-                    shade(patch_color(kind, triangle.patch), triangle.light)
+                    None => shade(Color32::from_rgb(0x55, 0x5b, 0x63), triangle.light),
+                }
+            } else {
+                match &self.values {
+                    Some(Ok(values)) => match values.fraction(triangle.cell) {
+                        Some(t) => {
+                            let [r, g, b] = fieldview::scale(t);
+                            // A light touch of shading: the colour is the information.
+                            shade(Color32::from_rgb(r, g, b), 0.85 + 0.15 * triangle.light)
+                        }
+                        None => Color32::from_rgb(0x55, 0x5b, 0x63),
+                    },
+                    _ => {
+                        let kind = self
+                            .surface
+                            .patches
+                            .get(triangle.patch)
+                            .map_or("", |p| p.kind.as_str());
+                        shade(patch_color(kind, triangle.patch), triangle.light)
+                    }
                 }
             };
             let first = mesh.vertices.len() as u32;
@@ -654,6 +742,14 @@ impl Viewer {
 
     /// The choice of field and time, and the colour scale of the field read.
     fn field_choices(&mut self, ui: &mut egui::Ui, muted: Color32, source: &Source) {
+        if let Some(paint) = &self.paint {
+            scale_bar(ui, &paint.name, paint.range(), muted);
+            ui.add_space(4.0);
+            if ui.button(tr("Back to the field")).clicked() {
+                self.paint = None;
+            }
+            ui.add_space(10.0);
+        }
         ui.label(egui::RichText::new(tr("Colour by")).color(muted));
         let current = self.field.clone();
         egui::ComboBox::from_id_salt("viewer-field")
@@ -684,7 +780,12 @@ impl Viewer {
             ui.add_space(6.0);
             match &self.values {
                 Some(Ok(values)) => {
-                    scale_bar(ui, values, muted);
+                    let what = if values.kind == "vector" {
+                        format!("{}, length", values.name)
+                    } else {
+                        values.name.clone()
+                    };
+                    scale_bar(ui, &what, values.range, muted);
                     ui.add_space(6.0);
                     ui.checkbox(&mut self.slice, tr("Slice"));
                     if self.slice {
@@ -769,7 +870,10 @@ impl Viewer {
                 .clone()
                 .or_else(|| source.times.last().cloned())
                 .unwrap_or_else(|| "mesh".to_owned());
-            let what = self.field.clone().unwrap_or_else(|| "patches".to_owned());
+            let what = match (&self.paint, &self.field) {
+                (Some(paint), _) => paint.name.replace(' ', "-").to_lowercase(),
+                (None, field) => field.clone().unwrap_or_else(|| "patches".to_owned()),
+            };
             let path = crate::picture::path_for(&source.dir, &what, &time);
             self.picture_note = None;
             // Repaint first: the picture is taken from the frame after this one, without the hint.
@@ -803,10 +907,8 @@ impl Viewer {
         }
         self.picture_button(ui, muted, source);
         ui.label(egui::RichText::new(tr("Patches")).color(muted));
-        egui::ScrollArea::vertical()
-            .id_salt("viewer-patches")
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
+        {
+            {
                 for (index, (patch, shown)) in self
                     .surface
                     .patches
@@ -831,13 +933,14 @@ impl Viewer {
                             .color(muted),
                     );
                 }
-            });
+            }
+        }
     }
 }
 
 /// The colour scale as a bar, with the range under it.
-fn scale_bar(ui: &mut egui::Ui, values: &CellValues, muted: Color32) {
-    let Some((low, high)) = values.range else {
+fn scale_bar(ui: &mut egui::Ui, what: &str, range: Option<(f32, f32)>, muted: Color32) {
+    let Some((low, high)) = range else {
         ui.label(
             egui::RichText::new(tr("No finite values."))
                 .size(11.0)
@@ -878,11 +981,6 @@ fn scale_bar(ui: &mut egui::Ui, values: &CellValues, muted: Color32) {
             );
         });
     });
-    let what = if values.kind == "vector" {
-        format!("{}, length", values.name)
-    } else {
-        values.name.clone()
-    };
     ui.label(egui::RichText::new(what).size(11.0).color(muted));
 }
 

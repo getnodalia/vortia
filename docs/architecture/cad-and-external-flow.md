@@ -95,7 +95,7 @@ one release. Each release says which tools are in.
 Force and moment coefficients on a named part with a reference area and length, surface
 Cp and Cf plots coloured on the body, a drag/lift breakdown by part (a car's wing against
 its floor), streamlines seeded from the body, and the Cp curve for 2D sections. Much of this
-exists as wall quantities and forces; per-part wall patches are done (`bodymesh::parts`); it still needs a 3D surface view coloured by face.
+exists as wall quantities and forces; per-part wall patches are done (`bodymesh::parts`); the 3D view paints Cp and Cf per face from the Surface card (`vortia-app::facepaint`).
 
 ## 3. Order of work
 

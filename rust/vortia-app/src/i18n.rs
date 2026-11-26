@@ -633,6 +633,13 @@ pub const ES: &[(&str, &str)] = &[
         "Parte del área con flujo invertido",
     ),
     ("There are no faces to plot", "No hay caras que dibujar"),
+    ("Paint Cp on the body", "Pintar Cp sobre el cuerpo"),
+    ("Paint Cf on the body", "Pintar Cf sobre el cuerpo"),
+    ("Back to the field", "Volver al campo"),
+    ("Hide", "Ocultar"),
+    ("Display", "Mostrar"),
+    ("Show the case panel", "Mostrar el panel del caso"),
+    ("Hide the case panel", "Ocultar el panel del caso"),
     ("Wall by part", "Pared por pieza"),
     (
         "A wall for each of the {} parts, to read their forces apart",

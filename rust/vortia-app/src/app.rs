@@ -18,6 +18,7 @@ use nodalia_theme::{
 use crate::conditions::{self, Loaded};
 use crate::controldict::{self, SettingsForm};
 use crate::convergence::Convergence;
+use crate::facepaint;
 #[cfg(target_os = "linux")]
 use crate::globalmenu::{Entry, GlobalMenu, Menu};
 use crate::numerics::{self, File, Group};
@@ -118,6 +119,8 @@ struct CaseView {
     tab: Tab,
     /// What the Browser has picked besides a view, and the groups of its tree that are closed.
     selection: Selection,
+    /// Whether the Case panel on the right is open. It starts as a thin rail so the body gets the room.
+    properties_open: bool,
     collapsed: HashSet<&'static str>,
     /// The run settings as typed, and how the last save went (`true` when it worked).
     form: Option<SettingsForm>,
@@ -142,6 +145,8 @@ struct CaseView {
     first_field: Option<String>,
     /// The mesh is read the first time it is looked at.
     viewer: Option<Result<Viewer, String>>,
+    /// A quantity of the surface asked for on the body, waiting for the viewer to be there.
+    pending_paint: Option<facepaint::FacePaint>,
     viewer_rx: Option<std::sync::mpsc::Receiver<Result<surface::Surface, String>>>,
 }
 
@@ -196,6 +201,7 @@ impl CaseView {
             summary_stale: true,
             tab: Tab::Run,
             selection: Selection::default(),
+            properties_open: false,
             collapsed: HashSet::new(),
             form: None,
             form_message: None,
@@ -211,6 +217,7 @@ impl CaseView {
             results: Results::default(),
             first_field: None,
             viewer: None,
+            pending_paint: None,
             viewer_rx: None,
         }
     }
@@ -246,6 +253,16 @@ impl CaseView {
 
     /// Reads the mesh on a thread the first time the viewer is wanted, and takes what it read.
     fn ensure_viewer(&mut self, ctx: &Context) {
+        // The Results tab asked to see a quantity on the body: the Mesh tab shows it.
+        if let Some(paint) = self.results.paint.take() {
+            self.pending_paint = Some(paint);
+            self.tab = Tab::Mesh;
+        }
+        if let Some(Ok(viewer)) = &mut self.viewer
+            && let Some(paint) = self.pending_paint.take()
+        {
+            viewer.paint(Some(paint));
+        }
         if let Some(rx) = &self.viewer_rx
             && let Ok(read) = rx.try_recv()
         {
@@ -1948,6 +1965,45 @@ mod tests {
         assert_eq!((values.name.as_str(), values.time.as_str()), ("p", "0.01"));
         assert_eq!(values.kind, "scalar");
         assert_eq!(values.values.len(), 12);
+        frame(&mut app, &ctx);
+    }
+
+    #[test]
+    fn a_quantity_asked_for_on_the_body_is_painted_in_the_mesh_tab() {
+        let case = case_dir();
+        let data = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../vortia-foamfile/tests/data/cavity-ascii");
+        let to = case.path().join("constant/polyMesh");
+        std::fs::create_dir_all(&to).unwrap();
+        for entry in std::fs::read_dir(data.join("constant/polyMesh")).unwrap() {
+            let entry = entry.unwrap();
+            std::fs::copy(entry.path(), to.join(entry.file_name())).unwrap();
+        }
+        let ctx = Context::default();
+        let mut app = VortiaApp::with_prefs(Prefs::default(), None);
+        app.open_case(case.path()).unwrap();
+        if let Screen::Case(view) = &mut app.screen {
+            view.results.paint = Some(facepaint::FacePaint::new(
+                "Cp",
+                vec![("movingWall".into(), vec![0.0, 1.0])],
+            ));
+        }
+        let mut painted = false;
+        for _ in 0..300 {
+            frame(&mut app, &ctx);
+            if let Screen::Case(view) = &app.screen
+                && let Some(Ok(viewer)) = &view.viewer
+                && viewer.painted().is_some()
+            {
+                // The Results tab handed it over and the screen moved to the mesh.
+                assert_eq!(view.tab, Tab::Mesh);
+                assert!(view.results.paint.is_none());
+                painted = true;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(painted, "the viewer was never given the paint");
         frame(&mut app, &ctx);
     }
 
