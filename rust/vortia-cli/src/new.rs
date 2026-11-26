@@ -194,12 +194,12 @@ fn from_region(dir: &str, file: &str, settings: &[&str]) -> ExitCode {
     }
 }
 
-/// `vortia new body DIR FILE.stl|FILE.obj [scale=F] [NAME=VALUE...]`: the flow around a closed
-/// surface in a wind tunnel, meshed by octree refinement.
+/// `vortia new body DIR FILE.stl|.obj|.step [scale=F] [NAME=VALUE...]`: the flow around a closed
+/// surface in a wind tunnel, meshed by octree refinement. A STEP file carries its own unit; an
+/// STL or OBJ is in metres unless `scale` says otherwise (0.001 for millimetres).
 fn from_body(dir: &str, file: &str, settings: &[&str]) -> ExitCode {
     let build = || -> Result<vortia_cases::Body, String> {
-        let mut surface =
-            vortia_mesh::stl::Stl::load(Path::new(file)).map_err(|e| e.to_string())?;
+        let mut surface = vortia_cad::load(Path::new(file)).map_err(|e| e.to_string())?;
         let mut rest = Vec::new();
         for setting in settings {
             let (name, value) = setting

@@ -105,7 +105,7 @@ impl Stl {
             // A file with another name may still be an STL.
             _ => Self::read(path).map_err(|e| match e {
                 MeshError::Invalid(message) => MeshError::Invalid(format!(
-                    "{message}; surfaces are read from STL and OBJ files (STEP, IGES and DXF are not read yet)"
+                    "{message}; surfaces are read from STL, OBJ and STEP files (IGES and DXF are not read yet)"
                 )),
                 other => other,
             }),

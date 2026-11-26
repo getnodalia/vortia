@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, channel};
 
-use vortia_mesh::stl::{Stl, Summary};
+use vortia_mesh::stl::Summary;
 
 use crate::app::grouped;
 use crate::i18n::{tr, trf};
@@ -139,7 +139,7 @@ pub fn load(path: &Path) -> Result<(About, Surface), String> {
         lines.extend(case_lines(&mesh, &surface));
         return Ok((About::Case(lines), surface));
     }
-    let stl = Stl::load(path).map_err(|e| e.to_string())?;
+    let stl = vortia_cad::load(path).map_err(|e| e.to_string())?;
     let name = path
         .file_stem()
         .map_or_else(|| "STL".to_owned(), |n| n.to_string_lossy().into_owned());

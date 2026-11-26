@@ -280,8 +280,8 @@ pub const ES: &[(&str, &str)] = &[
     ("Cell size", "Tamaño de celda"),
     ("Symmetry plane on the axis", "Plano de simetría en el eje"),
     (
-        "An STL or OBJ file, a Fluent case (.cas.h5, .msh) or a Workbench project (.wbpj)",
-        "Un archivo STL u OBJ, un caso de Fluent (.cas.h5, .msh) o un proyecto de Workbench (.wbpj)",
+        "An STL, OBJ or STEP file, a Fluent case (.cas.h5, .msh) or a Workbench project (.wbpj)",
+        "Un archivo STL, OBJ o STEP, un caso de Fluent (.cas.h5, .msh) o un proyecto de Workbench (.wbpj)",
     ),
     (
         "{} cells, {} faces, {} points",

@@ -43,9 +43,24 @@ about 65 % of the wall points end on the surface, the rest stay part of the way.
 
 Snapping moves the drag from **7 % below** the reference (stepped, 1.013) to **4 % above** it
 (1.135 at level 5, still rising by 0.011 between levels 4 and 5, so about 1.15 if the trend
-continues). The small tunnel accounts for around 2 % of that (see below). The viscous share is
-52 % of the total, more than the published split, which suggests the wall shear is overpredicted
-on the skewed wall cells. That is a guess: it has not been tested.
+continues). The small tunnel accounts for about 2 % of that (next section), leaving +3 %. The viscous
+share is 52 % of the total; I have not checked it against a published split.
+
+## Snapped wall in a larger tunnel (2026-11-26)
+
+The same surface levels with the tunnel from 6 D ahead to 15 D behind and 8 D to each side
+(`upstream=6 downstream=15 lateral=8`, wake one level coarser than the surface):
+
+| Level | Cells | Iterations | C_D | pressure | viscous |
+|---|---|---|---|---|---|
+| 3 | 61 232 | 158 | 1.0842 | 0.538 | 0.546 |
+| 4 | 105 008 | 319 | 1.1010 | 0.531 | 0.570 |
+| 5 | 387 396 | 868 | 1.1113 | 0.536 | 0.575 |
+
+So the small tunnel was worth about 2 % of the +4 % found above. The unconfined values rise by
+0.017 and 0.010 between levels, so they approach about 1.12 (+3 % against 1.087), and the
+viscous share stays at 52 %. Non-orthogonal correctors (0 to 3) change nothing at level 3, so
+the skew of the snapped cells is not the cause.
 
 ## What this says, and what it does not
 
@@ -54,10 +69,11 @@ on the skewed wall cells. That is a guess: it has not been tested.
 * The stepped wall misses the reference by 7 % and snapping overshoots it by 4 %, so the wall
   treatment moves the answer by more than the gap: that is what the stepped wall was costing,
   and it also shows the error is not yet below a few percent either way. The remaining
-  candidates are the viscous drag on skewed wall cells, the solver's treatment of hanging
-  nodes and of the lateral symmetry planes, and the lack of prism layers; a uniform-grid run to
-  separate them has not been made. Until it is, a drag from `vortia new body` is an estimate
-  of the right order (within about 5 %) and must not be quoted as a prediction.
+  candidates are the first-order wall gradient on cells with no prism layers and the solver's
+  treatment of hanging nodes; non-orthogonal correction was ruled out. A uniform-grid run (25 M
+  cells at D/32) was not made. Until the remaining 3 % is explained, a drag from
+  `vortia new body` is an estimate within about 3 to 5 % on this case and must not be quoted
+  as a prediction.
 * One Reynolds number, one body, no wake or separation-point comparison.
 
 ## Run
