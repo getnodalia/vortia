@@ -252,6 +252,17 @@ pub(super) fn body_fields(ui: &mut Ui, body: &mut Body, summary: &Summary, scale
     row(ui, tr("Refinements in the wake"), |ui| {
         ui.add(DragValue::new(&mut body.wake_levels).range(0..=8));
     });
+    if let Some(parts) = vortia_mesh::bodymesh::part_patches(&body.surface, "body") {
+        row(ui, tr("Wall by part"), |ui| {
+            ui.checkbox(
+                &mut body.by_part,
+                trf(
+                    "A wall for each of the {} parts, to read their forces apart",
+                    &[&parts.len()],
+                ),
+            );
+        });
+    }
     row(ui, tr("Prism layers on the wall"), |ui| {
         ui.add(DragValue::new(&mut body.layers).range(0..=20));
     });
@@ -460,5 +471,52 @@ mod tests {
         let hole = written(&dir, "open.stl", &open);
         let form = read(&hole);
         assert!(form.geometry().is_err());
+    }
+
+    #[test]
+    fn the_objects_of_an_obj_file_reach_the_body_as_its_parts() {
+        // Two unit cubes a unit apart, one object each (quads, outward).
+        let mut text = String::new();
+        let mut base = 0;
+        for (name, x) in [("hull", 0.0), ("keel", 2.0)] {
+            text += &format!("o {name}\n");
+            for (dx, dy, dz) in [
+                (0, 0, 0),
+                (1, 0, 0),
+                (1, 1, 0),
+                (0, 1, 0),
+                (0, 0, 1),
+                (1, 0, 1),
+                (1, 1, 1),
+                (0, 1, 1),
+            ] {
+                text += &format!("v {} {dy} {dz}\n", x + f64::from(dx));
+            }
+            for quad in [
+                [1, 4, 3, 2],
+                [5, 6, 7, 8],
+                [1, 2, 6, 5],
+                [2, 3, 7, 6],
+                [3, 4, 8, 7],
+                [4, 1, 5, 8],
+            ] {
+                let [a, b, c, d] = quad.map(|i| i + base);
+                text += &format!("f {a} {b} {c} {d}\n");
+            }
+            base += 8;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = written(&dir, "boat.obj", &text);
+        let form = read(&path);
+        assert!(form.problem.is_none(), "{:?}", form.problem);
+        let Geometry::Body(body) = form.geometry().unwrap() else {
+            panic!("a surface is a body");
+        };
+        assert_eq!(body.surface.parts.len(), 2);
+        assert!(body.by_part);
+        assert_eq!(
+            vortia_mesh::bodymesh::part_patches(&body.surface, "body").unwrap(),
+            ["body_hull", "body_keel"]
+        );
     }
 }

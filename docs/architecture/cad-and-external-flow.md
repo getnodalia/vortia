@@ -95,7 +95,7 @@ one release. Each release says which tools are in.
 Force and moment coefficients on a named part with a reference area and length, surface
 Cp and Cf plots coloured on the body, a drag/lift breakdown by part (a car's wing against
 its floor), streamlines seeded from the body, and the Cp curve for 2D sections. Much of this
-exists as wall quantities and forces; it needs per-part patches and a 3D surface view.
+exists as wall quantities and forces; per-part wall patches are done (`bodymesh::parts`); it still needs a 3D surface view coloured by face.
 
 ## 3. Order of work
 
@@ -131,5 +131,6 @@ request with its tests and its benchmark; a feature release goes out per finishe
 | C1 | `vortia-cad::part`: primitives, extruded and revolved polygons, add/cut/keep on Nodalia's kernel (`solidcore-ops`), meshed to a closed surface | done; wing sections (NACA) and DXF outlines feed the extrusions |
 | C2 | App: New case > Model a part (feature list, join modes, live viewer, STL and STEP export, create case) | done, with saving/opening `.vortia-part`, rounds/chamfers picked by a point on the edge and exact STEP export; sketch-driven profiles, picking edges in the viewer and patterns next |
 | B4 | prism layers (`bodymesh::layers`, `layers=N layer-growth=R yplus=Y`); sphere Re = 100 with layers: C_D 1.097 (large tunnel, level 3) and 1.108 (level 4) against 1.09 | done for a wall that closes on itself; the layers raise the drag 0.6–2 %, so they are not the cause of the overshoot; a wall touching a ground plane is refused |
+| D1 | per-part wall patches (`bodymesh::parts`): the objects and groups of an OBJ, the solids of an ASCII STL and the instances of a STEP file become `body_<part>` walls, each face taking the part of the nearest triangle; every wall gets its boundary conditions, and `vortia forces DIR body_<part>` reads one | done; parts are not editable in the app (a checkbox turns the split off), STEP parts are named after their solid, a binary STL has no parts |
 | next | a uniform-grid run to separate solver from mesh (the viscous drag share, 52 %, looks high) | not started |
 | 2026-11-26 | A: OBJ reader (`vortia-mesh::obj`, hostile-input limits, quads fanned, negative indices), `Stl::load` by extension, `scale=` for millimetres; the Home page and `vortia new body` open OBJ as well as STL | in review; STEP/IGES/DXF, PLY and glTF not read yet |

@@ -12,7 +12,7 @@ use solidcore_ops::placed_bodies;
 use solidcore_record::step::product;
 use solidcore_step::{p21, topology};
 use solidcore_tess::{MeshTolerance, plan};
-use vortia_mesh::stl::Stl;
+use vortia_mesh::stl::{Stl, SurfacePart};
 use vortia_mesh::{MeshError, Result};
 
 /// The biggest STEP file read (bytes).
@@ -98,10 +98,7 @@ pub fn parse(bytes: &[u8], chord: f64) -> Result<StepSurface> {
         // A file with no product structure is a bare solid or two, where they were drawn.
         Err(_) => Vec::new(),
     };
-    let mut out = Stl {
-        vertices: Vec::new(),
-        triangles: Vec::new(),
-    };
+    let mut out = Stl::default();
     for solid in &read.solids {
         // The first plan is coarse and only gives the body's size; the second is the one used.
         let coarse = plan(&solid.brep, &MeshTolerance::chord(1.0e6), 1.0)
@@ -169,8 +166,14 @@ pub fn parse(bytes: &[u8], chord: f64) -> Result<StepSurface> {
                 };
                 [at(0), at(1), at(2)]
             }));
+            let first = out.triangles.len();
             out.triangles
                 .extend(welded.triangles.iter().map(|t| t.map(|i| i + base)));
+            out.parts.push(SurfacePart {
+                name: solid.name.clone(),
+                start: first,
+                end: out.triangles.len(),
+            });
             if out.triangles.len() > MAX_TRIANGLES {
                 return invalid("the surface has more triangles than the mesher takes");
             }

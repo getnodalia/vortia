@@ -633,6 +633,11 @@ pub const ES: &[(&str, &str)] = &[
         "Parte del área con flujo invertido",
     ),
     ("There are no faces to plot", "No hay caras que dibujar"),
+    ("Wall by part", "Pared por pieza"),
+    (
+        "A wall for each of the {} parts, to read their forces apart",
+        "Una pared para cada una de las {} piezas, para leer sus fuerzas por separado",
+    ),
     ("Prism layers on the wall", "Capas prismáticas en la pared"),
     ("Growth of each layer", "Crecimiento de cada capa"),
     (

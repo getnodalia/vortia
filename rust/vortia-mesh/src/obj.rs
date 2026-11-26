@@ -2,7 +2,8 @@
 //! Wavefront OBJ surfaces: the geometry most modelling and CAD tools export.
 //!
 //! Only the geometry is read: `v` vertices and `f` faces. Colours, normals, texture
-//! coordinates, groups, materials and lines are ignored. A face with more than three corners is
+//! coordinates, materials and lines are ignored. Objects (`o`) and groups (`g`) name the pieces of the
+//! surface (see [`Stl::parts`](crate::stl::Stl::parts)). A face with more than three corners is
 //! split into a fan from its first corner, which is right for the convex polygons exporters
 //! write. Indices are 1-based, and a negative one counts back from the last vertex read so far.
 //! Vertices are merged where they coincide exactly, as the STL reader does, so a closed model is
@@ -136,13 +137,22 @@ pub fn parse(bytes: &[u8]) -> Result<Stl> {
                     }
                 }
             }
+            // An object or a group starts a named piece; the faces after it belong to it.
+            Some("o" | "g") => {
+                let name: Vec<&str> = words.take(4).collect();
+                builder.part(&if name.is_empty() {
+                    "default".to_owned()
+                } else {
+                    name.join(" ")
+                });
+            }
             _ => {}
         }
     }
     if builder.stl.triangles.is_empty() {
         return invalid("the OBJ file has no faces");
     }
-    Ok(builder.stl)
+    Ok(builder.finish())
 }
 
 #[cfg(test)]
@@ -225,5 +235,28 @@ mod tests {
         let error = Stl::load(&other).unwrap_err().to_string();
         assert!(error.contains("STL, OBJ and STEP"), "{error}");
         assert!(Stl::load(&dir.path().join("missing.obj")).is_err());
+    }
+
+    #[test]
+    fn objects_and_groups_become_the_parts_of_the_surface() {
+        let text = "v 0 0 0\nv 1 0 0\nv 0 1 0\nv 0 0 1\n\
+            o first\nf 1 3 2\ng second part\nf 1 2 4\nf 1 4 3\no\nf 2 3 4\n";
+        let stl = parse(text.as_bytes()).unwrap();
+        let parts: Vec<_> = stl
+            .parts
+            .iter()
+            .map(|p| (p.name.as_str(), p.start, p.end))
+            .collect();
+        assert_eq!(
+            parts,
+            [("first", 0, 1), ("second part", 1, 3), ("default", 3, 4)]
+        );
+        assert_eq!(stl.part_of_each().unwrap(), [0, 1, 1, 2]);
+        // Faces before any name are a part of their own, and a file with no names has none.
+        let early = parse(b"v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\no late\nf 1 3 2\n").unwrap();
+        assert_eq!(early.parts[0].name, "default");
+        assert_eq!(early.parts.len(), 2);
+        let none = parse(b"v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n").unwrap();
+        assert!(none.parts.is_empty());
     }
 }

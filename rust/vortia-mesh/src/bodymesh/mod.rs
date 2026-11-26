@@ -14,10 +14,12 @@ mod assemble;
 mod grid;
 mod layers;
 mod octree;
+mod parts;
 mod snap;
 
 pub use layers::{LayerSpec, LayerStats, MAX_LAYERS, add_layers};
 pub use octree::Region;
+pub use parts::{MAX_PARTS, part_patches, patch_name};
 pub use snap::SnapStats;
 
 use vortia_foamfile::RawPolyMesh;
@@ -87,6 +89,9 @@ pub struct BodySpec {
     pub snap: bool,
     /// Prism layers grown from the wall (none when `None`).
     pub layers: Option<LayerSpec>,
+    /// Whether the wall is split into one patch for each named part of the surface (`<body>_<part>`).
+    /// A surface with no parts, or one, keeps a single wall.
+    pub by_part: bool,
 }
 
 impl BodySpec {
@@ -115,6 +120,7 @@ impl BodySpec {
             body: "body".into(),
             snap: true,
             layers: None,
+            by_part: false,
         }
     }
 }
@@ -133,6 +139,8 @@ pub struct BodyStats {
     pub snapping: snap::SnapStats,
     /// What growing prism layers did (all zero when there were none).
     pub layering: layers::LayerStats,
+    /// The wall patches the parts of the surface made, with their faces (empty when the wall is one).
+    pub parts: Vec<(String, usize)>,
 }
 
 fn invalid<T>(message: impl Into<String>) -> Result<T> {
@@ -228,6 +236,9 @@ pub fn mesh_around(surface: &Stl, spec: &BodySpec) -> Result<(RawPolyMesh, BodyS
             .iter()
             .find(|p| p.name == spec.body)
             .map_or(0, |p| p.n_faces);
+    }
+    if spec.by_part && parts::part_patches(surface, &spec.body).is_some() {
+        stats.parts = parts::split_wall(&mut mesh, &grid, surface, spec)?;
     }
     Ok((mesh, stats))
 }

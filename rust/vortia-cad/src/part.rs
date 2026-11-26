@@ -771,6 +771,7 @@ impl Part {
         Ok(Stl {
             vertices: welded.positions.iter().map(|p| [p.x, p.y, p.z]).collect(),
             triangles: welded.triangles.clone(),
+            parts: Vec::new(),
         })
     }
 }
