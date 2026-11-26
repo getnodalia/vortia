@@ -15,11 +15,13 @@ mod grid;
 mod layers;
 mod octree;
 mod parts;
+mod regions;
 mod snap;
 
 pub use layers::{LayerSpec, LayerStats, MAX_LAYERS, add_layers};
 pub use octree::Region;
 pub use parts::{MAX_PARTS, part_patches, patch_name};
+pub use regions::{InterfaceMatch, match_interface};
 pub use snap::SnapStats;
 
 use vortia_foamfile::RawPolyMesh;
@@ -92,6 +94,9 @@ pub struct BodySpec {
     /// Whether the wall is split into one patch for each named part of the surface (`<body>_<part>`).
     /// A surface with no parts, or one, keeps a single wall.
     pub by_part: bool,
+    /// Whether the body is meshed too, as a solid: the faces of its mesh on the surface are the
+    /// same as the wall's, and both meshes follow the surface together.
+    pub solid: bool,
 }
 
 impl BodySpec {
@@ -121,6 +126,7 @@ impl BodySpec {
             snap: true,
             layers: None,
             by_part: false,
+            solid: false,
         }
     }
 }
@@ -141,6 +147,17 @@ pub struct BodyStats {
     pub layering: layers::LayerStats,
     /// The wall patches the parts of the surface made, with their faces (empty when the wall is one).
     pub parts: Vec<(String, usize)>,
+    /// The cells of the solid (zero when the body was not meshed).
+    pub solid_cells: usize,
+}
+
+/// The air around a body and, when asked for, the body.
+#[derive(Clone, Debug)]
+pub struct BodyMeshes {
+    pub fluid: RawPolyMesh,
+    /// The body's own mesh, with the patch `body` where the fluid's wall is.
+    pub solid: Option<RawPolyMesh>,
+    pub stats: BodyStats,
 }
 
 fn invalid<T>(message: impl Into<String>) -> Result<T> {
@@ -194,6 +211,16 @@ fn check_spec(surface: &Stl, spec: &BodySpec) -> Result<()> {
 
 /// Meshes the air around `surface`, a closed surface, inside the domain of `spec`.
 pub fn mesh_around(surface: &Stl, spec: &BodySpec) -> Result<(RawPolyMesh, BodyStats)> {
+    let plain = BodySpec {
+        solid: false,
+        ..spec.clone()
+    };
+    let BodyMeshes { fluid, stats, .. } = mesh_body(surface, &plain)?;
+    Ok((fluid, stats))
+}
+
+/// Meshes the air around `surface` and, when `spec.solid` is set, the body inside it.
+pub fn mesh_body(surface: &Stl, spec: &BodySpec) -> Result<BodyMeshes> {
     check_spec(surface, spec)?;
     let grid = TriGrid::new(surface);
     let mut size = [0.0; 3];
@@ -221,10 +248,28 @@ pub fn mesh_around(surface: &Stl, spec: &BodySpec) -> Result<(RawPolyMesh, BodyS
             max_cells: spec.max_cells,
         },
     )?;
-    let (mut mesh, mut stats) = assemble::assemble(&tree, &grid, spec)?;
-    if spec.snap {
-        let finest =
-            size.iter().copied().fold(0.0, f64::max) / f64::from(1u32 << spec.surface_level);
+    let assemble::Assembled {
+        mut mesh,
+        mut stats,
+        solid,
+    } = assemble::assemble(&tree, &grid, spec, spec.solid)?;
+    let finest = size.iter().copied().fold(0.0, f64::max) / f64::from(1u32 << spec.surface_level);
+    let mut body = None;
+    if spec.solid {
+        // One mesh of both regions is snapped, so cells on both sides follow the wall; then it
+        // is cut in two along the wall.
+        let wall = regions::wall_faces(&mesh, &solid);
+        if spec.snap {
+            stats.snapping = snap::snap_between_regions(&mut mesh, &grid, 2.5 * finest, &wall);
+        }
+        let (fluid, inside) = regions::split(&mesh, &solid, &spec.body)?;
+        stats.solid_cells = solid.iter().filter(|&&s| s).count();
+        stats.cells = solid.len() - stats.solid_cells;
+        stats.faces = fluid.faces.len();
+        stats.body_faces = wall.len();
+        mesh = fluid;
+        body = Some(inside);
+    } else if spec.snap {
         stats.snapping = snap::snap(&mut mesh, &grid, 2.5 * finest);
     }
     if let Some(layer_spec) = &spec.layers {
@@ -240,7 +285,11 @@ pub fn mesh_around(surface: &Stl, spec: &BodySpec) -> Result<(RawPolyMesh, BodyS
     if spec.by_part && parts::part_patches(surface, &spec.body).is_some() {
         stats.parts = parts::split_wall(&mut mesh, &grid, surface, spec)?;
     }
-    Ok((mesh, stats))
+    Ok(BodyMeshes {
+        fluid: mesh,
+        solid: body,
+        stats,
+    })
 }
 
 #[cfg(test)]

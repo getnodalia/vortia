@@ -34,8 +34,10 @@ fn origin(tree: &Octree, k: Key) -> ([i64; 3], i64) {
     (o, size)
 }
 
-/// Which leaves are in the air: outside the body and joined to the far field.
-fn air(tree: &Octree, grid: &TriGrid, leaves: &[Key]) -> Result<Vec<bool>> {
+/// Which leaves are in the air: outside the body and joined to the far field. The second list
+/// has the leaves that are outside the body, joined to the far field or not: the rest are the
+/// body's.
+fn air(tree: &Octree, grid: &TriGrid, leaves: &[Key]) -> Result<(Vec<bool>, Vec<bool>)> {
     let mut scratch = Vec::new();
     let index: HashMap<Key, usize> = leaves.iter().enumerate().map(|(i, &k)| (k, i)).collect();
     let cut: Vec<bool> = leaves
@@ -136,7 +138,7 @@ fn air(tree: &Octree, grid: &TriGrid, leaves: &[Key]) -> Result<Vec<bool>> {
             }
         }
     }
-    Ok(kept)
+    Ok((kept, candidate))
 }
 
 /// Appends the nodes along the edge `a -> b` (without `b`): its end and every node of the
@@ -160,14 +162,47 @@ fn edge_nodes(a: [i64; 3], b: [i64; 3], nodes: &HashSet<[i64; 3]>, out: &mut Vec
     out.push(a);
 }
 
+/// What was assembled: the mesh, its numbers, and, when the body was meshed too, which of its
+/// cells are the body's.
+pub(super) struct Assembled {
+    pub mesh: RawPolyMesh,
+    pub stats: BodyStats,
+    /// For each cell, whether it is in the body (empty when only the air was meshed).
+    pub solid: Vec<bool>,
+}
+
+/// The air around the body, or with `with_solid` the air and the body in one mesh, whose faces
+/// between the two are internal.
 pub(super) fn assemble(
     tree: &Octree,
     grid: &TriGrid,
     spec: &BodySpec,
-) -> Result<(RawPolyMesh, BodyStats)> {
+    with_solid: bool,
+) -> Result<Assembled> {
     let mut leaves: Vec<Key> = tree.leaves.iter().copied().collect();
     leaves.sort_unstable();
-    let kept = air(tree, grid, &leaves)?;
+    let (air_kept, outside) = air(tree, grid, &leaves)?;
+    let mut kept = air_kept.clone();
+    if with_solid {
+        if outside.iter().zip(&air_kept).any(|(&o, &a)| o && !a) {
+            return Err(MeshError::Invalid(
+                "the body has a closed cavity (air shut inside it): a solid with a cavity is \
+                 not meshed yet"
+                    .into(),
+            ));
+        }
+        kept = outside
+            .iter()
+            .zip(&air_kept)
+            .map(|(&o, &a)| a || !o)
+            .collect();
+    }
+    let in_body: HashSet<Key> = leaves
+        .iter()
+        .zip(&outside)
+        .filter(|(_, o)| !**o)
+        .map(|(&k, _)| k)
+        .collect();
 
     // Cell numbers: the kept leaves in order of position, so neighbouring cells are near.
     let mut cells: Vec<Key> = leaves
@@ -359,9 +394,15 @@ pub(super) fn assemble(
         snapping: Default::default(),
         layering: Default::default(),
         parts: Vec::new(),
+        solid_cells: 0,
     };
-    Ok((
-        RawPolyMesh {
+    let solid = if with_solid {
+        cells.iter().map(|k| in_body.contains(k)).collect()
+    } else {
+        Vec::new()
+    };
+    Ok(Assembled {
+        mesh: RawPolyMesh {
             points,
             faces: list,
             owner,
@@ -371,5 +412,6 @@ pub(super) fn assemble(
             face_zones: Vec::new(),
         },
         stats,
-    ))
+        solid,
+    })
 }

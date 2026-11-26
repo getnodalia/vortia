@@ -95,6 +95,10 @@ struct Topology {
     n_cells: usize,
     /// The faces of each cell.
     cell_faces: Vec<Vec<usize>>,
+    /// The faces that are a wall between two regions of one mesh. Each region sees such a face
+    /// as a boundary, so it is judged from each side as one and not as an internal face (a
+    /// wall at an angle to the grid is not a poor internal face).
+    wall: Vec<bool>,
 }
 
 struct Shape {
@@ -157,6 +161,7 @@ impl Topology {
             neighbour: mesh.neighbour.clone(),
             n_cells,
             cell_faces,
+            wall: vec![false; mesh.owner.len()],
         }
     }
 
@@ -217,7 +222,22 @@ impl Topology {
         for (f, ring) in self.rings.iter().enumerate() {
             let c_own = get(&centre, get(&self.owner, f));
             let c_nei = self.neighbour.get(f).map(|&n| get(&centre, n));
-            skew.push(skewness(ring, pts, get(&fc, f), get(&sf, f), c_own, c_nei));
+            let on_wall = get(&self.wall, f) && c_nei.is_some();
+            let c_nei = if on_wall { None } else { c_nei };
+            let mut s = skewness(ring, pts, get(&fc, f), get(&sf, f), c_own, c_nei);
+            if on_wall && let Some(n) = self.neighbour.get(f) {
+                // Seen from the other cell, the normal pointing out of it.
+                let back = skewness(
+                    ring,
+                    pts,
+                    get(&fc, f),
+                    scale(get(&sf, f), -1.0),
+                    get(&centre, *n),
+                    None,
+                );
+                s = s.max(back);
+            }
+            skew.push(s);
         }
         let mut bad = vec![false; self.n_cells];
         if let Some((original, lim)) = limits {
@@ -257,6 +277,9 @@ impl Topology {
                 }
             }
             for (f, &n) in self.neighbour.iter().enumerate() {
+                if get(&self.wall, f) {
+                    continue;
+                }
                 let o = get(&self.owner, f);
                 let d = sub(get(&centre, n), get(&centre, o));
                 let s = get(&sf, f);
@@ -306,22 +329,57 @@ const PASSES: usize = 6;
 /// Moves the points of the first patch (the body) onto `grid`'s surface and the points around
 /// them with it. `reach` is how far a point may travel to the surface.
 pub(super) fn snap(mesh: &mut RawPolyMesh, grid: &TriGrid, reach: f64) -> SnapStats {
+    let Some(first) = mesh.patches.first() else {
+        return SnapStats::default();
+    };
+    let wall: Vec<usize> = (first.start_face..first.start_face + first.n_faces).collect();
+    snap_wall(mesh, grid, reach, &wall, 1)
+}
+
+/// As [`snap`], with the wall given as faces: the faces between the air and a solid, which are
+/// inside a mesh of both, are the wall of that mesh. Every patch is then a side that stays put.
+pub(super) fn snap_between_regions(
+    mesh: &mut RawPolyMesh,
+    grid: &TriGrid,
+    reach: f64,
+    wall: &[usize],
+) -> SnapStats {
+    snap_wall(mesh, grid, reach, wall, 0)
+}
+
+/// `wall` are the faces whose points are moved; the patches from `first_side` on are the ones
+/// whose points stay.
+fn snap_wall(
+    mesh: &mut RawPolyMesh,
+    grid: &TriGrid,
+    reach: f64,
+    wall: &[usize],
+    first_side: usize,
+) -> SnapStats {
     let mut stats = SnapStats::default();
-    if mesh.patches.is_empty() {
-        return stats;
-    }
     let n_points = mesh.points.len();
-    let top = Topology::new(mesh);
+    let mut top = Topology::new(mesh);
+    for &f in wall {
+        if let Some(w) = top.wall.get_mut(f) {
+            *w = true;
+        }
+    }
     let pts: Vec<P> = mesh.points.iter().map(|p| [p.x, p.y, p.z]).collect();
 
     // Wall points, and the points that must stay: those on the other patches.
     let mut on_wall = vec![false; n_points];
     let mut pinned = vec![false; n_points];
-    for (pi, patch) in mesh.patches.iter().enumerate() {
+    for &f in wall {
+        for &p in top.rings.get(f).map(Vec::as_slice).unwrap_or_default() {
+            if let Some(x) = on_wall.get_mut(p) {
+                *x = true;
+            }
+        }
+    }
+    for patch in mesh.patches.iter().skip(first_side) {
         for f in patch.start_face..patch.start_face + patch.n_faces {
             for &p in top.rings.get(f).map(Vec::as_slice).unwrap_or_default() {
-                let flag = if pi == 0 { &mut on_wall } else { &mut pinned };
-                if let Some(x) = flag.get_mut(p) {
+                if let Some(x) = pinned.get_mut(p) {
                     *x = true;
                 }
             }

@@ -484,3 +484,193 @@ fn a_surface_without_parts_keeps_one_wall_and_bad_parts_are_refused() {
     assert_eq!(patch_name("body", "  "), "body_part");
     assert_eq!(patch_name("body", "front wheel.L"), "body_front_wheel_L");
 }
+
+fn solid_spec(snap: bool) -> BodySpec {
+    let mut spec = BodySpec::tunnel([-4.0; 3], [4.0; 3], [8; 3], 3);
+    spec.snap = snap;
+    spec.solid = true;
+    spec
+}
+
+fn area_of(mesh: &PolyMesh, geo: &MeshGeometry, patch: &str) -> f64 {
+    mesh.patch(patch)
+        .unwrap()
+        .faces()
+        .map(|f| geo.face_areas[f].norm())
+        .sum()
+}
+
+#[test]
+fn a_cube_gives_a_solid_that_is_exactly_the_cube_and_shares_its_faces_with_the_air() {
+    let body = cube([-0.5; 3], [0.5; 3]);
+    let mut spec = BodySpec::tunnel([-2.0; 3], [2.0; 3], [8; 3], 1);
+    spec.solid = true;
+    let BodyMeshes {
+        fluid,
+        solid,
+        stats,
+    } = mesh_body(&body, &spec).unwrap();
+    let solid = solid.expect("the solid was asked for");
+    let (fluid_mesh, fluid_geo) = mesh_of(fluid.clone());
+    let (solid_mesh, solid_geo) = mesh_of(solid.clone());
+    for (name, mesh, geo) in [
+        ("fluid", &fluid_mesh, &fluid_geo),
+        ("solid", &solid_mesh, &solid_geo),
+    ] {
+        let report = check(mesh, geo);
+        assert!(report.is_ok(), "{name}: {:?}", report.failed_checks());
+        assert_eq!(report.open_cells, 0, "{name}");
+    }
+    // The air is the box less the cube, the solid is the cube.
+    let air: f64 = fluid_geo.cell_volumes.iter().sum();
+    let body_volume: f64 = solid_geo.cell_volumes.iter().sum();
+    assert!((air - 63.0).abs() < 1e-9, "air {air}");
+    assert!((body_volume - 1.0).abs() < 1e-9, "solid {body_volume}");
+    assert_eq!(stats.cells, fluid_mesh.n_cells());
+    assert_eq!(stats.solid_cells, solid_mesh.n_cells());
+    // The solid is all wall: one patch of six 1 x 1 faces in cells of 0.25.
+    assert_eq!(solid_mesh.patches().len(), 1);
+    assert!((area_of(&solid_mesh, &solid_geo, "body") - 6.0).abs() < 1e-9);
+    assert!((area_of(&fluid_mesh, &fluid_geo, "body") - 6.0).abs() < 1e-9);
+    // The same faces, with their order: face i of one is face i of the other, the normals
+    // opposite.
+    let (fw, sw) = (
+        fluid_mesh.patch("body").unwrap(),
+        solid_mesh.patch("body").unwrap(),
+    );
+    assert_eq!(fw.size, sw.size);
+    for (f, s) in fw.faces().zip(sw.faces()) {
+        let (a, b) = (fluid_geo.face_areas[f], solid_geo.face_areas[s]);
+        assert!((a + b).norm() < 1e-12, "normals {a:?} and {b:?}");
+        let (c, d) = (fluid_geo.face_centres[f], solid_geo.face_centres[s]);
+        assert!((c - d).norm() < 1e-12, "centres {c:?} and {d:?}");
+    }
+    let pairs = match_interface(&fluid, &["body"], &solid, "body").unwrap();
+    assert_eq!(pairs.solid_face, (0..fw.size).collect::<Vec<_>>());
+}
+
+#[test]
+fn the_air_and_the_solid_of_a_snapped_sphere_fit_together() {
+    let body = sphere([0.0; 3], 1.0, 3);
+    let BodyMeshes {
+        fluid,
+        solid,
+        stats,
+    } = mesh_body(&body, &solid_spec(true)).unwrap();
+    let solid = solid.unwrap();
+    assert!(stats.snapping.snapped > 0, "{:?}", stats.snapping);
+    let (fluid_mesh, fluid_geo) = mesh_of(fluid.clone());
+    let (solid_mesh, solid_geo) = mesh_of(solid.clone());
+    for (name, mesh, geo) in [
+        ("fluid", &fluid_mesh, &fluid_geo),
+        ("solid", &solid_mesh, &solid_geo),
+    ] {
+        let report = check(mesh, geo);
+        assert!(report.is_ok(), "{name}: {:?}", report.failed_checks());
+        assert_eq!(report.open_cells, 0, "{name}");
+    }
+    // The solid is the sphere (to the mesh): its volume within a few per cent, and the box is
+    // air and solid together.
+    let exact = 4.0 / 3.0 * std::f64::consts::PI;
+    let body_volume: f64 = solid_geo.cell_volumes.iter().sum();
+    let air: f64 = fluid_geo.cell_volumes.iter().sum();
+    assert!(
+        (body_volume - exact).abs() / exact < 0.04,
+        "solid {body_volume}, sphere {exact}"
+    );
+    assert!(
+        (air + body_volume - 512.0).abs() < 1e-6,
+        "{air} + {body_volume}"
+    );
+    // The interface is one surface seen from both sides.
+    let (fa, sa) = (
+        area_of(&fluid_mesh, &fluid_geo, "body"),
+        area_of(&solid_mesh, &solid_geo, "body"),
+    );
+    assert!((fa - sa).abs() < 1e-9 * fa, "{fa} and {sa}");
+    // Snapped together the wall also has to keep the solid's cells valid, so fewer of its points
+    // reach the surface than for the air alone (446 of 1250 against 602): its area is a little
+    // more, 12 % at most, and far less than the stepped wall's.
+    let (alone, alone_stats) = mesh_around(&body, &solid_spec(true)).unwrap();
+    let (alone_mesh, alone_geo) = mesh_of(alone);
+    let alone_area = area_of(&alone_mesh, &alone_geo, "body");
+    assert!(
+        fa >= alone_area * 0.99 && fa < alone_area * 1.12,
+        "{fa} with the solid, {alone_area} without"
+    );
+    let (stepped, _) = mesh_body(&body, &{
+        let mut s = solid_spec(false);
+        s.solid = true;
+        s
+    })
+    .map(|m| (m.solid.unwrap(), ()))
+    .unwrap();
+    let (stepped_mesh, stepped_geo) = mesh_of(stepped);
+    assert!(area_of(&stepped_mesh, &stepped_geo, "body") > 1.2 * fa);
+    assert_eq!(alone_stats.solid_cells, 0);
+    let pairs = match_interface(&fluid, &["body"], &solid, "body").unwrap();
+    assert_eq!(
+        pairs.solid_face.len(),
+        fluid_mesh.patch("body").unwrap().size
+    );
+    let mut seen = pairs.solid_face.clone();
+    seen.sort_unstable();
+    seen.dedup();
+    assert_eq!(seen.len(), pairs.solid_face.len(), "a face is taken twice");
+}
+
+#[test]
+fn the_interface_survives_prism_layers_and_a_wall_for_each_part() {
+    // Two cubes apart: two parts, and layers over the wall of the air.
+    let mut surface = cube([-1.5, -0.5, -0.5], [-0.5, 0.5, 0.5]);
+    let other = cube([0.5, -0.5, -0.5], [1.5, 0.5, 0.5]);
+    let shift = surface.vertices.len() as u32;
+    surface.vertices.extend(other.vertices);
+    surface
+        .triangles
+        .extend(other.triangles.iter().map(|t| t.map(|i| i + shift)));
+    let mut spec = BodySpec::tunnel([-4.0; 3], [4.0; 3], [8; 3], 2);
+    spec.solid = true;
+    spec.layers = Some(LayerSpec {
+        count: 2,
+        first: 0.02,
+        ratio: 1.3,
+        reach: 0.5,
+    });
+    let BodyMeshes { fluid, solid, .. } = mesh_body(&surface, &spec).unwrap();
+    let solid = solid.unwrap();
+    let (fluid_mesh, fluid_geo) = mesh_of(fluid.clone());
+    let (solid_mesh, solid_geo) = mesh_of(solid.clone());
+    assert!(check(&fluid_mesh, &fluid_geo).is_ok());
+    assert!(check(&solid_mesh, &solid_geo).is_ok());
+    // Two cubes of 1 m³, 12 m² of wall in all.
+    let body_volume: f64 = solid_geo.cell_volumes.iter().sum();
+    assert!((body_volume - 2.0).abs() < 1e-9, "{body_volume}");
+    let pairs = match_interface(&fluid, &["body"], &solid, "body").unwrap();
+    assert_eq!(
+        pairs.solid_face.len(),
+        fluid_mesh.patch("body").unwrap().size
+    );
+}
+
+#[test]
+fn a_body_with_a_cavity_is_refused_and_the_air_alone_is_unchanged_by_asking_for_nothing() {
+    // A box with a box-shaped hole shut inside: two nested closed surfaces, the inner one inverted.
+    let mut outer = cube([-1.0; 3], [1.0; 3]);
+    let mut hole = cube([-0.4; 3], [0.4; 3]);
+    for t in &mut hole.triangles {
+        t.swap(1, 2);
+    }
+    let shift = outer.vertices.len() as u32;
+    outer.vertices.extend(hole.vertices);
+    outer
+        .triangles
+        .extend(hole.triangles.iter().map(|t| t.map(|i| i + shift)));
+    let mut spec = BodySpec::tunnel([-3.0; 3], [3.0; 3], [12; 3], 2);
+    spec.solid = true;
+    let err = mesh_body(&outer, &spec).unwrap_err().to_string();
+    assert!(err.contains("cavity"), "{err}");
+    // Without a solid it is meshed as it always was.
+    spec.solid = false;
+    assert!(mesh_body(&outer, &spec).unwrap().solid.is_none());
+}
