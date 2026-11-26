@@ -22,6 +22,9 @@ pub struct Drawn {
     pub sketch: Sketch,
     /// The size of the triangles along the edges.
     pub cell_size: f64,
+    /// The size of the triangles along the inlet, outlet and symmetry edges, when they are to be
+    /// coarser than along the walls: the cells grow from the walls out to them.
+    pub far_cell_size: Option<f64>,
     /// The one cell's depth. It only sets the cell volume: the flow is 2D.
     pub thickness: f64,
     /// Inlet speed, in m/s.
@@ -35,6 +38,7 @@ impl Default for Drawn {
         Self {
             sketch: Sketch::default(),
             cell_size: 5.0,
+            far_cell_size: None,
             thickness: 10.0,
             speed: 1.0,
             viscosity: 1.0e-3,
@@ -81,10 +85,12 @@ fn area(edges: &[Edge]) -> f64 {
 }
 
 impl Drawn {
-    /// Sets one number by its name (`cell-size`, `thickness`, `speed`, `viscosity`).
+    /// Sets one number by its name (`cell-size`, `far-cell-size`, `thickness`, `speed`,
+    /// `viscosity`).
     pub fn set(&mut self, name: &str, value: f64) -> Result<()> {
         match name {
             "cell-size" => self.cell_size = value,
+            "far-cell-size" => self.far_cell_size = Some(value),
             "thickness" => self.thickness = value,
             "speed" => self.speed = value,
             "viscosity" => self.viscosity = value,
@@ -121,6 +127,10 @@ impl Drawn {
 
     pub(crate) fn files(&self) -> Result<FileSet> {
         let h = size("the cell size", self.cell_size, 1.0e6)?;
+        let far = match self.far_cell_size {
+            Some(f) => Some(size("the far cell size", f, 1.0e6)?),
+            None => None,
+        };
         let depth = size("the thickness", self.thickness, 1.0e6)?;
         let speed = size("the inlet speed", self.speed, 1.0e5)?;
         let nu = size("the viscosity", self.viscosity, 1.0e3)?;
@@ -151,7 +161,7 @@ impl Drawn {
                             points: e.points.iter().map(|p| [p.0, p.1]).collect(),
                             patch: e.patch.clone(),
                             kind: kind(role(&e.patch)).to_owned(),
-                            size: None,
+                            size: far.filter(|_| role(&e.patch) != Role::Wall),
                         })
                         .collect()
                 })
@@ -159,6 +169,9 @@ impl Drawn {
         };
         let mut options = Options::new(h, Extrusion::Planar { thickness: depth });
         options.max_cells = MAX_CELLS as usize;
+        if let Some(f) = far {
+            options.max_size = options.max_size.max(f);
+        }
         let mut raw = tri2d::mesh(&region, &options).map_err(|e| CaseError::Mesh(e.to_string()))?;
         for p in &mut raw.points {
             *p = Vec3::new(p.x * 1e-3, p.y * 1e-3, p.z * 1e-3);

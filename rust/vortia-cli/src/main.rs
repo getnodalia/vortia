@@ -40,7 +40,8 @@ mod sketch;
 
 const USAGE: &str = "usage: vortia new channel|cavity|plate|airfoil|nozzle|nozzle-wedge|jet DIR [NAME=VALUE...]\n\
     \x20      vortia new sketch DIR FILE [planar|axisymmetric] [segments=N] [NAME=VALUE...]\n\
-    \x20      vortia new region DIR FILE [NAME=VALUE...]\n\
+    \x20      vortia new region DIR FILE.sketch|.dxf [scale=F] [NAME=VALUE...]\n\
+    \x20      vortia new section DIR FILE.dxf [upstream=F] [downstream=F] [lateral=F] [scale=F] [NAME=VALUE...]\n\
     \x20      vortia new body DIR FILE.stl|.obj|.step [scale=F] [NAME=VALUE...]\n\
     \x20      vortia sketch template duct|nozzle|rounded-nozzle|channel-with-block FILE [NAME=VALUE...]\n\
     \x20      vortia sketch info FILE\n\
