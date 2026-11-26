@@ -122,6 +122,8 @@ pub(super) enum Selection {
     #[default]
     Nothing,
     Patch(String),
+    /// The solid region of a conjugate heat transfer case.
+    Solid,
 }
 
 /// The name a view carries over the main island.
@@ -923,6 +925,7 @@ enum Pick {
     View(Tab),
     Patch(String),
     Field(String),
+    Solid,
 }
 
 struct Row {
@@ -1012,6 +1015,17 @@ fn tree(case: &CaseView) -> Vec<Row> {
                 pick: Pick::Patch(patch.name.clone()),
             });
         }
+    }
+    if let Some(solid) = summary.and_then(|s| s.solid.as_ref()) {
+        rows.push(Row {
+            group: None,
+            depth: 1,
+            icon: "cube",
+            label: trf("Solid ({} cells)", &[&grouped(solid.cells)]),
+            selected: case.selection == Selection::Solid,
+            muted: false,
+            pick: Pick::Solid,
+        });
     }
     rows.push(Row {
         group: Some("physics"),
@@ -1143,6 +1157,11 @@ fn browser(ui: &mut egui::Ui, look: &Look, case: &mut CaseView) {
             case.selection = Selection::Patch(name);
             case.properties_open = true;
         }
+        Some(Pick::Solid) => {
+            case.go(Tab::Mesh);
+            case.selection = Selection::Solid;
+            case.properties_open = true;
+        }
         Some(Pick::Field(field)) => {
             case.go(Tab::Conditions);
             if case.conditions_field.as_ref() != Some(&field) {
@@ -1175,6 +1194,7 @@ fn properties(ui: &mut egui::Ui, look: &Look, case: &mut CaseView) {
     }
     let title = match &case.selection {
         Selection::Patch(_) => tr("Patch"),
+        Selection::Solid => tr("Solid"),
         Selection::Nothing => tr("Case"),
     };
     let mut shut = false;
@@ -1198,6 +1218,7 @@ fn properties(ui: &mut egui::Ui, look: &Look, case: &mut CaseView) {
                 });
             }
             (Selection::Patch(name), Some(summary)) => patch_properties(ui, look, summary, name),
+            (Selection::Solid, Some(summary)) => solid_properties(ui, look, summary),
             (Selection::Nothing, Some(summary)) => case_properties(ui, look, summary),
         });
 }
@@ -1241,6 +1262,55 @@ fn case_properties(ui: &mut egui::Ui, look: &Look, s: &Summary) {
         }
         Some(Ok(_)) => {}
     }
+}
+
+fn solid_properties(ui: &mut egui::Ui, look: &Look, s: &Summary) {
+    let Some(solid) = &s.solid else {
+        ui.label(RichText::new(tr("The case has no solid.")).color(muted(&look.palette)));
+        return;
+    };
+    let row = |ui: &mut egui::Ui, name: &str, text: String| {
+        eng::property(ui, look, name, |ui| eng::value(ui, look, &text));
+    };
+    eng::properties(ui, "solid", |ui| {
+        row(ui, tr("Cells"), grouped(solid.cells));
+        row(
+            ui,
+            tr("Conductivity"),
+            format!("{} W/mK", scientific(Some(solid.conductivity))),
+        );
+        row(
+            ui,
+            tr("Heat generated"),
+            format!("{} W/m³", scientific(Some(solid.generation))),
+        );
+    });
+    let Some(report) = &solid.report else {
+        ui.add_space(space::SM);
+        ui.label(
+            RichText::new(tr("Run the case to see the solid's temperatures."))
+                .font(eng::caption())
+                .color(muted(&look.palette)),
+        );
+        return;
+    };
+    ui.add_space(space::SM);
+    eng::properties(ui, "solid-result", |ui| {
+        row(ui, tr("Hottest"), format!("{:.2} K", report.t_max));
+        row(ui, tr("Mean"), format!("{:.2} K", report.t_mean));
+        row(ui, tr("Coldest"), format!("{:.2} K", report.t_min));
+        row(
+            ui,
+            tr("Heat generated"),
+            format!("{} W", scientific(Some(report.generated))),
+        );
+        row(
+            ui,
+            tr("Heat out"),
+            format!("{} W", scientific(Some(report.heat_out))),
+        );
+        row(ui, tr("Wall"), format!("{:.2} K", report.wall_mean));
+    });
 }
 
 fn patch_properties(ui: &mut egui::Ui, look: &Look, s: &Summary, name: &str) {

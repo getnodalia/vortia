@@ -7,6 +7,7 @@ use std::sync::mpsc::{Receiver, channel};
 
 use vortia_foamfile::RawPolyMesh;
 use vortia_post::BalanceHistory;
+use vortia_solvers::conjugate::SolidReport;
 
 /// How many field files and time directories are listed; a case can hold thousands of times.
 const MAX_LISTED: usize = 200;
@@ -30,6 +31,18 @@ pub struct MeshInfo {
     pub patches: Vec<Patch>,
 }
 
+/// The solid of a conjugate heat transfer case: a second region beside the fluid.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SolidInfo {
+    pub cells: usize,
+    /// Thermal conductivity, in W/mK.
+    pub conductivity: f64,
+    /// Heat generated per volume, in W/m³.
+    pub generation: f64,
+    /// What the last run left in it, once there is one.
+    pub report: Option<SolidReport>,
+}
+
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct Summary {
     pub application: Option<String>,
@@ -48,6 +61,8 @@ pub struct Summary {
     /// What entered against what left over the last times written, when the run wrote the
     /// flux `phi`.
     pub balance: Option<BalanceHistory>,
+    /// The solid region, when the case has one (`constant/solid`).
+    pub solid: Option<SolidInfo>,
 }
 
 /// Reads the case; whatever is missing stays `None` or empty, never an error.
@@ -83,7 +98,32 @@ pub fn read(dir: &Path) -> Summary {
             .and_then(|case| case.mass_balance_history(BALANCE_WINDOW))
             .ok();
     }
+    summary.solid = read_solid(dir, latest);
     summary
+}
+
+/// The solid region's mesh size and properties, and its report when `time` holds its `T`.
+fn read_solid(dir: &Path, time: &str) -> Option<SolidInfo> {
+    let region = dir.join("constant").join("solid");
+    let mesh = RawPolyMesh::read_dir(region.join("polyMesh")).ok()?;
+    let highest = mesh
+        .owner
+        .iter()
+        .chain(mesh.neighbour.iter())
+        .max()
+        .copied();
+    let props = vortia_solvers::case::read_dict(&region.join("solidProperties")).ok()?;
+    let report = if time != "0" && dir.join(time).join("solid").join("T").is_file() {
+        vortia_solvers::conjugate::report(dir, time).ok()
+    } else {
+        None
+    };
+    Some(SolidInfo {
+        cells: highest.map_or(0, |c| c.saturating_add(1)),
+        conductivity: props.scalar("k").filter(|k| k.is_finite())?,
+        generation: props.scalar("Q").filter(|q| q.is_finite()).unwrap_or(0.0),
+        report,
+    })
 }
 
 fn read_mesh(dir: &Path) -> Result<MeshInfo, String> {
@@ -228,6 +268,41 @@ mod tests {
         assert_eq!(balance.last, "20");
         assert!(balance.latest.inflow() > 0.0);
         assert!(balance.max_abs_percent < 1.0, "{}", balance.max_abs_percent);
+    }
+
+    #[test]
+    fn a_solid_region_is_summed_up_with_its_properties_and_a_run_adds_its_report() {
+        use vortia_core::{Aabb, Vec3};
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        assert_eq!(read(d).solid, None);
+        let region = d.join("constant/solid");
+        vortia_mesh::blocks::structured_box_raw(
+            Aabb {
+                min: Vec3::new(0.0, 0.0, 0.0),
+                max: Vec3::new(1.0, 1.0, 1.0),
+            },
+            [2, 2, 2],
+        )
+        .unwrap()
+        .write_dir(region.join("polyMesh"))
+        .unwrap();
+        write(
+            &region.join("solidProperties"),
+            "FoamFile { version 2.0; format ascii; class dictionary; object solidProperties; }\n\
+             k 16; Q 250;",
+        );
+        let solid = read(d).solid.expect("the region is there");
+        assert_eq!(solid.cells, 8);
+        assert_eq!((solid.conductivity, solid.generation), (16.0, 250.0));
+        assert_eq!(solid.report, None, "nothing has run yet");
+        // Without a `k` it is not a solid the solver would take.
+        write(
+            &region.join("solidProperties"),
+            "FoamFile { version 2.0; format ascii; class dictionary; object solidProperties; }\n\
+             Q 250;",
+        );
+        assert_eq!(read(d).solid, None);
     }
 
     #[test]

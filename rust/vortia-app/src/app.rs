@@ -143,6 +143,9 @@ struct CaseView {
     results: Results,
     /// A field to colour the mesh with as soon as it is read, asked for on the command line.
     first_field: Option<String>,
+    /// A section through the volume to open with, asked for on the command line: the axis and
+    /// how far through the mesh.
+    first_slice: Option<(usize, f32)>,
     /// The mesh is read the first time it is looked at.
     viewer: Option<Result<Viewer, String>>,
     /// A quantity of the surface asked for on the body, waiting for the viewer to be there.
@@ -216,6 +219,7 @@ impl CaseView {
             transport: FileEdit::default(),
             results: Results::default(),
             first_field: None,
+            first_slice: None,
             viewer: None,
             pending_paint: None,
             viewer_rx: None,
@@ -267,9 +271,13 @@ impl CaseView {
             && let Ok(read) = rx.try_recv()
         {
             let first_field = self.first_field.take();
+            let first_slice = self.first_slice.take();
             self.viewer = Some(read.map(|surface| {
                 let mut viewer = Viewer::new(surface);
                 viewer.colour_by(first_field.as_deref(), None);
+                if let Some((axis, at)) = first_slice {
+                    viewer.show_slice(axis, at);
+                }
                 viewer
             }));
             self.viewer_rx = None;
@@ -583,6 +591,22 @@ impl VortiaApp {
         self.show_mesh();
         if let Screen::Case(case) = &mut self.screen {
             case.first_field = Some(field.to_owned());
+        }
+    }
+
+    /// Opens the section through the volume, across `axis` (0 to 2) `at` (0 to 1) of the way
+    /// through the mesh, once the field is shown.
+    pub fn show_slice(&mut self, axis: usize, at: f32) {
+        if let Screen::Case(case) = &mut self.screen {
+            case.first_slice = Some((axis, at));
+        }
+    }
+
+    /// Picks the solid in the Browser: its properties open beside the picture.
+    pub fn show_solid(&mut self) {
+        if let Screen::Case(case) = &mut self.screen {
+            case.selection = Selection::Solid;
+            case.properties_open = true;
         }
     }
 

@@ -1346,3 +1346,35 @@ fn the_coefficients_on_a_wall_are_the_pressure_and_the_stress_over_the_dynamic_p
             .is_err()
     );
 }
+
+#[test]
+fn a_second_region_has_its_own_mesh_and_fields() {
+    let (dir, _case) = case();
+    let region = dir.path().join("constant").join("solid");
+    std::fs::create_dir_all(&region).unwrap();
+    let bounds = Aabb {
+        min: Vec3::new(0.0, 0.0, 0.0),
+        max: Vec3::new(2.0, 1.0, 1.0),
+    };
+    structured_box_raw(bounds, [2, 1, 1])
+        .unwrap()
+        .write_dir(region.join("polyMesh"))
+        .unwrap();
+    let times = dir.path().join("0").join("solid");
+    std::fs::create_dir_all(&times).unwrap();
+    let text = "FoamFile\n{\n    version 2.0;\n    format ascii;\n    class volScalarField;\n    object T;\n}\n\
+         dimensions [0 0 0 1 0 0 0];\ninternalField nonuniform List<scalar> 2(300 310);\nboundaryField\n{\n\
+         xMin { type zeroGradient; }\n xMax { type zeroGradient; }\n yMin { type zeroGradient; }\n\
+         yMax { type zeroGradient; }\n zMin { type zeroGradient; }\n zMax { type zeroGradient; }\n}\n";
+    std::fs::write(times.join("T"), text).unwrap();
+
+    let solid = Case::open_region(dir.path(), "solid").unwrap();
+    assert_eq!(solid.mesh().n_cells(), 2);
+    assert_eq!(solid.field_names("0").unwrap(), vec!["T".to_owned()]);
+    assert_eq!(
+        solid.field("0", "T").unwrap(),
+        FieldValues::Scalar(vec![300.0, 310.0])
+    );
+    assert!(Case::open_region(dir.path(), "../x").is_err());
+    assert!(Case::open_region(dir.path(), "none").is_err());
+}
