@@ -29,6 +29,7 @@ pub mod error;
 pub mod fluent;
 pub mod geometry;
 pub mod gmsh;
+pub mod obj;
 pub mod polymesh;
 pub mod stl;
 pub mod tri2d;
