@@ -187,7 +187,7 @@ impl Imported {
             });
         if let Loaded::Section { drawing, .. } = loaded {
             ui.add_space(8.0);
-            preview(ui, drawing);
+            preview(ui, drawing, 220.0);
         }
     }
 }
@@ -328,10 +328,10 @@ fn section_fields(
     });
 }
 
-/// The outlines of the drawing, fitted to a box.
-fn preview(ui: &mut Ui, drawing: &Drawing) {
-    let width = ui.available_width().clamp(200.0, 640.0);
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(width, 220.0), egui::Sense::hover());
+/// The outlines of the drawing, fitted to a box `height` high.
+pub(super) fn preview(ui: &mut Ui, drawing: &Drawing, height: f32) {
+    let width = ui.available_width().clamp(200.0, 1280.0);
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::hover());
     let painter = ui.painter_at(rect);
     let visuals = ui.visuals();
     painter.rect_filled(rect, 6.0, visuals.extreme_bg_color);
