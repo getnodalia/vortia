@@ -8,6 +8,7 @@
 
 use crate::dxf::{Drawing, Outline};
 use serde_json::{Value, json};
+use solidcore_ops::affine;
 use solidcore_ops::blend::{Blend, Corners, blend};
 use solidcore_ops::body::{Body, make_box, make_cone, make_cylinder, make_sphere, make_torus};
 use solidcore_ops::boolean::{BooleanOp, boolean};
@@ -73,6 +74,20 @@ pub enum Shape {
     Chamfer {
         points: Vec<[f64; 3]>,
         size: f64,
+    },
+    /// The last feature that made a solid, `count` times in all, each copy `step` further along
+    /// than the last: a row of holes, a row of fins. The copies join the way the original did.
+    LinearPattern {
+        count: u32,
+        step: [f64; 3],
+    },
+    /// The last feature that made a solid, `count` times in all, turned about the line through
+    /// `center` along +Z so the copies are `angle` radians apart: bolt holes round a flange, the blades
+    /// of a fan. A whole turn is `2 * PI * (count - 1) / count` apart; the angle is yours.
+    CircularPattern {
+        count: u32,
+        center: [f64; 3],
+        angle: f64,
     },
 }
 
@@ -290,6 +305,12 @@ pub fn outline_from_sketch(sketch: &vortia_sketch::Sketch) -> Result<Vec<[f64; 2
 /// The most corners an outline may have.
 pub const MAX_CORNERS: usize = 10_000;
 
+/// The most copies a pattern makes, the original included.
+pub const MAX_COPIES: u32 = 64;
+
+/// The most solids one part builds, copies of a pattern included.
+const MAX_SOLIDS: usize = 512;
+
 /// The most features a part file holds.
 pub const MAX_FEATURES: usize = 256;
 
@@ -322,6 +343,16 @@ fn triple(o: &Value, name: &str) -> Result<[f64; 3]> {
         Some([x, y, z]) => Ok([number(x, name)?, number(y, name)?, number(z, name)?]),
         _ => Err(bad(format!("`{name}` is not three numbers"))),
     }
+}
+
+fn count(o: &Value) -> Result<u32> {
+    let n = field(o, "count")?
+        .as_u64()
+        .ok_or_else(|| bad("`count` is not a whole number"))?;
+    u32::try_from(n)
+        .ok()
+        .filter(|&n| n <= MAX_COPIES)
+        .ok_or_else(|| bad(format!("`count` is more than {MAX_COPIES}")))
 }
 
 fn points(o: &Value) -> Result<Vec<[f64; 3]>> {
@@ -391,6 +422,15 @@ impl Shape {
             Shape::Chamfer { points, size } => {
                 json!({"shape": "chamfer", "points": points, "size": size})
             }
+            Shape::LinearPattern { count, step } => {
+                json!({"shape": "linear_pattern", "count": count, "step": step})
+            }
+            Shape::CircularPattern {
+                count,
+                center,
+                angle,
+            } => json!({"shape": "circular_pattern", "count": count, "center": center,
+                "angle": angle}),
             Shape::Extrude { corners, z, height } => {
                 json!({"shape": "extrude", "corners": corners, "z": z, "height": height})
             }
@@ -438,6 +478,15 @@ impl Shape {
             "chamfer" => Shape::Chamfer {
                 points: points(o)?,
                 size: num(o, "size")?,
+            },
+            "linear_pattern" => Shape::LinearPattern {
+                count: count(o)?,
+                step: triple(o, "step")?,
+            },
+            "circular_pattern" => Shape::CircularPattern {
+                count: count(o)?,
+                center: triple(o, "center")?,
+                angle: num(o, "angle")?,
             },
             "extrude" => Shape::Extrude {
                 corners: corners(o)?,
@@ -670,6 +719,11 @@ impl Shape {
                         .into(),
                 ));
             }
+            Shape::LinearPattern { .. } | Shape::CircularPattern { .. } => {
+                return Err(MeshError::Invalid(
+                    "a pattern repeats the feature before it, not a solid of its own".into(),
+                ));
+            }
             Shape::Revolve {
                 ref corners,
                 center,
@@ -686,10 +740,63 @@ impl Shape {
     }
 }
 
+/// Where copy `i` (1 for the first copy after the original) of a pattern goes.
+fn placement(shape: &Shape, i: u32) -> Result<Option<[[f64; 4]; 4]>> {
+    let k = f64::from(i);
+    match *shape {
+        Shape::LinearPattern { step, .. } => {
+            affine::translation([step[0] * k, step[1] * k, step[2] * k])
+                .map(Some)
+                .map_err(|e| refused("a pattern could not move its copy", e))
+        }
+        Shape::CircularPattern { center, angle, .. } => {
+            affine::rotation(center, [0.0, 0.0, 1.0], angle * k)
+                .map(Some)
+                .map_err(|e| refused("a pattern could not turn its copy", e))
+        }
+        _ => Ok(None),
+    }
+}
+
+impl Shape {
+    /// The number of copies of a pattern, the original included; `None` for any other shape.
+    fn copies(&self) -> Option<u32> {
+        match self {
+            Shape::LinearPattern { count, .. } | Shape::CircularPattern { count, .. } => {
+                Some(*count)
+            }
+            _ => None,
+        }
+    }
+}
+
+/// Joins `solid` to what is made so far the way `join` says.
+fn join_solid(made: Option<Body>, solid: Body, join: Join, feature: usize) -> Result<Body> {
+    match (made, join) {
+        (None, Join::Add) => Ok(solid),
+        (None, _) => Err(MeshError::Invalid(
+            "the first feature of a part adds: there is nothing yet to cut or keep".into(),
+        )),
+        (Some(body), join) => {
+            let op = match join {
+                Join::Add => BooleanOp::Union,
+                Join::Cut => BooleanOp::Subtract,
+                Join::Keep => BooleanOp::Intersect,
+            };
+            boolean(body, solid, op)
+                .map_err(|e| refused(&format!("feature {feature} could not be joined"), e))?
+                .ok_or_else(|| MeshError::Invalid(format!("feature {feature} leaves nothing")))
+        }
+    }
+}
+
 impl Part {
     /// The solid the features make, or why they cannot.
     pub fn build(&self) -> Result<Body> {
         let mut made: Option<Body> = None;
+        // The last feature that makes a solid, which a pattern repeats.
+        let mut last: Option<&Feature> = None;
+        let mut solids = 0usize;
         for (n, feature) in self.features.iter().enumerate() {
             if let Some((kind, points, size)) = feature.shape.finish() {
                 let body = made.take().ok_or_else(|| {
@@ -700,30 +807,53 @@ impl Part {
                 })?;
                 round_edges(&body, kind, points, size, n + 1)?;
                 made = Some(body);
+                last = None;
                 continue;
             }
-            let solid = feature.shape.solid()?;
-            made = Some(match (made, feature.join) {
-                (None, Join::Add) => solid,
-                (None, _) => {
-                    return Err(MeshError::Invalid(
-                        "the first feature of a part adds: there is nothing yet to cut or keep"
-                            .into(),
-                    ));
+            if let Some(copies) = feature.shape.copies() {
+                let Some(original) = last else {
+                    return Err(MeshError::Invalid(format!(
+                        "feature {} is a pattern, and there is no feature before it to repeat",
+                        n + 1
+                    )));
+                };
+                if !(2..=MAX_COPIES).contains(&copies) {
+                    return Err(MeshError::Invalid(format!(
+                        "feature {}: a pattern makes 2 to {MAX_COPIES} copies, not {copies}",
+                        n + 1
+                    )));
                 }
-                (Some(body), join) => {
-                    let op = match join {
-                        Join::Add => BooleanOp::Union,
-                        Join::Cut => BooleanOp::Subtract,
-                        Join::Keep => BooleanOp::Intersect,
-                    };
-                    boolean(body, solid, op)
-                        .map_err(|e| refused(&format!("feature {} could not be joined", n + 1), e))?
-                        .ok_or_else(|| {
-                            MeshError::Invalid(format!("feature {} leaves nothing", n + 1))
-                        })?
+                for i in 1..copies {
+                    solids += 1;
+                    if solids > MAX_SOLIDS {
+                        return Err(MeshError::Invalid(format!(
+                            "the part builds more than {MAX_SOLIDS} solids"
+                        )));
+                    }
+                    let solid = original.shape.solid()?;
+                    if let Some(matrix) = placement(&feature.shape, i)? {
+                        solid
+                            .transform(&matrix)
+                            .map_err(|e| refused("a pattern could not place its copy", e))?;
+                    }
+                    made = Some(join_solid(made.take(), solid, original.join, n + 1)?);
                 }
-            });
+                // A pattern is not repeated by the next one: it repeats the original again.
+                continue;
+            }
+            solids += 1;
+            if solids > MAX_SOLIDS {
+                return Err(MeshError::Invalid(format!(
+                    "the part builds more than {MAX_SOLIDS} solids"
+                )));
+            }
+            made = Some(join_solid(
+                made.take(),
+                feature.shape.solid()?,
+                feature.join,
+                n + 1,
+            )?);
+            last = Some(feature);
         }
         made.ok_or_else(|| MeshError::Invalid("the part has no features".into()))
     }

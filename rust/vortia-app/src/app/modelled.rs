@@ -325,7 +325,26 @@ fn shape_title(shape: &Shape) -> &'static str {
         Shape::Revolve { .. } => tr("Turned outline"),
         Shape::Round { .. } => tr("Round edges"),
         Shape::Chamfer { .. } => tr("Chamfer edges"),
+        Shape::LinearPattern { .. } => tr("Row of copies"),
+        Shape::CircularPattern { .. } => tr("Copies round an axis"),
     }
+}
+
+/// Whether the feature works on what is already there (rounds, chamfers, patterns), so it has
+/// no way of joining of its own.
+fn works_on_part(shape: &Shape) -> bool {
+    matches!(
+        shape,
+        Shape::Round { .. }
+            | Shape::Chamfer { .. }
+            | Shape::LinearPattern { .. }
+            | Shape::CircularPattern { .. }
+    )
+}
+
+/// A whole number of copies, from 2 up to what a part may hold.
+fn copies(ui: &mut Ui, count: &mut u32) {
+    ui.add(DragValue::new(count).range(2..=part::MAX_COPIES).speed(0.2));
 }
 
 fn join_title(join: Join) -> &'static str {
@@ -416,6 +435,34 @@ fn shape_fields(
                     pick = points_ui(ui, id.with("points"), points, picking);
                 });
             }
+            Shape::LinearPattern { count, step } => {
+                row(ui, tr("Copies in all"), |ui| copies(ui, count));
+                row(ui, tr("Step between copies"), |ui| vec3(ui, step));
+            }
+            Shape::CircularPattern {
+                count,
+                center,
+                angle,
+            } => {
+                row(ui, tr("Copies in all"), |ui| copies(ui, count));
+                row(ui, tr("A point of the axis (along z)"), |ui| {
+                    vec3(ui, center)
+                });
+                row(ui, tr("Angle between copies"), |ui| {
+                    let mut degrees = angle.to_degrees();
+                    if ui
+                        .add(
+                            DragValue::new(&mut degrees)
+                                .range(-360.0..=360.0)
+                                .speed(1.0)
+                                .suffix(" °"),
+                        )
+                        .changed()
+                    {
+                        *angle = degrees.to_radians();
+                    }
+                });
+            }
             Shape::Revolve {
                 corners,
                 center,
@@ -498,13 +545,23 @@ fn new_shape(which: usize) -> Option<Shape> {
             points: vec![[0.0; 3]],
             size: 0.05,
         },
+        9 => Shape::LinearPattern {
+            count: 3,
+            step: [0.3, 0.0, 0.0],
+        },
+        10 => Shape::CircularPattern {
+            count: 4,
+            center: [0.0; 3],
+            angle: tau / 4.0,
+        },
         _ => return None,
     })
 }
 
-/// How many kinds of shape [`new_shape`] makes, the last two rounding and bevelling what is there.
+/// How many kinds of shape [`new_shape`] makes, the last four rounding, bevelling and repeating
+/// what is there.
 #[cfg(test)]
-const KINDS: usize = 9;
+const KINDS: usize = 11;
 
 /// A wing of constant NACA 2412 section, a metre of chord and two of span.
 fn wing() -> Option<Feature> {
@@ -722,6 +779,8 @@ impl Modelled {
                 tr("Turned outline"),
                 tr("Round edges"),
                 tr("Chamfer edges"),
+                tr("Row of copies"),
+                tr("Copies round an axis"),
             ];
             for (which, name) in names.into_iter().enumerate() {
                 if ui.add_enabled(!full, egui::Button::new(name)).clicked()
@@ -759,11 +818,10 @@ impl Modelled {
                         egui::RichText::new(format!("{}  {}", i + 1, shape_title(&feature.shape)))
                             .strong(),
                     );
-                    if i == 0
-                        || matches!(feature.shape, Shape::Round { .. } | Shape::Chamfer { .. })
-                    {
-                        // The first has nothing to cut or keep: it starts the part. A round or
-                        // a chamfer works on what is there.
+                    if i == 0 || works_on_part(&feature.shape) {
+                        // The first has nothing to cut or keep: it starts the part. A round, a
+                        // chamfer or a pattern works on what is there (a pattern joins as the
+                        // feature it repeats did).
                         feature.join = Join::Add;
                     } else {
                         egui::ComboBox::from_id_salt(id.with("join"))
