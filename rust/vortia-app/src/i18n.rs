@@ -530,8 +530,9 @@ pub const ES: &[(&str, &str)] = &[
         "Volume {} m³, surface {} m²",
         "Volumen {} m³, superficie {} m²",
     ),
-    ("File for the STL", "Archivo del STL"),
+    ("File to export to", "Archivo de destino"),
     ("Save as STL", "Guardar como STL"),
+    ("Save as STEP", "Guardar como STEP"),
     ("Saved {}", "Guardado {}"),
     (
         "Model a part first: add a feature.",

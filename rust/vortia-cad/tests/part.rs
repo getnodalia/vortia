@@ -371,3 +371,74 @@ fn rounds_are_kept_in_a_part_file() {
     };
     assert_eq!(Part::from_json(&part.to_json()).unwrap(), part);
 }
+
+#[test]
+fn a_part_written_as_step_reads_back_the_same_size_in_metres() {
+    // A 2 x 1 x 0.5 m block with a 0.2 m round hole through it.
+    let part = Part {
+        features: vec![
+            feature(
+                Shape::Box {
+                    origin: [0.0; 3],
+                    size: [2.0, 1.0, 0.5],
+                },
+                Join::Add,
+            ),
+            feature(
+                Shape::Cylinder {
+                    origin: [1.0, 0.5, -0.1],
+                    radius: 0.1,
+                    height: 0.7,
+                },
+                Join::Cut,
+            ),
+        ],
+    };
+    let text = part.to_step("block").unwrap();
+    assert!(text.starts_with("ISO-10303-21;"));
+    assert!(
+        text.contains("MILLI"),
+        "STEP says its unit is the millimetre"
+    );
+
+    let read = vortia_cad::step::parse(text.as_bytes(), 0.001).unwrap();
+    assert_eq!(read.solids, 1);
+    assert!(read.surface.summary().closed());
+    let expected = 2.0 * 1.0 * 0.5 - std::f64::consts::PI * 0.1 * 0.1 * 0.5;
+    let got = volume(&read.surface);
+    assert!(
+        (got - expected).abs() / expected < 0.01,
+        "volume {got} against {expected}"
+    );
+    let (mut lo, mut hi) = ([f64::MAX; 3], [f64::MIN; 3]);
+    for v in &read.surface.vertices {
+        for k in 0..3 {
+            lo[k] = lo[k].min(v[k]);
+            hi[k] = hi[k].max(v[k]);
+        }
+    }
+    for (k, size) in [2.0, 1.0, 0.5].into_iter().enumerate() {
+        assert!(
+            (hi[k] - lo[k] - size).abs() < 1e-6,
+            "axis {k}: {lo:?} {hi:?}"
+        );
+    }
+}
+
+#[test]
+fn a_step_file_is_written_to_disk_and_an_empty_part_is_refused() {
+    let dir = std::env::temp_dir().join(format!("vortia-step-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("cube.step");
+    Part {
+        features: vec![unit_box()],
+    }
+    .save_step(&path)
+    .unwrap();
+    let read = vortia_cad::load(&path).unwrap();
+    assert!((volume(&read) - 1.0).abs() < 1e-6);
+    assert!(!dir.join("cube.step.tmp").exists());
+    std::fs::remove_dir_all(&dir).unwrap();
+
+    assert!(Part { features: vec![] }.to_step("nothing").is_err());
+}

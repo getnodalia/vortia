@@ -478,6 +478,43 @@ impl Part {
         Self::from_json(&value)
     }
 
+    /// The part as STEP (ISO 10303-21) text: the exact solid the kernel built, not its mesh.
+    ///
+    /// Parts are in metres and the STEP writer declares millimetres, so the body is scaled by
+    /// 1000 about the origin first; another program opens it at the size it has here.
+    pub fn to_step(&self, name: &str) -> Result<String> {
+        let body = self.build()?;
+        let scale = solidcore_ops::affine::scaling([0.0; 3], 1000.0)
+            .map_err(|e| refused("the part could not be scaled to millimetres", e))?;
+        body.transform(&scale)
+            .map_err(|e| refused("the part could not be scaled to millimetres", e))?;
+        let name = if name.trim().is_empty() {
+            "Part"
+        } else {
+            name.trim()
+        };
+        let header = solidcore_step::write::product::Header {
+            file_name: format!("{name}.step"),
+            description: "A part modelled in Vortia".into(),
+            originating_system: "Vortia".into(),
+            ..Default::default()
+        };
+        solidcore_step::write::product::solidcore_bodies(&[(name, &body)], &header)
+            .map_err(|e| refused("the part could not be written as STEP", e))
+    }
+
+    /// Writes the part to `path` as a STEP file, through a temporary file.
+    pub fn save_step(&self, path: &Path) -> Result<()> {
+        let io = |e: std::io::Error| MeshError::Invalid(format!("{}: {e}", path.display()));
+        let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("Part");
+        let text = self.to_step(name)?;
+        let mut tmp = path.as_os_str().to_owned();
+        tmp.push(".tmp");
+        let tmp = std::path::PathBuf::from(tmp);
+        std::fs::write(&tmp, text).map_err(io)?;
+        std::fs::rename(&tmp, path).map_err(io)
+    }
+
     /// Writes the part to `path`, through a temporary file so a failure leaves the old one.
     pub fn save(&self, path: &Path) -> Result<()> {
         let io = |e: std::io::Error| MeshError::Invalid(format!("{}: {e}", path.display()));
