@@ -79,3 +79,22 @@ fn load_picks_the_reader_by_extension() {
     assert!(vortia_cad::load(&dir.join("missing.step")).is_err());
     std::fs::remove_dir_all(&dir).ok();
 }
+
+const FEET: &str = include_str!("data/assembly-feet.step");
+
+#[test]
+fn an_assembly_puts_each_instance_of_a_part_where_the_file_places_it() {
+    let read = step::parse(FEET.as_bytes(), 0.01).unwrap();
+    // A washer and an angle bracket, each in two feet.
+    assert_eq!(read.solids, 2, "{:?}", read.notes);
+    assert!(read.notes.is_empty(), "{:?}", read.notes);
+    let s = read.surface.summary();
+    assert_eq!(s.triangles % 2, 0, "every part stands twice");
+    // The foot at the origin of the root keeps its parts' own coordinates (x up to 0.748 m);
+    // the other, turned a quarter turn about Z and moved to (52.1, -662.9) mm, reaches back to
+    // x = -0.033 m. Left unplaced, both would stand on top of each other.
+    let near = |got: f64, want: f64| (got - want).abs() < 1.0e-3;
+    assert!(near(s.high[0], 0.7484), "{:?}", s.high);
+    assert!(near(s.low[0], -0.0333), "{:?}", s.low);
+    assert!(near(s.low[1], 0.0255) && near(s.high[1], 0.0855), "{s:?}");
+}

@@ -11,6 +11,8 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 - **Capturas del perfil NACA 2412 a 8°:** velocidad con líneas de corriente y presión (`docs/screenshots/results-airfoil-*.webp`), del caso que sale de `vortia new airfoil DIR naca=2412 alpha=8` y `vortia solve DIR` (20 480 celdas, converge en 1 280 iteraciones: C_L 1,066, C_D 0,0141, C_m 0,041, pico de succión C_p −3,37; una malla, sin validación).
 
 ### Añadido
+- **Ensamblajes STEP:** un archivo con varias piezas o con una pieza repetida (los pies de una máquina, los tornillos de una placa) se coloca como dice el archivo, con la estructura de producto y las transformaciones de cada instancia (`solidcore-ops::placed_bodies`), en lugar de apilar las piezas en el origen. Sigue valiendo que las piezas no se solapen para mallar alrededor. Prueba con un ensamblaje real de dos pies girados un cuarto de vuelta.
+
 - **«Alrededor de un archivo CAD» en Nuevo caso (app):** desde Inicio se lee un STL, OBJ, STEP o DXF y se crea el caso sin pasar por la terminal. Una superficie cerrada se malla en 3D en un túnel (velocidad, Reynolds, longitud de referencia, túnel delante, detrás y a los lados, refinados en el cuerpo y en la estela, laminar, Spalart–Allmaras o k-ω SST); un dibujo DXF se malla en 2D con triángulos en un túnel dibujado alrededor (velocidad, viscosidad, túnel, tamaño de celda, espesor) y se ve en una vista previa. Una superficie abierta se rechaza con el recuento de aristas abiertas y la escala del archivo (0,001 para milímetros) se aplica al crear el caso.
 
 ### Añadido
