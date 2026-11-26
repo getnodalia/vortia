@@ -7,6 +7,9 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 
 ## [Unreleased]
 
+### Añadido
+- **Flujo alrededor de un cuerpo (`vortia new body DIR FICHERO.stl`), primera etapa:** un mallador octree propio (`vortia-mesh::bodymesh`) corta un túnel en cubos que se afinan hacia una superficie cerrada y su estela, con balance 2:1 y nodos colgantes cerrados, y quita los cubos del cuerpo; el caso sale con parches `body`, `inlet`, `outlet` y cuatro lados de simetría, y se resuelve con `simpleFoam` (laminar, Spalart–Allmaras o k-ω SST). Es la base para importar CAD y simular coches o alas (plan en `docs/architecture/cad-and-external-flow.md`). **Límites:** la pared es escalonada (sin ajuste a la superficie ni capas de prisma todavía), no hay lector de STEP/OBJ/DXF ni editor CAD aún (solo STL), y la esfera a Re = 100 da C_D = 1,013 con 344 k celdas frente a 1,09 publicado (−7 %, y el hueco no se cierra al afinar; causa sin separar). Detalle en `benchmarks/sphere-drag-re100/`.
+
 ## [0.13.1] — 2026-11-26
 
 ### Corregido

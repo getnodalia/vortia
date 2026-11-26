@@ -991,3 +991,177 @@ fn an_airfoil_runs_and_what_cannot_be_one_is_refused() {
     assert!(foil.set("model", 7.0).is_err());
     assert!(foil.set("nope", 1.0).is_err());
 }
+
+/// A sphere of triangles (diameter 1, centred on the origin) by subdividing an octahedron.
+fn unit_sphere(depth: usize) -> vortia_mesh::stl::Stl {
+    let mut points: Vec<[f64; 3]> = vec![
+        [0.5, 0., 0.],
+        [-0.5, 0., 0.],
+        [0., 0.5, 0.],
+        [0., -0.5, 0.],
+        [0., 0., 0.5],
+        [0., 0., -0.5],
+    ];
+    let mut tris: Vec<[u32; 3]> = vec![
+        [0, 2, 4],
+        [2, 1, 4],
+        [1, 3, 4],
+        [3, 0, 4],
+        [2, 0, 5],
+        [1, 2, 5],
+        [3, 1, 5],
+        [0, 3, 5],
+    ];
+    for _ in 0..depth {
+        let mut mids = std::collections::HashMap::new();
+        let mut next = Vec::new();
+        for t in &tris {
+            let mut mid = |a: u32, b: u32| -> u32 {
+                *mids.entry((a.min(b), a.max(b))).or_insert_with(|| {
+                    let (p, q) = (points[a as usize], points[b as usize]);
+                    let m = [p[0] + q[0], p[1] + q[1], p[2] + q[2]];
+                    let n = (m[0] * m[0] + m[1] * m[1] + m[2] * m[2]).sqrt();
+                    points.push([0.5 * m[0] / n, 0.5 * m[1] / n, 0.5 * m[2] / n]);
+                    (points.len() - 1) as u32
+                })
+            };
+            let (a, b, c) = (t[0], t[1], t[2]);
+            let (ab, bc, ca) = (mid(a, b), mid(b, c), mid(c, a));
+            next.extend([[a, ab, ca], [b, bc, ab], [c, ca, bc], [ab, bc, ca]]);
+        }
+        tris = next;
+    }
+    vortia_mesh::stl::Stl {
+        vertices: points,
+        triangles: tris,
+    }
+}
+
+fn small_body(model: BodyModel) -> Body {
+    Body {
+        cells: 1,
+        levels: 2,
+        wake_levels: 1,
+        upstream: 1.5,
+        downstream: 3.0,
+        lateral: 1.5,
+        model,
+        reynolds: 100.0,
+        ..Body::new(unit_sphere(2))
+    }
+}
+
+#[test]
+fn the_flow_around_a_body_has_its_wall_a_tunnel_and_a_solvable_mesh() {
+    let dir = tempfile::tempdir().unwrap();
+    let made = create(dir.path(), &Geometry::Body(small_body(BodyModel::Laminar))).unwrap();
+    assert_eq!(made.application, "simpleFoam");
+    assert!(made.cells > 100);
+    let mesh = PolyMesh::read_case(dir.path()).unwrap();
+    let geo = MeshGeometry::compute(&mesh);
+    let report = check(&mesh, &geo);
+    assert!(
+        report.unsolvable().is_empty(),
+        "mesh not solvable: {:?}",
+        report.unsolvable()
+    );
+    let names: Vec<&str> = mesh.patches().iter().map(|p| p.name.as_str()).collect();
+    for patch in ["body", "inlet", "outlet", "ymin", "ymax", "zmin", "zmax"] {
+        assert!(names.contains(&patch), "no patch {patch} in {names:?}");
+    }
+    let u = read(dir.path(), "0/U");
+    assert!(u.contains("noSlip"));
+    assert!(u.contains("symmetryPlane"));
+    assert!(read(dir.path(), "constant/turbulenceProperties").contains("laminar"));
+    // The viscosity follows from the Reynolds number on the body's length (1 m at 1 m/s).
+    assert!(read(dir.path(), "constant/transportProperties").contains("nu              0.01"));
+    // The air in the tunnel is the tunnel minus the body: smaller than the box, bigger than none.
+    let spec = small_body(BodyModel::Laminar).spec().unwrap();
+    let tunnel: f64 = (0..3).map(|i| spec.high[i] - spec.low[i]).product();
+    let sphere = std::f64::consts::PI / 6.0;
+    assert!(
+        (geo.total_volume() - (tunnel - sphere)).abs() < 0.1 * sphere,
+        "air {} for a tunnel of {tunnel} around a sphere of {sphere}",
+        geo.total_volume()
+    );
+}
+
+#[test]
+fn a_turbulent_body_has_the_fields_of_its_model() {
+    for (model, files, name) in [
+        (
+            BodyModel::SpalartAllmaras,
+            vec!["0/nuTilda", "0/nut"],
+            "SpalartAllmaras",
+        ),
+        (
+            BodyModel::KOmegaSst,
+            vec!["0/k", "0/omega", "0/nut"],
+            "kOmegaSST",
+        ),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        create(dir.path(), &Geometry::Body(small_body(model))).unwrap();
+        for file in files {
+            assert!(dir.path().join(file).is_file(), "{file}");
+        }
+        assert!(read(dir.path(), "constant/turbulenceProperties").contains(name));
+    }
+}
+
+#[test]
+fn a_body_runs_and_what_cannot_be_one_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    create(dir.path(), &Geometry::Body(small_body(BodyModel::Laminar))).unwrap();
+    end_at(dir.path(), 3);
+    let case = vortia_solvers::Case::open(dir.path()).unwrap();
+    vortia_solvers::run(&case, |_| {}).unwrap();
+    assert!(dir.path().join("3/U").is_file());
+
+    // A surface with a hole is no body.
+    let mut open = unit_sphere(1);
+    open.triangles.pop();
+    let base = small_body(BodyModel::Laminar);
+    let bad = [
+        Body {
+            surface: open,
+            ..base.clone()
+        },
+        Body {
+            speed: 0.0,
+            ..base.clone()
+        },
+        Body {
+            reynolds: f64::NAN,
+            ..base.clone()
+        },
+        Body {
+            cells: 0,
+            ..base.clone()
+        },
+        Body {
+            levels: 200,
+            ..base.clone()
+        },
+        Body {
+            lateral: 0.0,
+            ..base.clone()
+        },
+        Body {
+            surface: vortia_mesh::stl::Stl::default(),
+            ..base.clone()
+        },
+    ];
+    for (i, body) in bad.into_iter().enumerate() {
+        let other = tempfile::tempdir().unwrap();
+        assert!(
+            create(other.path(), &Geometry::Body(body)).is_err(),
+            "bad body {i} was accepted"
+        );
+    }
+    let mut body = base;
+    assert!(body.set("speed", 3.0).is_ok());
+    assert!(body.set("levels", 2.5).is_err());
+    assert!(body.set("model", 7.0).is_err());
+    assert!(body.set("nope", 1.0).is_err());
+}
