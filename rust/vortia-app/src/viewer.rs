@@ -13,6 +13,7 @@ use std::sync::mpsc::Receiver;
 
 use vortia_post::Case;
 
+use crate::edgepick::{self, FeatureEdge};
 use crate::fieldview::{self, CellValues};
 use crate::flowlines::{self, FlowLines};
 use crate::section::{self, Section};
@@ -110,7 +111,23 @@ pub struct Viewer {
     /// A saved picture in flight, and what came of the last one.
     picture_rx: Option<Receiver<(bool, String)>>,
     picture_note: Option<(bool, String)>,
+    /// The edges of a modelled part that can be picked with the mouse, when it is being done.
+    picking: Option<Picking>,
 }
+
+/// The edges a person is choosing among, and what they did with them.
+struct Picking {
+    edges: Vec<FeatureEdge>,
+    /// The points already chosen, drawn as chosen.
+    chosen: Vec<[f64; 3]>,
+    /// The edge under the pointer.
+    hover: Option<usize>,
+    /// The edge clicked on the last frame, for whoever asked to pick.
+    clicked: Option<FeatureEdge>,
+}
+
+/// How near the pointer must be to an edge, in points, to mean it.
+const PICK_REACH: f32 = 8.0;
 
 impl Viewer {
     pub fn new(surface: Surface) -> Self {
@@ -142,7 +159,30 @@ impl Viewer {
             picture_rect: egui::Rect::NOTHING,
             picture_rx: None,
             picture_note: None,
+            picking: None,
         }
+    }
+
+    /// Lets the person click the edges of the part shown (`None`: back to just looking).
+    pub fn pick_among(&mut self, edges: Option<Vec<FeatureEdge>>) {
+        self.picking = edges.map(|edges| Picking {
+            edges,
+            chosen: Vec::new(),
+            hover: None,
+            clicked: None,
+        });
+    }
+
+    /// The points to draw as chosen.
+    pub fn set_chosen(&mut self, points: &[[f64; 3]]) {
+        if let Some(picking) = &mut self.picking {
+            picking.chosen = points.to_vec();
+        }
+    }
+
+    /// The edge clicked since this was last asked.
+    pub fn take_click(&mut self) -> Option<FeatureEdge> {
+        self.picking.as_mut()?.clicked.take()
     }
 
     /// Puts another surface in place of this one and keeps the camera where it was, so a part
@@ -538,6 +578,7 @@ impl Viewer {
         }
 
         self.draw_flow(&painter, rect, screen);
+        self.pick_edges(ui, &response, &painter, rect, screen);
 
         let mut note = trf(
             "{} faces  ·  drag to turn, right-drag to slide, wheel to zoom, double-click to reset",
@@ -555,6 +596,59 @@ impl Viewer {
                 egui::FontId::proportional(11.0),
                 muted,
             );
+        }
+    }
+
+    /// While the person picks edges: draws the ones that can be picked, finds the one under the
+    /// pointer and keeps the one clicked.
+    fn pick_edges(
+        &mut self,
+        ui: &egui::Ui,
+        response: &egui::Response,
+        painter: &egui::Painter,
+        rect: egui::Rect,
+        screen: [f32; 2],
+    ) {
+        let Some(picking) = &mut self.picking else {
+            return;
+        };
+        let project = self.camera.pixel_projection(&self.surface, screen);
+        let to_screen = |p: &[f64; 3]| project(&[p[0] as f32, p[1] as f32, p[2] as f32]);
+        let towards = self.camera.towards().map(f64::from);
+        let on = |p: [f32; 2]| Pos2::new(rect.min.x + p[0], rect.min.y + p[1]);
+        picking.hover = ui
+            .input(|i| i.pointer.hover_pos())
+            .filter(|_| response.hovered())
+            .and_then(|at| {
+                edgepick::nearest(
+                    &picking.edges,
+                    to_screen,
+                    &towards,
+                    [at.x - rect.min.x, at.y - rect.min.y],
+                    PICK_REACH,
+                )
+            });
+        if response.clicked()
+            && let Some(edge) = picking.hover.and_then(|n| picking.edges.get(n))
+        {
+            picking.clicked = Some(edge.clone());
+        }
+        let loose = Stroke::new(1.5, Color32::from_rgb(0x8F, 0xB8, 0xFF));
+        let chosen = Stroke::new(3.5, Color32::from_rgb(0xF2, 0xA6, 0x3B));
+        let hover = Stroke::new(3.5, Color32::from_rgb(0xFF, 0xFF, 0xFF));
+        for (n, edge) in picking.edges.iter().enumerate() {
+            if !edge.faces(&towards) {
+                continue;
+            }
+            let is_chosen = picking.chosen.iter().any(|p| edge.distance(p) < 1.0e-4);
+            let stroke = if picking.hover == Some(n) {
+                hover
+            } else if is_chosen {
+                chosen
+            } else {
+                loose
+            };
+            painter.line_segment([on(to_screen(&edge.a)), on(to_screen(&edge.b))], stroke);
         }
     }
 

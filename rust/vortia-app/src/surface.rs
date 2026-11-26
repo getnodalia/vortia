@@ -368,6 +368,11 @@ impl Camera {
         Some((direction, sign * cut.offset))
     }
 
+    /// The direction from the part towards the viewer.
+    pub fn towards(&self) -> [f32; 3] {
+        self.basis().2
+    }
+
     /// The directions of the screen: right, up, and towards the viewer.
     fn basis(&self) -> ([f32; 3], [f32; 3], [f32; 3]) {
         let (sy, cy) = self.yaw.sin_cos();
