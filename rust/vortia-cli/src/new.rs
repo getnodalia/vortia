@@ -13,6 +13,9 @@ pub fn run(args: &[&str]) -> ExitCode {
     if let ["region", dir, file, settings @ ..] = args {
         return from_region(dir, file, settings);
     }
+    if let ["body", dir, file, settings @ ..] = args {
+        return from_body(dir, file, settings);
+    }
     let [kind, dir, settings @ ..] = args else {
         eprintln!(
             "vortia: new needs a kind (channel, cavity, plate, plate-turbulent, airfoil, nozzle, nozzle-wedge or jet) and a folder"
@@ -78,6 +81,7 @@ fn geometry(kind: &str, settings: &[&str]) -> Result<Geometry, String> {
             Geometry::Jet(j) => j.set(name, number),
             Geometry::Drawn(d) => d.set(name, number),
             Geometry::Airfoil(a) => a.set(name, number),
+            Geometry::Body(b) => b.set(name, number),
         }
         .map_err(|e| e.to_string())?;
     }
@@ -179,6 +183,61 @@ fn from_region(dir: &str, file: &str, settings: &[&str]) -> ExitCode {
                 format_args!(
                     "Wrote the drawn region ({} cells, {} points) to {dir}; run it with `vortia solve {dir}` ({})\n",
                     made.cells, made.points, made.application
+                ),
+            );
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("vortia: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// `vortia new body DIR FILE.stl|FILE.obj [scale=F] [NAME=VALUE...]`: the flow around a closed
+/// surface in a wind tunnel, meshed by octree refinement.
+fn from_body(dir: &str, file: &str, settings: &[&str]) -> ExitCode {
+    let build = || -> Result<vortia_cases::Body, String> {
+        let mut surface =
+            vortia_mesh::stl::Stl::load(Path::new(file)).map_err(|e| e.to_string())?;
+        let mut rest = Vec::new();
+        for setting in settings {
+            let (name, value) = setting
+                .split_once('=')
+                .ok_or_else(|| format!("'{setting}' is not NAME=VALUE"))?;
+            let number: f64 = value
+                .parse()
+                .map_err(|_| format!("'{value}' in '{setting}' is not a number"))?;
+            // The unit of the file: 0.001 for millimetres.
+            if name == "scale" {
+                surface.scale(number).map_err(|e| e.to_string())?;
+            } else {
+                rest.push((name, number));
+            }
+        }
+        let mut body = vortia_cases::Body::new(surface);
+        for (name, number) in rest {
+            body.set(name, number).map_err(|e| e.to_string())?;
+        }
+        Ok(body)
+    };
+    let body = match build() {
+        Ok(b) => b,
+        Err(message) => {
+            eprintln!("vortia: {message}");
+            return ExitCode::from(2);
+        }
+    };
+    match vortia_cases::create(Path::new(dir), &Geometry::Body(body)) {
+        Ok(made) => {
+            let _ = std::io::Write::write_fmt(
+                &mut std::io::stdout(),
+                format_args!(
+                    "Wrote the flow around the body ({} cells, {} points) to {dir}; run it with `vortia solve {dir}` ({}), then `vortia forces {dir} {}`\n",
+                    made.cells,
+                    made.points,
+                    made.application,
+                    vortia_cases::BODY_PATCH
                 ),
             );
             ExitCode::SUCCESS

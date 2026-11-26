@@ -21,6 +21,7 @@
 
 pub mod blockmesh;
 pub mod blocks;
+pub mod bodymesh;
 pub mod cff;
 pub mod cgns;
 pub mod check;
@@ -28,6 +29,7 @@ pub mod error;
 pub mod fluent;
 pub mod geometry;
 pub mod gmsh;
+pub mod obj;
 pub mod polymesh;
 pub mod stl;
 pub mod tri2d;

@@ -21,6 +21,7 @@
 )]
 
 mod airfoil;
+mod body;
 mod cavity;
 mod channel;
 mod drawn;
@@ -33,6 +34,7 @@ mod plate;
 use std::path::Path;
 
 pub use airfoil::{Airfoil, AirfoilModel};
+pub use body::{BODY_PATCH, Body, BodyModel};
 pub use cavity::Cavity;
 pub use channel::Channel;
 pub use drawn::Drawn;
@@ -62,6 +64,8 @@ pub enum Geometry {
     Drawn(Drawn),
     /// A NACA 4-digit airfoil at an angle of attack: turbulent incompressible flow on a C-grid.
     Airfoil(Airfoil),
+    /// A closed surface (a sphere, a car, a wing) in a wind tunnel, meshed by octree refinement.
+    Body(Body),
 }
 
 impl Geometry {
@@ -75,6 +79,7 @@ impl Geometry {
             Geometry::Jet(_) => "Jet into the atmosphere",
             Geometry::Drawn(_) => "Drawn region",
             Geometry::Airfoil(_) => "Airfoil",
+            Geometry::Body(_) => "Flow around a body",
         }
     }
 }
@@ -104,6 +109,7 @@ pub fn create(dir: &Path, geometry: &Geometry) -> Result<Created> {
         Geometry::Jet(j) => j.files()?,
         Geometry::Drawn(d) => d.files()?,
         Geometry::Airfoil(a) => a.files()?,
+        Geometry::Body(b) => b.files()?,
     };
     files::write_all(dir, &set.files)?;
     let mesh = match &set.raw_mesh {

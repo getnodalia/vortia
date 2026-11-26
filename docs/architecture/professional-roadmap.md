@@ -66,7 +66,9 @@ Sizes: S (days), M (one to two weeks), L (several weeks).
 7. **Radiation and species (M each).** Surface-to-surface, discrete ordinates;
    passive scalars and gas mixtures.
 8. **Real-geometry meshing (L).** Cut-cell hexahedral meshing from STL, prism layers,
-   quality repair. Without it nothing above reaches CAD geometry.
+   quality repair. Without it nothing above reaches CAD geometry. **Pulled forward on
+   2026-11-26 by the project lead, together with CAD import and an in-app CAD editor:**
+   see [cad-and-external-flow.md](cad-and-external-flow.md).
 9. **Speed (L).** Threaded assembly and solves, GAMG, domain decomposition.
 
 ### Tier 3: breadth
