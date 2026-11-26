@@ -21,6 +21,7 @@
 
 pub mod blockmesh;
 pub mod blocks;
+pub mod bodymesh;
 pub mod cff;
 pub mod cgns;
 pub mod check;
