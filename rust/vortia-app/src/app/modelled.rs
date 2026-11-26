@@ -689,12 +689,19 @@ impl Modelled {
         ui.horizontal_wrapped(|ui| {
             ui.add(
                 egui::TextEdit::singleline(&mut self.save_to)
-                    .hint_text(tr("File for the STL"))
+                    .hint_text(tr("File to export to"))
                     .desired_width(260.0),
             );
             if ui.button(tr("Save as STL")).clicked() {
                 let path = std::path::PathBuf::from(self.save_to.trim());
                 self.saved = Some(match built.stl.write(&path) {
+                    Ok(()) => (true, trf("Saved {}", &[&path.display()])),
+                    Err(e) => (false, e.to_string()),
+                });
+            }
+            if ui.button(tr("Save as STEP")).clicked() {
+                let path = std::path::PathBuf::from(self.save_to.trim());
+                self.saved = Some(match self.part.save_step(&path) {
                     Ok(()) => (true, trf("Saved {}", &[&path.display()])),
                     Err(e) => (false, e.to_string()),
                 });
