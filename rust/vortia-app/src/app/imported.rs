@@ -192,6 +192,17 @@ impl Imported {
     }
 }
 
+/// How far the tunnel reaches ahead of the body, behind it and at each side, in lengths of it.
+fn tunnel_rows(ui: &mut Ui, [upstream, downstream, lateral]: [&mut f64; 3]) {
+    row(ui, tr("Tunnel ahead of the body"), |ui| {
+        value(ui, upstream, "L")
+    });
+    row(ui, tr("Tunnel behind the body"), |ui| {
+        value(ui, downstream, "L")
+    });
+    row(ui, tr("Tunnel at each side"), |ui| value(ui, lateral, "L"));
+}
+
 fn body_fields(ui: &mut Ui, body: &mut Body, summary: &Summary, scale: f64) {
     let extent = |axis: usize| {
         let at = |v: [f64; 3]| v.get(axis).copied().unwrap_or(0.0);
@@ -228,15 +239,10 @@ fn body_fields(ui: &mut Ui, body: &mut Body, summary: &Summary, scale: f64) {
     row(ui, tr("Reference length (0: along the stream)"), |ui| {
         value(ui, &mut body.length, "m");
     });
-    row(ui, tr("Tunnel ahead of the body"), |ui| {
-        value(ui, &mut body.upstream, "L");
-    });
-    row(ui, tr("Tunnel behind the body"), |ui| {
-        value(ui, &mut body.downstream, "L");
-    });
-    row(ui, tr("Tunnel at each side"), |ui| {
-        value(ui, &mut body.lateral, "L");
-    });
+    tunnel_rows(
+        ui,
+        [&mut body.upstream, &mut body.downstream, &mut body.lateral],
+    );
     row(ui, tr("Base cells along the length"), |ui| {
         ui.add(DragValue::new(&mut body.cells).range(1..=200));
     });
@@ -276,15 +282,14 @@ fn section_fields(
     row(ui, tr("Kinematic viscosity"), |ui| {
         value(ui, &mut drawn.viscosity, "m²/s");
     });
-    row(ui, tr("Tunnel ahead of the body"), |ui| {
-        value(ui, &mut tunnel.upstream, "L");
-    });
-    row(ui, tr("Tunnel behind the body"), |ui| {
-        value(ui, &mut tunnel.downstream, "L");
-    });
-    row(ui, tr("Tunnel at each side"), |ui| {
-        value(ui, &mut tunnel.lateral, "L");
-    });
+    tunnel_rows(
+        ui,
+        [
+            &mut tunnel.upstream,
+            &mut tunnel.downstream,
+            &mut tunnel.lateral,
+        ],
+    );
     row(ui, tr("Cell size at the body (0: automatic)"), |ui| {
         value(ui, cell_size, "mm");
     });
@@ -360,6 +365,22 @@ mod tests {
         s + "endsolid cube\n"
     }
 
+    fn written(dir: &tempfile::TempDir, name: &str, text: &str) -> std::path::PathBuf {
+        let path = dir.path().join(name);
+        std::fs::write(&path, text).unwrap();
+        path
+    }
+
+    /// The form after reading the file.
+    fn read(path: &Path) -> Imported {
+        let mut form = Imported {
+            file: path.display().to_string(),
+            ..Imported::default()
+        };
+        form.load();
+        form
+    }
+
     #[test]
     fn nothing_is_made_before_a_file_is_read() {
         let form = Imported::default();
@@ -375,13 +396,8 @@ mod tests {
     #[test]
     fn a_drawing_becomes_a_flow_around_its_outlines() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("circle.dxf");
-        std::fs::write(&path, CIRCLE_DXF).unwrap();
-        let mut form = Imported {
-            file: path.display().to_string(),
-            ..Imported::default()
-        };
-        form.load();
+        let path = written(&dir, "circle.dxf", CIRCLE_DXF);
+        let form = read(&path);
         assert!(form.problem.is_none(), "{:?}", form.problem);
         let Geometry::Drawn(drawn) = form.geometry().unwrap() else {
             panic!("a drawing is a drawn case");
@@ -399,13 +415,8 @@ mod tests {
     #[test]
     fn a_surface_becomes_a_flow_around_a_body_and_an_open_one_is_refused() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("cube.stl");
-        std::fs::write(&path, cube()).unwrap();
-        let mut form = Imported {
-            file: path.display().to_string(),
-            ..Imported::default()
-        };
-        form.load();
+        let path = written(&dir, "cube.stl", &cube());
+        let mut form = read(&path);
         assert!(form.problem.is_none(), "{:?}", form.problem);
         let Geometry::Body(body) = form.geometry().unwrap() else {
             panic!("a surface is a body");
@@ -427,13 +438,8 @@ mod tests {
             .chain(["endsolid cube"])
             .map(|l| format!("{l}\n"))
             .collect();
-        let hole = dir.path().join("open.stl");
-        std::fs::write(&hole, open).unwrap();
-        let mut form = Imported {
-            file: hole.display().to_string(),
-            ..Imported::default()
-        };
-        form.load();
+        let hole = written(&dir, "open.stl", &open);
+        let form = read(&hole);
         assert!(form.geometry().is_err());
     }
 }
