@@ -8,6 +8,8 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 ## [Unreleased]
 
 ### Añadido
+
+- El visor 3D es ahora el protagonista: ocupa toda la zona central y las opciones de «Colorear por», instante, escala, corte, guardar imagen y parches flotan sobre la imagen en un panel que se puede ocultar (con la escala de color siempre a la vista). El panel «Caso» de la derecha queda como un raíl estrecho y se abre con un botón, o solo al elegir un parche.
 - **Cp y Cf pintados sobre el cuerpo (visor 3D):** la tarjeta «Presión y fricción en la superficie» tiene los botones «Pintar Cp sobre el cuerpo» y «Pintar Cf sobre el cuerpo», que llevan al visor de la pestaña Malla un número por cada cara de las paredes elegidas (`vortia-app::facepaint`): cada triángulo del visor conoce su cara del parche (`Projected::face`) y se colorea con el valor de esa cara, no con el de la celda de detrás; los parches sin valores quedan en gris, la barra de colores muestra el rango y «Volver al campo» devuelve el color de un campo. Funciona con cada pared de un cuerpo por piezas. Probado: cada triángulo del cubo de prueba sabe su cara contando desde el inicio de su parche, el informe de la superficie se pinta pared por pared y en el orden de sus caras, y pedirlo desde Resultados pasa el color al visor y cambia a la pestaña Malla; no se ha visto en una ventana real.
 
 ### Añadido

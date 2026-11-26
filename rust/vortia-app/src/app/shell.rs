@@ -731,8 +731,13 @@ impl VortiaApp {
             }))
             .show(ui, |ui| browser(ui, look, case));
 
+        let open = case.properties_open;
         egui::Panel::right("vortia_properties")
-            .exact_size(layout::PROPERTIES_WIDTH + 16.0 + layout::GAP)
+            .exact_size(if open {
+                layout::PROPERTIES_WIDTH + 16.0 + layout::GAP
+            } else {
+                RAIL_WIDTH + layout::GAP
+            })
             .resizable(false)
             .show_separator_line(false)
             .frame(island().outer_margin(Margin {
@@ -1136,6 +1141,7 @@ fn browser(ui: &mut egui::Ui, look: &Look, case: &mut CaseView) {
         Some(Pick::Patch(name)) => {
             case.go(Tab::Mesh);
             case.selection = Selection::Patch(name);
+            case.properties_open = true;
         }
         Some(Pick::Field(field)) => {
             case.go(Tab::Conditions);
@@ -1151,12 +1157,36 @@ fn browser(ui: &mut egui::Ui, look: &Look, case: &mut CaseView) {
 
 // --- Properties ------------------------------------------------------------------------------
 
-fn properties(ui: &mut egui::Ui, look: &Look, case: &CaseView) {
+/// The width of the Case panel while it is shut: a rail with one button to open it.
+const RAIL_WIDTH: f32 = 30.0;
+
+fn properties(ui: &mut egui::Ui, look: &Look, case: &mut CaseView) {
+    if !case.properties_open {
+        ui.vertical_centered(|ui| {
+            if ui
+                .small_button("«")
+                .on_hover_text(tr("Show the case panel"))
+                .clicked()
+            {
+                case.properties_open = true;
+            }
+        });
+        return;
+    }
     let title = match &case.selection {
         Selection::Patch(_) => tr("Patch"),
         Selection::Nothing => tr("Case"),
     };
-    eng::panel_header(ui, look, title, |_| {});
+    let mut shut = false;
+    eng::panel_header(ui, look, title, |ui| {
+        shut = ui
+            .small_button("»")
+            .on_hover_text(tr("Hide the case panel"))
+            .clicked();
+    });
+    if shut {
+        case.properties_open = false;
+    }
     egui::ScrollArea::vertical()
         .id_salt("vortia-properties")
         .auto_shrink([false, false])
@@ -1972,5 +2002,21 @@ mod tests {
             frame(&mut app, &ctx);
             assert!(app.search.is_some());
         }
+    }
+
+    #[test]
+    fn the_case_panel_is_a_rail_until_asked_for_and_a_picked_patch_opens_it() {
+        let dir = case_dir();
+        let ctx = Context::default();
+        let mut app = app_with(dir.path());
+        frame(&mut app, &ctx);
+        assert!(!view(&mut app).properties_open);
+        frame(&mut app, &ctx);
+        view(&mut app).properties_open = true;
+        frame(&mut app, &ctx);
+        view(&mut app).properties_open = false;
+        view(&mut app).go(Tab::Mesh);
+        frame(&mut app, &ctx);
+        assert!(!view(&mut app).properties_open);
     }
 }

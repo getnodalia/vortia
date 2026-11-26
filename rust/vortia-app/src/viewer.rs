@@ -116,6 +116,8 @@ pub struct Viewer {
     picking: Option<Picking>,
     /// A number for each face of some walls, painted in place of the field.
     paint: Option<FacePaint>,
+    /// Whether the choices over the picture are open.
+    legend_open: bool,
 }
 
 /// The edges a person is choosing among, and what they did with them.
@@ -146,6 +148,7 @@ impl Viewer {
             values: None,
             values_rx: None,
             paint: None,
+            legend_open: true,
             requested: None,
             lines: false,
             arrows: false,
@@ -471,19 +474,69 @@ impl Viewer {
         source: &Source,
     ) {
         self.sync_field(&ui.ctx().clone(), source);
+        // The picture takes all the room; the choices float over its corner.
         let room = ui.available_size();
-        ui.horizontal_top(|ui| {
-            let picture = Vec2::new(
-                (room.x - LEGEND - ui.spacing().item_spacing.x).max(100.0),
-                room.y,
-            );
-            self.picture(ui, picture, background, muted, radius);
-            ui.allocate_ui_with_layout(
-                vec2(LEGEND, room.y),
-                egui::Layout::top_down(egui::Align::Min),
-                |ui| self.legend(ui, muted, source),
-            );
-        });
+        self.picture(ui, room, background, muted, radius);
+        self.overlay(ui, muted, source);
+    }
+
+    /// The choices over the picture's top right corner: a button that opens them, and the
+    /// colour scale along the bottom while they are shut.
+    fn overlay(&mut self, ui: &mut egui::Ui, muted: Color32, source: &Source) {
+        let rect = self.picture_rect;
+        let ctx = ui.ctx().clone();
+        let open = self.legend_open;
+        let mut toggle = false;
+        egui::Area::new(egui::Id::unique("viewer-overlay"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(rect.right_top() + vec2(-8.0, 8.0))
+            .pivot(egui::Align2::RIGHT_TOP)
+            .show(&ctx, |ui| {
+                ui.set_max_width(LEGEND);
+                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                    ui.set_width(if open { LEGEND - 12.0 } else { 90.0 });
+                    ui.horizontal(|ui| {
+                        let label = if open { tr("Hide") } else { tr("Display") };
+                        toggle = ui.small_button(label).clicked();
+                    });
+                    if open {
+                        ui.add_space(4.0);
+                        egui::ScrollArea::vertical()
+                            .id_salt("viewer-legend")
+                            .max_height((rect.height() - 70.0).max(80.0))
+                            .show(ui, |ui| self.legend(ui, muted, source));
+                    }
+                });
+            });
+        if toggle {
+            self.legend_open = !self.legend_open;
+        }
+        // With the choices shut the colour scale still says what the colours mean.
+        let scale = match (&self.paint, &self.values) {
+            (Some(paint), _) => Some((paint.name.clone(), paint.range())),
+            (None, Some(Ok(values))) => Some((
+                if values.kind == "vector" {
+                    format!("{}, length", values.name)
+                } else {
+                    values.name.clone()
+                },
+                values.range,
+            )),
+            _ => None,
+        };
+        if !self.legend_open
+            && let Some((what, range)) = scale
+        {
+            egui::Area::new(egui::Id::unique("viewer-scale"))
+                .order(egui::Order::Foreground)
+                .fixed_pos(rect.left_bottom() + vec2(8.0, -8.0))
+                .pivot(egui::Align2::LEFT_BOTTOM)
+                .show(&ctx, |ui| {
+                    egui::Frame::popup(ui.style()).show(ui, |ui| {
+                        scale_bar(ui, &what, range, muted);
+                    });
+                });
+        }
     }
 
     fn picture(
@@ -854,10 +907,8 @@ impl Viewer {
         }
         self.picture_button(ui, muted, source);
         ui.label(egui::RichText::new(tr("Patches")).color(muted));
-        egui::ScrollArea::vertical()
-            .id_salt("viewer-patches")
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
+        {
+            {
                 for (index, (patch, shown)) in self
                     .surface
                     .patches
@@ -882,7 +933,8 @@ impl Viewer {
                             .color(muted),
                     );
                 }
-            });
+            }
+        }
     }
 }
 

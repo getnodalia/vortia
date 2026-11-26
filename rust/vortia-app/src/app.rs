@@ -119,6 +119,8 @@ struct CaseView {
     tab: Tab,
     /// What the Browser has picked besides a view, and the groups of its tree that are closed.
     selection: Selection,
+    /// Whether the Case panel on the right is open. It starts as a thin rail so the body gets the room.
+    properties_open: bool,
     collapsed: HashSet<&'static str>,
     /// The run settings as typed, and how the last save went (`true` when it worked).
     form: Option<SettingsForm>,
@@ -199,6 +201,7 @@ impl CaseView {
             summary_stale: true,
             tab: Tab::Run,
             selection: Selection::default(),
+            properties_open: false,
             collapsed: HashSet::new(),
             form: None,
             form_message: None,
