@@ -280,8 +280,8 @@ pub const ES: &[(&str, &str)] = &[
     ("Cell size", "Tamaño de celda"),
     ("Symmetry plane on the axis", "Plano de simetría en el eje"),
     (
-        "An STL, OBJ or STEP file, a Fluent case (.cas.h5, .msh) or a Workbench project (.wbpj)",
-        "Un archivo STL, OBJ o STEP, un caso de Fluent (.cas.h5, .msh) o un proyecto de Workbench (.wbpj)",
+        "An STL, OBJ, STEP or DXF file, a Fluent case (.cas.h5, .msh) or a Workbench project (.wbpj)",
+        "Un archivo STL, OBJ, STEP o DXF, un caso de Fluent (.cas.h5, .msh) o un proyecto de Workbench (.wbpj)",
     ),
     (
         "{} cells, {} faces, {} points",
@@ -659,6 +659,8 @@ pub const ES: &[(&str, &str)] = &[
     ("Laminar", "Laminar"),
     ("The drawing", "El dibujo"),
     ("{} closed outlines", "{} contornos cerrados"),
+    ("Size {} × {} mm", "Tamaño {} × {} mm"),
+    ("Layers: {}", "Capas: {}"),
     ("Kinematic viscosity", "Viscosidad cinemática"),
     (
         "Cell size at the body (0: automatic)",

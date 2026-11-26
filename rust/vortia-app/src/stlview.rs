@@ -5,6 +5,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, channel};
 
+use vortia_cad::dxf::{self, Drawing, Outline};
 use vortia_mesh::stl::Summary;
 
 use crate::app::grouped;
@@ -20,6 +21,19 @@ pub enum About {
     Case(Vec<String>),
 }
 
+/// A DXF drawing: flat, so it is looked at as a drawing and not turned about.
+pub struct Flat {
+    pub drawing: Drawing,
+    /// What it is, as sentences: how many outlines, how big, which layers, what was left out.
+    pub lines: Vec<String>,
+}
+
+/// What a read gives back.
+enum Read {
+    Solid(Box<(About, Surface)>),
+    Flat(Box<Flat>),
+}
+
 /// What a successful read leaves.
 pub struct Loaded {
     pub about: About,
@@ -27,8 +41,9 @@ pub struct Loaded {
 }
 
 enum State {
-    Reading(Receiver<Result<(About, Surface), String>>),
+    Reading(Receiver<Result<Read, String>>),
     Ready(Box<Loaded>),
+    Drawing(Box<Flat>),
     Failed(String),
 }
 
@@ -146,6 +161,48 @@ pub fn load(path: &Path) -> Result<(About, Surface), String> {
     Ok((About::Stl(stl.summary()), Surface::from_stl(&name, &stl)))
 }
 
+/// Reads a DXF drawing and says what is in it.
+fn drawing(path: &Path) -> Result<Flat, String> {
+    let drawing = dxf::read(path).map_err(|e| e.to_string())?;
+    let mut lines = vec![trf(
+        "{} closed outlines",
+        &[&grouped(drawing.outlines.len())],
+    )];
+    if let Some((lo, hi)) = drawing.bounds() {
+        lines.push(trf(
+            "Size {} × {} mm",
+            &[
+                &format!("{:.2}", hi.0 - lo.0),
+                &format!("{:.2}", hi.1 - lo.1),
+            ],
+        ));
+    }
+    let mut layers: Vec<&str> = drawing
+        .outlines
+        .iter()
+        .flat_map(|outline| match outline {
+            Outline::Circle { layer, .. } => vec![layer.as_str()],
+            Outline::Loop(edges) => edges.iter().map(|e| e.layer.as_str()).collect(),
+        })
+        .collect();
+    layers.sort_unstable();
+    layers.dedup();
+    if layers.len() > 1 {
+        lines.push(trf("Layers: {}", &[&layers.join(", ")]));
+    }
+    lines.extend(drawing.notes.iter().cloned());
+    Ok(Flat { drawing, lines })
+}
+
+/// Reads a geometry file of any kind.
+fn read(path: &Path) -> Result<Read, String> {
+    if has_extension(path, "dxf") {
+        drawing(path).map(|flat| Read::Flat(Box::new(flat)))
+    } else {
+        load(path).map(|solid| Read::Solid(Box::new(solid)))
+    }
+}
+
 impl StlView {
     /// Starts reading `path`; `wake` is called when it is done.
     pub fn open(path: PathBuf, wake: impl Fn() + Send + 'static) -> Self {
@@ -154,7 +211,7 @@ impl StlView {
         let spawned = std::thread::Builder::new()
             .name("vortia-stl".into())
             .spawn(move || {
-                let read = std::panic::catch_unwind(|| load(&file))
+                let read = std::panic::catch_unwind(|| read(&file))
                     .unwrap_or_else(|_| Err(tr("The file could not be read.").to_owned()));
                 let _ = tx.send(read);
                 wake();
@@ -176,12 +233,14 @@ impl StlView {
             return;
         };
         match rx.try_recv() {
-            Ok(Ok((about, surface))) => {
+            Ok(Ok(Read::Solid(solid))) => {
+                let (about, surface) = *solid;
                 self.state = State::Ready(Box::new(Loaded {
                     about,
                     viewer: Viewer::new(surface),
                 }));
             }
+            Ok(Ok(Read::Flat(flat))) => self.state = State::Drawing(flat),
             Ok(Err(message)) => self.state = State::Failed(message),
             Err(std::sync::mpsc::TryRecvError::Empty) => {}
             Err(std::sync::mpsc::TryRecvError::Disconnected) => {
@@ -204,6 +263,14 @@ impl StlView {
     pub fn loaded(&mut self) -> Option<(&About, &mut Viewer, &Source)> {
         match &mut self.state {
             State::Ready(loaded) => Some((&loaded.about, &mut loaded.viewer, &self.source)),
+            _ => None,
+        }
+    }
+
+    /// The drawing, when the file was a DXF.
+    pub fn flat(&self) -> Option<&Flat> {
+        match &self.state {
+            State::Drawing(flat) => Some(flat),
             _ => None,
         }
     }
@@ -315,6 +382,52 @@ endsolid t
         std::fs::write(&file, b"not hdf5 at all").unwrap();
         assert!(load(&file).is_err());
         assert!(load(Path::new("/no/such/file.cas.h5")).is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A DXF in millimetres: a 20 mm square and a circle of radius 5 mm on another layer.
+    const DRAWING: &str = "0\nSECTION\n2\nHEADER\n9\n$INSUNITS\n70\n4\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n0\nCIRCLE\n8\nholes\n10\n30\n20\n10\n40\n5\n0\nLWPOLYLINE\n8\nouter\n90\n4\n70\n1\n10\n0\n20\n0\n10\n20\n20\n0\n10\n20\n20\n20\n10\n0\n20\n20\n0\nENDSEC\n0\nEOF\n";
+
+    #[test]
+    fn a_dxf_is_shown_as_a_drawing_with_what_it_holds() {
+        let dir = std::env::temp_dir().join(format!("vortia-stlview-dxf-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("plate.dxf");
+        std::fs::write(&file, DRAWING).unwrap();
+        let mut view = StlView::open(file, || {});
+        for _ in 0..500 {
+            view.poll();
+            if !view.reading() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(view.failure().is_none(), "{:?}", view.failure());
+        assert!(view.loaded().is_none(), "a drawing has no surface to turn");
+        let flat = view.flat().expect("a DXF is a drawing");
+        assert_eq!(flat.drawing.outlines.len(), 2);
+        assert!(flat.lines[0].contains('2'), "{:?}", flat.lines);
+        assert!(
+            flat.lines[1].contains("35.00") && flat.lines[1].contains("20.00"),
+            "{:?}",
+            flat.lines
+        );
+        assert!(
+            flat.lines[2].contains("holes") && flat.lines[2].contains("outer"),
+            "{:?}",
+            flat.lines
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_damaged_dxf_is_an_error_not_a_panic() {
+        let dir = std::env::temp_dir().join(format!("vortia-dxf-bad-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("bad.dxf");
+        std::fs::write(&file, b"0\nSECTION\n2\nENTITIES\n0\nCIRCLE\n40\nabc").unwrap();
+        assert!(drawing(&file).is_err());
+        assert!(drawing(Path::new("/no/such/file.dxf")).is_err());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

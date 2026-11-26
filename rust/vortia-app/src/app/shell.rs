@@ -612,7 +612,7 @@ impl VortiaApp {
                     let width = (ui.available_width() - 120.0).clamp(160.0, 420.0);
                     let field = ui.add(
                         egui::TextEdit::singleline(stl_input)
-                            .hint_text(tr("An STL, OBJ or STEP file, a Fluent case (.cas.h5, .msh) or a Workbench project (.wbpj)"))
+                            .hint_text(tr("An STL, OBJ, STEP or DXF file, a Fluent case (.cas.h5, .msh) or a Workbench project (.wbpj)"))
                             .desired_width(width),
                     );
                     let enter = field.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
@@ -1802,6 +1802,14 @@ fn stl_page(ui: &mut egui::Ui, look: &Look, view: &mut crate::stlview::StlView) 
     }
     if let Some(message) = view.failure() {
         ui.colored_label(for_egui::color(p.status_danger_fg), message);
+        return close;
+    }
+    if let Some(flat) = view.flat() {
+        for line in &flat.lines {
+            ui.label(line);
+        }
+        ui.add_space(space::SM);
+        super::imported::preview(ui, &flat.drawing, ui.available_height().clamp(220.0, 640.0));
         return close;
     }
     if let Some((about, viewer, source)) = view.loaded() {
