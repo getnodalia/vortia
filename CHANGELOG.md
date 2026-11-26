@@ -7,6 +7,8 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 
 ## [Unreleased]
 
+## [0.14.0] — 2026-11-26
+
 ### Documentación
 - **Capturas del perfil NACA 2412 a 8°:** velocidad con líneas de corriente y presión (`docs/screenshots/results-airfoil-*.webp`), del caso que sale de `vortia new airfoil DIR naca=2412 alpha=8` y `vortia solve DIR` (20 480 celdas, converge en 1 280 iteraciones: C_L 1,066, C_D 0,0141, C_m 0,041, pico de succión C_p −3,37; una malla, sin validación).
 
