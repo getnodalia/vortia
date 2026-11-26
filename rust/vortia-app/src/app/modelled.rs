@@ -409,6 +409,7 @@ fn new_shape(which: usize) -> Option<Shape> {
 }
 
 /// How many kinds of shape [`new_shape`] makes, the last two rounding and bevelling what is there.
+#[cfg(test)]
 const KINDS: usize = 9;
 
 /// A wing of constant NACA 2412 section, a metre of chord and two of span.
