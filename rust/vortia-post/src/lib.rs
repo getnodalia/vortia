@@ -35,6 +35,7 @@ mod sha256;
 mod slice;
 mod stats;
 mod streamline;
+mod surfacecoef;
 mod wall;
 
 pub use airfoil::{AIRFOIL_PATCH, AirfoilReport, AirfoilSettings, SurfacePoint};
@@ -53,6 +54,7 @@ pub use sha256::sha256_hex;
 pub use slice::SlicePolygon;
 pub use stats::{PatchStats, VolumeStats};
 pub use streamline::{MAX_STREAMLINE_POINTS, Streamline, StreamlineEnd};
+pub use surfacecoef::{MAX_SURFACE_FACES, SurfaceFace, SurfaceReport};
 pub use wall::WallReport;
 
 #[cfg(test)]

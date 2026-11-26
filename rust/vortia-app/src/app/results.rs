@@ -15,17 +15,21 @@ use eframe::egui::{
 use nodalia_theme::{Palette, component, font_size, for_egui, space};
 use vortia_core::{Aabb, Vec3};
 use vortia_mesh::PatchKind;
-use vortia_post::{Case, FieldReport, FieldValues, ForceReport, Sample, SectionReport, WallReport};
+use vortia_post::{
+    Case, FieldReport, FieldValues, ForceReport, Sample, SectionReport, SurfaceReport, WallReport,
+};
 
 mod analysis;
 mod compare;
 mod forces;
 mod summary;
+mod surface;
 
 use super::{accent_button, corner, muted};
 use analysis::{SectionForm, section_card};
 use compare::{CompareForm, compare_card};
 use forces::{ForcesForm, forces_card};
+use surface::{SurfaceForm, surface_card};
 
 /// The times offered: the last ones, which is where a run ends up.
 const MAX_TIMES: usize = 200;
@@ -273,6 +277,9 @@ pub struct Results {
     forces_form: ForcesForm,
     forces: Slot<ForceReport>,
     saved_forces: Option<(bool, String)>,
+    surface_form: SurfaceForm,
+    surface: Slot<SurfaceReport>,
+    saved_surface: Option<(bool, String)>,
     saved_report: Option<(bool, String)>,
     /// The card the ribbon asked to be scrolled to.
     jump: Option<Card>,
@@ -316,6 +323,7 @@ impl Results {
         self.probe.poll();
         self.section.poll();
         self.forces.poll();
+        self.surface.poll();
         if self.case.is_idle() {
             let dir = dir.to_owned();
             self.case = spawn(ctx, move || {
@@ -392,6 +400,8 @@ impl Results {
         self.saved = None;
         self.forces = Slot::Idle;
         self.saved_forces = None;
+        self.surface = Slot::Idle;
+        self.saved_surface = None;
         self.saved_report = None;
     }
 
@@ -487,6 +497,8 @@ pub(super) fn results_tab(ui: &mut egui::Ui, p: &Palette, dir: &Path, results: &
             ui.add_space(space::MD);
             results.scroll_to(ui, Card::Forces);
             forces_card(ui, p, &case, results);
+            ui.add_space(space::MD);
+            surface_card(ui, p, &case, results);
             ui.add_space(space::MD);
             results.scroll_to(ui, Card::Compare);
             compare_card(ui, p, dir, results);

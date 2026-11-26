@@ -55,6 +55,15 @@ fn axis(i: usize) -> Vec3 {
     }
 }
 
+/// The name of an axis.
+pub(super) fn axis_name(i: usize) -> &'static str {
+    match i {
+        0 => "x",
+        1 => "y",
+        _ => "z",
+    }
+}
+
 impl ForcesForm {
     /// Whether no wall has been given yet.
     pub(super) fn is_empty(&self) -> bool {
@@ -67,7 +76,7 @@ impl ForcesForm {
         self.give_density = compressible;
     }
 
-    fn parse(&self) -> Result<(Vec<String>, ForceReference), String> {
+    pub(super) fn parse(&self) -> Result<(Vec<String>, ForceReference), String> {
         let number = |text: &str, what: &str| {
             text.trim()
                 .parse::<f64>()

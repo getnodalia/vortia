@@ -601,6 +601,38 @@ pub const ES: &[(&str, &str)] = &[
     ("Base cells along the length", "Celdas base a lo largo"),
     ("Refinements at the body", "Refinados en el cuerpo"),
     ("Refinements in the wake", "Refinados en la estela"),
+    (
+        "The free-stream pressure",
+        "La presión de la corriente libre",
+    ),
+    (
+        "Pressure and friction on the surface",
+        "Presión y fricción en la superficie",
+    ),
+    (
+        "Cp and Cf on the faces of the walls chosen in Forces.",
+        "Cp y Cf en las caras de las paredes elegidas en Fuerzas.",
+    ),
+    ("Plot along", "Dibujar a lo largo de"),
+    ("Free-stream pressure", "Presión de la corriente libre"),
+    ("Show the coefficients", "Mostrar los coeficientes"),
+    ("Reading the faces…", "Leyendo las caras…"),
+    (
+        "Pressure coefficient (suction up)",
+        "Coeficiente de presión (succión arriba)",
+    ),
+    (
+        "Friction along the stream",
+        "Fricción a lo largo de la corriente",
+    ),
+    ("Dynamic pressure", "Presión dinámica"),
+    ("Cp, lowest and highest", "Cp, mínimo y máximo"),
+    ("Cf, lowest and highest", "Cf, mínimo y máximo"),
+    (
+        "Share of the area with reversed flow",
+        "Parte del área con flujo invertido",
+    ),
+    ("There are no faces to plot", "No hay caras que dibujar"),
     ("Prism layers on the wall", "Capas prismáticas en la pared"),
     ("Growth of each layer", "Crecimiento de cada capa"),
     (
