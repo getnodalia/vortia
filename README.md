@@ -8,7 +8,7 @@
   <p><strong>A free desktop application for CFD simulation, from geometry to post-processing, written in Rust with its own engine.</strong></p>
 
   <p>
-    <img src="https://img.shields.io/badge/version-0.11.0-3D9BFF" alt="Version 0.11.0">
+    <img src="https://img.shields.io/badge/version-0.13.0-3D9BFF" alt="Version 0.13.0">
     <img src="https://img.shields.io/badge/status-experimental-orange" alt="Experimental">
     <img src="https://img.shields.io/badge/platform-macOS%20arm64%20%7C%20Linux%20x86__64-5E81AC" alt="macOS arm64 and Linux x86_64">
     <img src="https://img.shields.io/badge/Rust-2024-DEA584?logo=rust&logoColor=white" alt="Rust">
@@ -74,17 +74,18 @@ captures, not validation: see [`docs/VALIDATION.md`](docs/VALIDATION.md).
 
 ## What it does
 
-| Area | Vortia 0.11.0 | Evidence |
+| Area | Vortia 0.13.0 | Evidence |
 |---|---|---|
 | Geometry | Rectangular domains, planar and axisymmetric nozzles, a region drawn on a canvas (lines, arcs, dimensions, saved sketch), STL and Fluent `.cas.h5` viewing | Software tests |
 | Meshing | Structured block meshes with grading, checked against `blockMesh`; its own 2D mesher for a drawn region; Fluent `.msh` and `.cas.h5` import | Compared with OpenFOAM v1912 |
-| Incompressible laminar | Transient `icoFoam` and steady `simpleFoam` | Poiseuille, Ghia cavity |
-| RANS turbulence | Steady k-ω SST with wall functions | Flat plate against a correlation, `simpleFoam` agreement |
+| Incompressible laminar | Transient `icoFoam` (fixed or adaptive time step) and steady `simpleFoam` | Poiseuille, Ghia cavity; adaptive step against a fixed step |
+| RANS turbulence | Steady k-ω SST and Spalart–Allmaras with wall functions; NACA 4-digit airfoils with C_L, C_D, C_m, C_p and C_f | Flat plate against a correlation, `simpleFoam` agreement; NACA 0012 against thin-airfoil theory (C_D 16–27 % high) |
+| Heat transfer | Passive temperature in `simpleFoam`, laminar and turbulent, with wall heat flux | Heated plate against Pohlhausen (+3.3 %) and the turbulent flat-plate correlation (−13.3 %) |
 | Compressible | `rhoSimpleFoam` for nozzles and jets, natural convection of a Boussinesq fluid | Compared with OpenFOAM v1912 on the same meshes; de Vahl Davis cavity |
 | Post-processing | Fields, slices, streamlines, probes, lines, wall quantities, section analysis with HTML/CSV/JSON report, comparison between runs, CSV and VTK export | Software tests |
 | Verification | Three-mesh GCI, flow-rate balance, run diagnostics | Software tests |
 
-Not available: LES/DES, radiation and conjugate heat transfer, multiphase, combustion,
+Not available: LES/DES, radiation and conjugate heat transfer (solid–fluid), multiphase, combustion,
 moving meshes, general 3D geometry with automatic volume meshing, remote or HPC runs,
 the results of Fluent `.dat.h5` files, and parallel runs. The
 full table, with what "evidence" means, is in the capability matrix.
@@ -145,7 +146,7 @@ domain (ETH-Bibliothek, Wikimedia Commons, `ETH-BIB-Bernoulli, Daniel (1700-1782
 
 ## Project status
 
-Version **0.11.0**, experimental. What does not work yet:
+Version **0.13.0**, experimental. What does not work yet:
 
 - [`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md) — engine and application restrictions
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — what comes next
