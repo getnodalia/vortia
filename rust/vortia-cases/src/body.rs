@@ -65,6 +65,9 @@ pub struct Body {
     /// The y+ the first layer is sized for (from a flat-plate friction estimate); 0 sizes it as
     /// a tenth of the surface cell instead.
     pub yplus: f64,
+    /// Whether a surface made of named parts gets a wall patch for each (`body_<part>`), so the
+    /// forces can be read for each; off, or with fewer than two parts, the wall is one patch.
+    pub by_part: bool,
 }
 
 impl Body {
@@ -86,6 +89,7 @@ impl Body {
             layers: 0,
             layer_growth: 1.2,
             yplus: 0.0,
+            by_part: true,
         }
     }
 
@@ -101,6 +105,7 @@ impl Body {
             "intensity" => self.intensity = value,
             "layer-growth" => self.layer_growth = value,
             "yplus" => self.yplus = value,
+            "by-part" => self.by_part = value != 0.0,
             "layers" => self.layers = crate::whole(name, value)?,
             "cells" => self.cells = crate::whole(name, value)?,
             "levels" => {
@@ -183,6 +188,7 @@ impl Body {
             self.levels,
         );
         spec.max_cells = MAX_CELLS as usize;
+        spec.by_part = self.by_part;
         for side in spec.sides.iter_mut().skip(2) {
             side.kind = SideKind::Symmetry;
         }
@@ -242,14 +248,20 @@ impl Body {
         let extent = self.surface.summary().high[0] - self.surface.summary().low[0];
         let length = self.reference_length(extent);
         let nu = speed * length / reynolds;
-        let (raw, _) = bodymesh::mesh_around(&self.surface, &spec)
+        let (raw, stats) = bodymesh::mesh_around(&self.surface, &spec)
             .map_err(|e| CaseError::Mesh(e.to_string()))?;
+        // The wall is one patch, or one for each part of the surface.
+        let walls: Vec<String> = if stats.parts.is_empty() {
+            vec![spec.body.clone()]
+        } else {
+            stats.parts.iter().map(|(name, _)| name.clone()).collect()
+        };
 
         let mut files = match self.model {
             BodyModel::Laminar => laminar_settings(nu),
             _ => self.turbulent_settings(nu),
         };
-        files.extend(self.fields(&spec, speed, nu, intensity));
+        files.extend(self.fields(&spec, &walls, speed, nu, intensity));
         Ok(FileSet {
             files,
             block_mesh_dict: String::new(),
@@ -258,13 +270,15 @@ impl Body {
         })
     }
 
-    /// The patch dictionaries of one field: the body, the inlet, the outlet and the four sides.
+    /// The patch dictionaries of one field: the body (`walls`, one patch or one per part), the
+    /// inlet, the outlet and the four sides.
     fn field(
         class: &str,
         name: &str,
         dims: &str,
         internal: &str,
         spec: &BodySpec,
+        walls: &[String],
         patches: [&str; 3],
     ) -> File {
         let [body, inlet, outlet] = patches;
@@ -286,7 +300,9 @@ impl Body {
             };
             boundary.push_str(&block(&side.name, text));
         }
-        boundary.push_str(&block(&spec.body, body));
+        for wall in walls {
+            boundary.push_str(&block(wall, body));
+        }
         File {
             path: match name {
                 "U" => "0/U",
@@ -303,7 +319,14 @@ impl Body {
         }
     }
 
-    fn fields(&self, spec: &BodySpec, speed: f64, nu: f64, intensity: f64) -> Vec<File> {
+    fn fields(
+        &self,
+        spec: &BodySpec,
+        walls: &[String],
+        speed: f64,
+        nu: f64,
+        intensity: f64,
+    ) -> Vec<File> {
         let fixed = |v: &str| format!("type            fixedValue;\nvalue           uniform {v};");
         let inlet_out = |v: &str| {
             format!(
@@ -320,6 +343,7 @@ impl Body {
                 "[0 1 -1 0 0 0 0]",
                 &format!("uniform {stream}"),
                 spec,
+                walls,
                 ["type            noSlip;", &fixed(&stream), zero_gradient],
             ),
             Self::field(
@@ -328,6 +352,7 @@ impl Body {
                 "[0 2 -2 0 0 0 0]",
                 "uniform 0",
                 spec,
+                walls,
                 [zero_gradient, zero_gradient, &fixed("0")],
             ),
         ];
@@ -341,6 +366,7 @@ impl Body {
                     "[0 2 -1 0 0 0 0]",
                     &format!("uniform {nu_tilda}"),
                     spec,
+                    walls,
                     [
                         &fixed("0"),
                         &fixed(&nu_tilda.to_string()),
@@ -353,6 +379,7 @@ impl Body {
                     "[0 2 -1 0 0 0 0]",
                     "uniform 0",
                     spec,
+                    walls,
                     [
                         "type            nutUSpaldingWallFunction;\nvalue           uniform 0;",
                         calculated,
@@ -373,6 +400,7 @@ impl Body {
                         dims,
                         &format!("uniform {value}"),
                         spec,
+                        walls,
                         [
                             &format!("type            {wall};\nvalue           uniform {value};"),
                             &fixed(&value.to_string()),
@@ -386,6 +414,7 @@ impl Body {
                     "[0 2 -1 0 0 0 0]",
                     &format!("uniform {}", k / omega),
                     spec,
+                    walls,
                     [
                         "type            nutkWallFunction;\nvalue           uniform 0;",
                         calculated,

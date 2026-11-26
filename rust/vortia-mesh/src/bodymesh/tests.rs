@@ -27,6 +27,7 @@ fn cube(lo: [f64; 3], hi: [f64; 3]) -> Stl {
     Stl {
         vertices,
         triangles,
+        ..Default::default()
     }
 }
 
@@ -88,6 +89,7 @@ fn sphere(centre: [f64; 3], radius: f64, depth: usize) -> Stl {
             .iter()
             .map(|t| [t[0] as u32, t[1] as u32, t[2] as u32])
             .collect(),
+        ..Default::default()
     }
 }
 
@@ -247,6 +249,7 @@ fn a_pocket_inside_a_hollow_body_is_not_meshed() {
     let body = Stl {
         vertices,
         triangles,
+        ..Default::default()
     };
     let spec = BodySpec::tunnel([-2.0; 3], [2.0; 3], [8; 3], 2);
     let (raw, _) = mesh_around(&body, &spec).unwrap();
@@ -402,4 +405,82 @@ fn layers_that_cannot_be_grown_are_refused_and_leave_the_mesh_alone() {
     }
     assert!(add_layers(&mut raw, "no-such-patch", &good).is_err());
     assert_eq!(raw, before);
+}
+
+/// Two separate cubes in one surface, named "left" and "right".
+fn two_cubes() -> Stl {
+    let left = cube([-1.5, -0.5, -0.5], [-0.5, 0.5, 0.5]);
+    let right = cube([0.5, -0.5, -0.5], [1.5, 0.5, 0.5]);
+    let offset = left.vertices.len() as u32;
+    let mut vertices = left.vertices.clone();
+    vertices.extend(right.vertices.iter().copied());
+    let mut triangles = left.triangles.clone();
+    triangles.extend(right.triangles.iter().map(|t| t.map(|i| i + offset)));
+    let split = left.triangles.len();
+    let total = triangles.len();
+    let part = |name: &str, start, end| crate::stl::SurfacePart {
+        name: name.into(),
+        start,
+        end,
+    };
+    Stl {
+        vertices,
+        triangles,
+        parts: vec![part("left wing", 0, split), part("right", split, total)],
+    }
+}
+
+#[test]
+fn the_wall_is_split_into_a_patch_for_each_part() {
+    let body = two_cubes();
+    let mut spec = BodySpec::tunnel([-3.0; 3], [3.0; 3], [12; 3], 1);
+    spec.snap = false;
+    let (single, _) = mesh_around(&body, &spec).unwrap();
+    spec.by_part = true;
+    let (raw, stats) = mesh_around(&body, &spec).unwrap();
+    // Nothing but the wall changed: the same cells and points, the faces the same set.
+    assert_eq!(raw.points, single.points);
+    assert_eq!(raw.faces.len(), single.faces.len());
+    assert_eq!(raw.owner.len(), single.owner.len());
+    let (mesh, geo) = mesh_of(raw);
+    let report = check(&mesh, &geo);
+    assert!(report.is_ok(), "{:?}", report.failed_checks());
+    assert!(mesh.patch("body").is_none());
+    let names: Vec<_> = stats.parts.iter().map(|(n, _)| n.as_str()).collect();
+    assert_eq!(names, ["body_left_wing", "body_right"]);
+    for (name, side) in [("body_left_wing", -1.0), ("body_right", 1.0)] {
+        let patch = mesh.patch(name).unwrap();
+        assert_eq!(patch.kind.name(), "wall");
+        let area: f64 = patch.faces().map(|f| geo.face_areas[f].norm()).sum();
+        assert!((area - 6.0).abs() < 1e-9, "{name}: area {area}");
+        for f in patch.faces() {
+            let x = mesh.face_points(f).map(|p| p.x).sum::<f64>() / 4.0;
+            assert!(x * side > 0.0, "{name} has a face at x = {x}");
+        }
+    }
+    assert_eq!(
+        stats.parts.iter().map(|(_, n)| n).sum::<usize>(),
+        stats.body_faces
+    );
+}
+
+#[test]
+fn a_surface_without_parts_keeps_one_wall_and_bad_parts_are_refused() {
+    let body = cube([-0.5; 3], [0.5; 3]);
+    let mut spec = BodySpec::tunnel([-2.0; 3], [2.0; 3], [8; 3], 1);
+    spec.by_part = true;
+    let (raw, stats) = mesh_around(&body, &spec).unwrap();
+    assert!(stats.parts.is_empty());
+    assert!(raw.patches.iter().any(|p| p.name == "body"));
+    // Parts that leave triangles out are not a cover: no split, one wall.
+    let mut two = two_cubes();
+    two.parts.pop();
+    assert!(part_patches(&two, "body").is_none());
+    // Names that clean up to the same patch are one patch.
+    let mut same = two_cubes();
+    same.parts[0].name = "Wing 1".into();
+    same.parts[1].name = "Wing-1".into();
+    assert!(part_patches(&same, "body").is_none());
+    assert_eq!(patch_name("body", "  "), "body_part");
+    assert_eq!(patch_name("body", "front wheel.L"), "body_front_wheel_L");
 }

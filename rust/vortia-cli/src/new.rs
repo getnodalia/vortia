@@ -327,16 +327,28 @@ fn from_body(dir: &str, file: &str, settings: &[&str]) -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    // The wall is one patch, or one for each named part of the surface.
+    let walls = if body.by_part {
+        vortia_mesh::bodymesh::part_patches(&body.surface, vortia_cases::BODY_PATCH)
+    } else {
+        None
+    };
     match vortia_cases::create(Path::new(dir), &Geometry::Body(body)) {
         Ok(made) => {
+            let forces = walls.map_or_else(
+                || format!("`vortia forces {dir} {}`", vortia_cases::BODY_PATCH),
+                |names| {
+                    format!(
+                        "`vortia forces {dir} PATCH` for each of {}",
+                        names.join(", ")
+                    )
+                },
+            );
             let _ = std::io::Write::write_fmt(
                 &mut std::io::stdout(),
                 format_args!(
-                    "Wrote the flow around the body ({} cells, {} points) to {dir}; run it with `vortia solve {dir}` ({}), then `vortia forces {dir} {}`\n",
-                    made.cells,
-                    made.points,
-                    made.application,
-                    vortia_cases::BODY_PATCH
+                    "Wrote the flow around the body ({} cells, {} points) to {dir}; run it with `vortia solve {dir}` ({}), then {forces}\n",
+                    made.cells, made.points, made.application,
                 ),
             );
             ExitCode::SUCCESS

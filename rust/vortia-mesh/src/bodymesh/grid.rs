@@ -244,6 +244,17 @@ impl TriGrid {
         reach: f64,
         scratch: &mut Vec<u32>,
     ) -> Option<[f64; 3]> {
+        self.nearest_triangle(p, reach, scratch).map(|(_, q)| q)
+    }
+
+    /// The triangle of the surface nearest to `p` (its index in the surface) and the point of it
+    /// that is nearest, when one lies within `reach`.
+    pub(super) fn nearest_triangle(
+        &self,
+        p: [f64; 3],
+        reach: f64,
+        scratch: &mut Vec<u32>,
+    ) -> Option<(usize, [f64; 3])> {
         // Look in growing boxes: the nearest point found in a box of half-width r is the true
         // one once it lies within r of `p`.
         let mut r = reach / 8.0;
@@ -254,25 +265,27 @@ impl TriGrid {
                 [p[0] + r_now, p[1] + r_now, p[2] + r_now],
                 scratch,
             );
-            let mut best: Option<(f64, [f64; 3])> = None;
+            let mut best: Option<(f64, usize, [f64; 3])> = None;
             for &t in scratch.iter() {
-                let Some(t) = self.tris.get(t as usize) else {
+                let Some(tri) = self.tris.get(t as usize) else {
                     continue;
                 };
-                let q = closest_on_triangle(t, p);
+                let q = closest_on_triangle(tri, p);
                 let d = sub(q, p);
                 let d2 = dot(d, d);
-                if best.is_none_or(|(b, _)| d2 < b) {
-                    best = Some((d2, q));
+                if best.is_none_or(|(b, _, _)| d2 < b) {
+                    best = Some((d2, t as usize, q));
                 }
             }
-            if let Some((d2, q)) = best
+            if let Some((d2, t, q)) = best
                 && d2.sqrt() <= r_now
             {
-                return Some(q);
+                return Some((t, q));
             }
             if r_now >= reach {
-                return best.filter(|(d2, _)| d2.sqrt() <= reach).map(|(_, q)| q);
+                return best
+                    .filter(|(d2, _, _)| d2.sqrt() <= reach)
+                    .map(|(_, t, q)| (t, q));
             }
             r *= 2.0;
         }

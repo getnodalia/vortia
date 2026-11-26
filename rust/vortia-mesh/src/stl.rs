@@ -29,6 +29,18 @@ fn invalid<T>(message: impl Into<String>) -> Result<T> {
 pub struct Stl {
     pub vertices: Vec<[f64; 3]>,
     pub triangles: Vec<[u32; 3]>,
+    /// The named pieces the file was made of (OBJ objects and groups, the solids of an STL, the
+    /// bodies of a STEP file), as runs of consecutive triangles in order. Empty when the file
+    /// does not name any.
+    pub parts: Vec<SurfacePart>,
+}
+
+/// A run of triangles with a name: `triangles[start..end]` of the surface.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SurfacePart {
+    pub name: String,
+    pub start: usize,
+    pub end: usize,
 }
 
 /// What a surface is, in numbers.
@@ -58,6 +70,21 @@ impl Summary {
 }
 
 impl Stl {
+    /// The part each triangle belongs to, when the parts are a proper cover: every triangle in
+    /// exactly one part, the parts in order. `None` otherwise.
+    pub fn part_of_each(&self) -> Option<Vec<usize>> {
+        let mut of = Vec::with_capacity(self.triangles.len());
+        let mut next = 0;
+        for (index, part) in self.parts.iter().enumerate() {
+            if part.start != next || part.end < part.start {
+                return None;
+            }
+            of.extend(std::iter::repeat_n(index, part.end - part.start));
+            next = part.end;
+        }
+        (next == self.triangles.len()).then_some(of)
+    }
+
     /// Reads a file, refusing one that is not a file, is too big or is not an STL.
     pub fn read(path: &Path) -> Result<Self> {
         let meta = std::fs::metadata(path)
@@ -238,9 +265,43 @@ fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
 pub(crate) struct Builder {
     pub(crate) stl: Stl,
     index: HashMap<[u64; 3], u32>,
+    /// Where each named piece starts: its name and the triangle it begins at.
+    marks: Vec<(String, usize)>,
 }
 
 impl Builder {
+    /// A new named piece begins with the next triangle.
+    pub(crate) fn part(&mut self, name: &str) {
+        self.marks.push((name.to_owned(), self.stl.triangles.len()));
+    }
+
+    /// The surface, with the named pieces as runs of triangles (empty pieces dropped).
+    pub(crate) fn finish(mut self) -> Stl {
+        let total = self.stl.triangles.len();
+        let mut parts = Vec::new();
+        if let Some((_, first)) = self.marks.first()
+            && *first > 0
+        {
+            parts.push(SurfacePart {
+                name: "default".into(),
+                start: 0,
+                end: *first,
+            });
+        }
+        for (k, (name, start)) in self.marks.iter().enumerate() {
+            let end = self.marks.get(k + 1).map_or(total, |(_, next)| *next);
+            if end > *start {
+                parts.push(SurfacePart {
+                    name: name.clone(),
+                    start: *start,
+                    end,
+                });
+            }
+        }
+        self.stl.parts = parts;
+        self.stl
+    }
+
     pub(crate) fn vertex(&mut self, v: [f64; 3]) -> Result<u32> {
         // -0.0 and 0.0 are one point.
         let key = v.map(|c| if c == 0.0 { 0 } else { c.to_bits() });
@@ -299,7 +360,7 @@ fn parse_binary(bytes: &[u8], count: usize) -> Result<Stl> {
         }
         builder.triangle(corners)?;
     }
-    Ok(builder.stl)
+    Ok(builder.finish())
 }
 
 /// The words of an ASCII solid, one at a time.
@@ -338,27 +399,57 @@ fn parse_ascii(text: &str) -> Result<Stl> {
     let mut words = Words(text.split_ascii_whitespace());
     words.expect("solid")?;
     let mut builder = Builder::default();
+    // The solid's name is free text up to the first facet.
+    let mut name: Vec<String> = Vec::new();
+    let mut named = false;
+    let mut solids = 0usize;
     loop {
-        // The solid's name is free text up to the first facet.
         match words.next()? {
-            "endsolid" => return Ok(builder.stl),
-            "facet" => {}
-            _ => continue,
+            "endsolid" => {
+                // More solids may follow in the same file; the words in between are the name
+                // that closes this one.
+                loop {
+                    match words.0.next() {
+                        None => return Ok(builder.finish()),
+                        Some("solid") => break,
+                        Some(_) => {}
+                    }
+                }
+                name.clear();
+                named = false;
+            }
+            "facet" => {
+                if !named {
+                    solids += 1;
+                    let label = if name.is_empty() {
+                        format!("solid{solids}")
+                    } else {
+                        name.join(" ")
+                    };
+                    builder.part(&label);
+                    named = true;
+                }
+                let n = builder.stl.triangles.len();
+                let at = |e: MeshError| MeshError::Invalid(format!("triangle {n}: {e}"));
+                words.expect("normal").map_err(at)?;
+                words.point().map_err(at)?;
+                words.expect("outer").map_err(at)?;
+                words.expect("loop").map_err(at)?;
+                let mut corners = [[0.0; 3]; 3];
+                for corner in &mut corners {
+                    words.expect("vertex").map_err(at)?;
+                    *corner = words.point().map_err(at)?;
+                }
+                builder.triangle(corners)?;
+                words.expect("endloop").map_err(at)?;
+                words.expect("endfacet").map_err(at)?;
+            }
+            word => {
+                if !named && name.len() < 16 {
+                    name.push(word.to_owned());
+                }
+            }
         }
-        let n = builder.stl.triangles.len();
-        let at = |e: MeshError| MeshError::Invalid(format!("triangle {n}: {e}"));
-        words.expect("normal").map_err(at)?;
-        words.point().map_err(at)?;
-        words.expect("outer").map_err(at)?;
-        words.expect("loop").map_err(at)?;
-        let mut corners = [[0.0; 3]; 3];
-        for corner in &mut corners {
-            words.expect("vertex").map_err(at)?;
-            *corner = words.point().map_err(at)?;
-        }
-        builder.triangle(corners)?;
-        words.expect("endloop").map_err(at)?;
-        words.expect("endfacet").map_err(at)?;
     }
 }
 
@@ -504,5 +595,33 @@ mod tests {
         // A locale that writes 1,5 does not make a valid STL: reported, not misread.
         let text = ascii(&cube()).replacen("vertex 0 0 0", "vertex 0,5 0 0", 1);
         assert!(Stl::parse(text.as_bytes()).is_err());
+    }
+
+    #[test]
+    fn the_solids_of_an_ascii_file_are_its_parts() {
+        let facet = |z: f64| {
+            format!(
+                "facet normal 0 0 1\nouter loop\nvertex 0 0 {z}\nvertex 1 0 {z}\nvertex 0 1 {z}\n\
+                 endloop\nendfacet\n"
+            )
+        };
+        let text = format!(
+            "solid left wing\n{}{}endsolid left wing\nsolid\n{}endsolid\n",
+            facet(0.0),
+            facet(1.0),
+            facet(2.0)
+        );
+        let stl = Stl::parse(text.as_bytes()).unwrap();
+        assert_eq!(stl.triangles.len(), 3);
+        let parts: Vec<_> = stl
+            .parts
+            .iter()
+            .map(|p| (p.name.as_str(), p.start, p.end))
+            .collect();
+        assert_eq!(parts, [("left wing", 0, 2), ("solid2", 2, 3)]);
+        // One solid is one part, and a binary file names nothing.
+        let one = Stl::parse(format!("solid a\n{}endsolid a\n", facet(0.0)).as_bytes()).unwrap();
+        assert_eq!(one.parts.len(), 1);
+        assert!(Stl::parse(&one.to_binary()).unwrap().parts.is_empty());
     }
 }

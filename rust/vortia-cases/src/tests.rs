@@ -1034,10 +1034,15 @@ fn unit_sphere(depth: usize) -> vortia_mesh::stl::Stl {
     vortia_mesh::stl::Stl {
         vertices: points,
         triangles: tris,
+        ..Default::default()
     }
 }
 
 fn small_body(model: BodyModel) -> Body {
+    small_body_around(unit_sphere(2), model)
+}
+
+fn small_body_around(surface: vortia_mesh::stl::Stl, model: BodyModel) -> Body {
     Body {
         cells: 1,
         levels: 2,
@@ -1047,7 +1052,7 @@ fn small_body(model: BodyModel) -> Body {
         lateral: 1.5,
         model,
         reynolds: 100.0,
-        ..Body::new(unit_sphere(2))
+        ..Body::new(surface)
     }
 }
 
@@ -1084,6 +1089,74 @@ fn the_flow_around_a_body_has_its_wall_a_tunnel_and_a_solvable_mesh() {
         "air {} for a tunnel of {tunnel} around a sphere of {sphere}",
         geo.total_volume()
     );
+}
+
+/// Two spheres a diameter apart in one surface, named "front" and "rear wing".
+fn two_spheres() -> vortia_mesh::stl::Stl {
+    let one = unit_sphere(2);
+    let n = one.triangles.len();
+    let offset = one.vertices.len() as u32;
+    let mut vertices: Vec<[f64; 3]> = one
+        .vertices
+        .iter()
+        .map(|p| [p[0] - 1.0, p[1], p[2]])
+        .collect();
+    vertices.extend(one.vertices.iter().map(|p| [p[0] + 1.0, p[1], p[2]]));
+    let mut triangles = one.triangles.clone();
+    triangles.extend(one.triangles.iter().map(|t| t.map(|i| i + offset)));
+    let part = |name: &str, start, end| vortia_mesh::stl::SurfacePart {
+        name: name.into(),
+        start,
+        end,
+    };
+    vortia_mesh::stl::Stl {
+        vertices,
+        triangles,
+        parts: vec![part("front", 0, n), part("rear wing", n, 2 * n)],
+    }
+}
+
+#[test]
+fn a_body_of_several_parts_has_a_wall_for_each_with_its_boundary_conditions() {
+    let body = |by_part: bool| Body {
+        by_part,
+        ..small_body_around(two_spheres(), BodyModel::SpalartAllmaras)
+    };
+    let dir = tempfile::tempdir().unwrap();
+    create(dir.path(), &Geometry::Body(body(true))).unwrap();
+    let mesh = PolyMesh::read_case(dir.path()).unwrap();
+    let geo = MeshGeometry::compute(&mesh);
+    assert!(check(&mesh, &geo).unsolvable().is_empty());
+    let names: Vec<&str> = mesh.patches().iter().map(|p| p.name.as_str()).collect();
+    assert!(!names.contains(&"body"), "{names:?}");
+    for patch in ["body_front", "body_rear_wing"] {
+        let found = mesh.patch(patch).unwrap();
+        assert_eq!(found.kind.name(), "wall");
+        // The two spheres are alike, so each has about half the wall (the cells are coarse),
+        // and every one has its conditions.
+        let area: f64 = found.faces().map(|f| geo.face_areas[f].norm()).sum();
+        let total: f64 = names
+            .iter()
+            .filter(|n| n.starts_with("body_"))
+            .map(|n| {
+                let p = mesh.patch(n).unwrap();
+                p.faces().map(|f| geo.face_areas[f].norm()).sum::<f64>()
+            })
+            .sum();
+        assert!(
+            (area / total - 0.5).abs() < 0.15,
+            "{patch}: {area} of {total}"
+        );
+        for field in ["0/U", "0/nuTilda", "0/nut"] {
+            assert!(read(dir.path(), field).contains(patch), "{field}: {patch}");
+        }
+    }
+    assert!(!read(dir.path(), "0/U").contains("    body\n"));
+    // Switched off, the wall is one patch again.
+    let dir = tempfile::tempdir().unwrap();
+    create(dir.path(), &Geometry::Body(body(false))).unwrap();
+    let mesh = PolyMesh::read_case(dir.path()).unwrap();
+    assert!(mesh.patch("body").is_some() && mesh.patch("body_front").is_none());
 }
 
 #[test]

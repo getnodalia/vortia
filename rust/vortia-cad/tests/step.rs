@@ -97,4 +97,13 @@ fn an_assembly_puts_each_instance_of_a_part_where_the_file_places_it() {
     assert!(near(s.high[0], 0.7484), "{:?}", s.high);
     assert!(near(s.low[0], -0.0333), "{:?}", s.low);
     assert!(near(s.low[1], 0.0255) && near(s.high[1], 0.0855), "{s:?}");
+    // Each instance is a part of the surface, named after its solid: four runs that cover
+    // every triangle, and two names.
+    let surface = &read.surface;
+    assert_eq!(surface.parts.len(), 4, "{:?}", surface.parts);
+    assert!(surface.part_of_each().is_some());
+    let mut names: Vec<_> = surface.parts.iter().map(|p| p.name.as_str()).collect();
+    names.sort_unstable();
+    names.dedup();
+    assert_eq!(names.len(), 2, "{names:?}");
 }
