@@ -74,6 +74,12 @@ limit is listed in
 | <img src="docs/screenshots/body-wake-dark.webp" alt="Flow around a sphere at Reynolds 100: the speed on a cut through the middle, streamlines, and the wake behind the body"> | <img src="docs/screenshots/body-wake-light.webp" alt="The same view in the light theme"> |
 | A 3D body: speed on a cut through its middle with streamlines (the 3D view takes the whole window) | The same, in the light theme |
 
+| <img src="docs/screenshots/new-case-dark.webp" alt="New case: a gallery of cards for every kind of case, grouped by what you start from"> | <img src="docs/screenshots/new-case-light.webp" alt="The same gallery in the light theme"> |
+| New case: every kind of case on a card, with the CAD icons shared by Nodalia's engineering apps | The same, in the light theme |
+
+| <img src="docs/screenshots/cad-sketch-dark.webp" alt="The region editor: ribbon of tools, Browser, canvas with named edges and constraints, properties and status bar"> | <img src="docs/screenshots/cad-part-dark.webp" alt="The part modeller: a NACA wing built on Nodalia's solid kernel, with its features on the left and the flow settings on the right"> |
+| The region editor: ribbon, Browser, canvas, dimensions and degrees of freedom | The part modeller: a wing, its features and the flow around it |
+
 The sphere pictures come from `vortia new body DIR sphere.stl model=0 reynolds=100 levels=6` and `vortia solve DIR`
 (124 276 cells, converged in 197 iterations). The jet's results view shows the `examples/nozzle-practice-2026` case; the sketch is a
 nozzle made with the sketch's generator. The airfoil pictures come from
