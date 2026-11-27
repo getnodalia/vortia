@@ -55,6 +55,7 @@ const USAGE: &str = "usage: vortia new channel|cavity|plate|airfoil|nozzle|nozzl
     \x20      vortia gmshtofoam [-keepOrientation] FILE [CASE]\n\
     \x20      vortia fluenttofoam [-scale F] [-2D T] [-writeZones] FILE [CASE]\n\
     \x20      vortia cgnstofoam [-scale F] [-2D T] [-writeZones] FILE [CASE]\n\
+    \x20      vortia foamtofluent [-type PATCH=TYPE]... FILE [CASE]\n\
     \x20      vortia probe CASE FIELD X Y Z [TIME]\n\
     \x20      vortia sample CASE FIELD X0 Y0 Z0 X1 Y1 Z1 POINTS [TIME]\n\
     \x20      vortia streamline CASE FIELD X Y Z [-backward] [TIME]\n\
@@ -85,6 +86,7 @@ const USAGE: &str = "usage: vortia new channel|cavity|plate|airfoil|nozzle|nozzl
     gmshtofoam   convert a Gmsh .msh file into CASE/constant/polyMesh\n\
     fluenttofoam convert a Fluent .msh file into CASE/constant/polyMesh\n\
     cgnstofoam   convert a CGNS (ADF) file into CASE/constant/polyMesh\n\
+    foamtofluent write CASE/constant/polyMesh as a Fluent .msh file (ASCII)\n\
     probe        the value of FIELD in the cell holding the point\n\
     sample       FIELD along a line, as CSV: distance, point, cell, value\n\
     streamline   the path a particle follows through a vector FIELD, as CSV\n\
@@ -134,6 +136,7 @@ fn main() -> ExitCode {
             vortia_mesh::fluent::fluent_to_foam(&String::from_utf8_lossy(bytes), options)
         }),
         ["cgnstofoam", rest @ ..] => import("cgnstofoam", rest, vortia_mesh::cgns::cgns_to_foam),
+        ["foamtofluent", rest @ ..] => foamtofluent(rest),
         ["setfields"] => setfields(Path::new(".")),
         ["setfields", case] => setfields(Path::new(case)),
         ["solve"] => solve(Path::new(".")),
@@ -232,6 +235,53 @@ fn import(
                 mesh.neighbour.len(),
                 mesh.owner.iter().max().map_or(0, |m| m + 1)
             );
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("vortia: {}", shown(&e));
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// `foamtofluent`: a case's mesh as a Fluent `.msh` file.
+fn foamtofluent(args: &[&str]) -> ExitCode {
+    let mut options = vortia_mesh::fluent_write::WriteOptions::default();
+    let mut files = Vec::new();
+    let mut it = args.iter();
+    while let Some(&arg) = it.next() {
+        if arg == "-type" {
+            match it.next().and_then(|v| v.split_once('=')) {
+                Some((patch, kind)) => options
+                    .boundary_types
+                    .push((patch.to_owned(), kind.to_owned())),
+                None => return usage_error("-type needs PATCH=TYPE"),
+            }
+        } else {
+            files.push(arg);
+        }
+    }
+    let (file, case) = match files.as_slice() {
+        [file] => (*file, "."),
+        [file, case] => (*file, *case),
+        _ => return usage_error("foamtofluent takes a file and, optionally, a case"),
+    };
+    let result = vortia_foamfile::RawPolyMesh::read_case(case)
+        .map_err(|e| e.to_string())
+        .and_then(|mesh| {
+            vortia_mesh::fluent_write::foam_to_fluent(&mesh, &options).map_err(|e| e.to_string())
+        })
+        .and_then(|written| {
+            std::fs::write(file, &written.text)
+                .map(|()| written)
+                .map_err(|e| format!("cannot write {file}: {e}"))
+        });
+    match result {
+        Ok(written) => {
+            for warning in &written.warnings {
+                eprintln!("vortia: {}", shown(warning));
+            }
+            out!("Wrote {file}");
             ExitCode::SUCCESS
         }
         Err(e) => {
