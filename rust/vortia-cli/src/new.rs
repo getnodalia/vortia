@@ -1,5 +1,6 @@
 //! `vortia new`: starts a case, as the app's Home "New" does.
 
+use std::io::Write as _;
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -293,7 +294,7 @@ fn from_section(dir: &str, file: &str, settings: &[&str]) -> ExitCode {
     }
 }
 
-/// `vortia new body DIR FILE.stl|.obj|.step [scale=F] [NAME=VALUE...]`: the flow around a closed
+/// `vortia new body DIR FILE.stl|.obj|.ply|.gltf|.glb|.step [scale=F] [NAME=VALUE...]`: the flow around a closed
 /// surface in a wind tunnel, meshed by octree refinement. A STEP file carries its own unit; an
 /// STL or OBJ is in metres unless `scale` says otherwise (0.001 for millimetres). `solid=MATERIAL`
 /// (or `conductivity=W/mK`) makes the body a solid that conducts heat to the air, and `heat=W`
@@ -303,6 +304,7 @@ fn from_body(dir: &str, file: &str, settings: &[&str]) -> ExitCode {
         let mut surface = vortia_cad::load(Path::new(file)).map_err(|e| e.to_string())?;
         let mut rest = Vec::new();
         let mut material = None;
+        let mut repair = false;
         for setting in settings {
             let (name, value) = setting
                 .split_once('=')
@@ -310,6 +312,11 @@ fn from_body(dir: &str, file: &str, settings: &[&str]) -> ExitCode {
             // The material the body is made of is a word, not a number.
             if name == "solid" {
                 material = Some(value);
+                continue;
+            }
+            // `repair=1` welds, mends and winds the surface before the case is made.
+            if name == "repair" {
+                repair = value != "0";
                 continue;
             }
             let number: f64 = value
@@ -321,6 +328,15 @@ fn from_body(dir: &str, file: &str, settings: &[&str]) -> ExitCode {
             } else {
                 rest.push((name, number));
             }
+        }
+        if repair {
+            let (mended, report) =
+                vortia_mesh::repair::repair(&surface, vortia_mesh::repair::Options::default())
+                    .map_err(|e| e.to_string())?;
+            for line in report.describe() {
+                out!("repair: {line}");
+            }
+            surface = mended;
         }
         let mut body = vortia_cases::Body::new(surface);
         if let Some(name) = material {

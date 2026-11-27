@@ -3,7 +3,7 @@
 //!
 //! - [`dxf`]: DXF drawings (Forja's reader) as closed 2D outlines for the triangle mesher.
 //! - [`step`]: STEP (ISO 10303) solids, read and tessellated by Nodalia's solidcore kernel.
-//! - [`load`]: any surface file by its extension (STEP here, STL and OBJ in `vortia-mesh`).
+//! - [`load`]: any surface file by its extension (STEP here, STL, OBJ, PLY and glTF in `vortia-mesh`).
 //!
 //! Lengths come out in metres, as the rest of Vortia has them.
 
@@ -27,7 +27,7 @@ use std::path::Path;
 use vortia_mesh::Result;
 use vortia_mesh::stl::Stl;
 
-/// Reads a surface file: STEP (`.step`, `.stp`) through the CAD kernel, STL and OBJ as they are.
+/// Reads a surface file: STEP (`.step`, `.stp`) through the CAD kernel, STL, OBJ, PLY and glTF as they are.
 pub fn load(path: &Path) -> Result<Stl> {
     let extension = path
         .extension()

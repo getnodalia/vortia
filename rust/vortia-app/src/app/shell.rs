@@ -612,7 +612,7 @@ impl VortiaApp {
                     let width = (ui.available_width() - 120.0).clamp(160.0, 420.0);
                     let field = ui.add(
                         egui::TextEdit::singleline(stl_input)
-                            .hint_text(tr("An STL, OBJ, STEP or DXF file, a Fluent case (.cas.h5, .msh) or a Workbench project (.wbpj)"))
+                            .hint_text(tr("An STL, OBJ, PLY, glTF, STEP or DXF file, a Fluent case (.cas.h5, .msh) or a Workbench project (.wbpj)"))
                             .desired_width(width),
                     );
                     let enter = field.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));

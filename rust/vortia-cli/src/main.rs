@@ -35,6 +35,7 @@ macro_rules! out {
 mod forces;
 mod new;
 mod post;
+mod repair;
 mod section;
 mod sketch;
 
@@ -42,9 +43,10 @@ const USAGE: &str = "usage: vortia new channel|cavity|plate|airfoil|nozzle|nozzl
     \x20      vortia new sketch DIR FILE [planar|axisymmetric] [segments=N] [NAME=VALUE...]\n\
     \x20      vortia new region DIR FILE.sketch|.dxf [scale=F] [NAME=VALUE...]\n\
     \x20      vortia new section DIR FILE.dxf [upstream=F] [downstream=F] [lateral=F] [scale=F] [NAME=VALUE...]\n\
-    \x20      vortia new body DIR FILE.stl|.obj|.step [scale=F] [NAME=VALUE...]\n\
+    \x20      vortia new body DIR FILE.stl|.obj|.ply|.gltf|.glb|.step [scale=F] [NAME=VALUE...]\n\
     \x20      vortia sketch template duct|nozzle|rounded-nozzle|channel-with-block FILE [NAME=VALUE...]\n\
     \x20      vortia sketch info FILE\n\
+    \x20      vortia repair FILE OUT.stl [weld=F] [max-hole=N]\n\
     \x20      vortia check-mesh [CASE]\n\
     \x20      vortia fields [CASE [TIME]]\n\
     \x20      vortia solve [CASE]\n\
@@ -115,6 +117,7 @@ fn main() -> ExitCode {
     {
         ["new", rest @ ..] => new::run(rest),
         ["sketch", rest @ ..] => sketch::run(rest),
+        ["repair", rest @ ..] => repair::run(rest),
         ["check-mesh"] => check_mesh(Path::new(".")),
         ["check-mesh", case] => check_mesh(Path::new(case)),
         ["blockmesh"] => blockmesh(Path::new(".")),

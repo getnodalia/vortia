@@ -3227,6 +3227,7 @@ dependencies = [
 name = "vortia-mesh"
 version = "0.15.0"
 dependencies = [
+ "serde_json",
  "tempfile",
  "thiserror 2.0.21",
  "vortia-core",

@@ -280,8 +280,8 @@ pub const ES: &[(&str, &str)] = &[
     ("Cell size", "Tamaño de celda"),
     ("Symmetry plane on the axis", "Plano de simetría en el eje"),
     (
-        "An STL, OBJ, STEP or DXF file, a Fluent case (.cas.h5, .msh) or a Workbench project (.wbpj)",
-        "Un archivo STL, OBJ, STEP o DXF, un caso de Fluent (.cas.h5, .msh) o un proyecto de Workbench (.wbpj)",
+        "An STL, OBJ, PLY, glTF, STEP or DXF file, a Fluent case (.cas.h5, .msh) or a Workbench project (.wbpj)",
+        "Un archivo STL, OBJ, PLY, glTF, STEP o DXF, un caso de Fluent (.cas.h5, .msh) o un proyecto de Workbench (.wbpj)",
     ),
     (
         "{} cells, {} faces, {} points",
@@ -568,8 +568,8 @@ pub const ES: &[(&str, &str)] = &[
         "Una pieza que modelas aquí con el núcleo propio de Nodalia, como el de Torno y Forja: cajas, cilindros, conos, esferas, toros, un perfil alar o un contorno DXF extruido a lo largo de un eje, un contorno girado alrededor de él, cada uno sumado a la pieza, restado de ella o intersecado con ella. El flujo alrededor se malla en 3D por refinamiento de octree (Spalart–Allmaras o k-ω SST); la pieza también se puede guardar como STL. La resistencia es la fuerza sobre el parche `body`.",
     ),
     (
-        "A body read from a file in a wind tunnel built around it: an STL, OBJ or STEP surface is meshed in 3D by octree refinement (Spalart–Allmaras or k-ω SST), a DXF drawing, say the side of a car or a wing section, in 2D with triangles (laminar, incompressible). The drag is the force on the patch `body`.",
-        "Un cuerpo leído de un archivo en un túnel de viento construido a su alrededor: una superficie STL, OBJ o STEP se malla en 3D por refinamiento de octree (Spalart–Allmaras o k-ω SST); un dibujo DXF, por ejemplo el perfil de un coche o una sección de ala, se malla en 2D con triángulos (laminar, incompresible). La resistencia es la fuerza sobre el parche `body`.",
+        "A body read from a file in a wind tunnel built around it: an STL, OBJ, PLY, glTF or STEP surface is meshed in 3D by octree refinement (Spalart–Allmaras or k-ω SST), a DXF drawing, say the side of a car or a wing section, in 2D with triangles (laminar, incompressible). The drag is the force on the patch `body`.",
+        "Un cuerpo leído de un archivo en un túnel de viento construido a su alrededor: una superficie STL, OBJ, PLY, glTF o STEP se malla en 3D por refinamiento de octree (Spalart–Allmaras o k-ω SST); un dibujo DXF, por ejemplo el perfil de un coche o una sección de ala, se malla en 2D con triángulos (laminar, incompresible). La resistencia es la fuerza sobre el parche `body`.",
     ),
     ("Say which file to read.", "Indica qué archivo leer."),
     (
@@ -578,14 +578,14 @@ pub const ES: &[(&str, &str)] = &[
     ),
     ("Read a file first.", "Lee antes un archivo."),
     (
-        "A .stl, .obj, .step or .dxf file",
-        "Un archivo .stl, .obj, .step o .dxf",
+        "A .stl, .obj, .ply, .gltf, .glb, .step or .dxf file",
+        "Un archivo .stl, .obj, .ply, .gltf, .glb, .step o .dxf",
     ),
     ("Read file", "Leer archivo"),
     ("Scale of the file", "Escala del archivo"),
     (
-        "Multiplies every length of the file: 0.001 turns the millimetres of an STL or OBJ into metres. A STEP file carries its own unit.",
-        "Multiplica todas las longitudes del archivo: 0,001 convierte en metros los milímetros de un STL u OBJ. Un archivo STEP lleva su propia unidad.",
+        "Multiplies every length of the file: 0.001 turns the millimetres of an STL, OBJ, PLY or glTF into metres. A STEP file carries its own unit.",
+        "Multiplica todas las longitudes del archivo: 0,001 convierte en metros los milímetros de un STL, OBJ, PLY o glTF. Un archivo STEP lleva su propia unidad.",
     ),
     ("The body", "El cuerpo"),
     (
@@ -595,6 +595,44 @@ pub const ES: &[(&str, &str)] = &[
     (
         "The surface is not closed: {} open edges, {} shared by more than two triangles.",
         "La superficie no es cerrada: {} aristas abiertas, {} compartidas por más de dos triángulos.",
+    ),
+    ("Repair the surface", "Reparar la superficie"),
+    (
+        "Welds the corners written twice, takes out triangles with no area and repeated ones, turns triangles to agree, and fills small holes. What it cannot decide is left and counted.",
+        "Une las esquinas escritas dos veces, quita los triángulos sin área y los repetidos, gira los triángulos para que concuerden y rellena los agujeros pequeños. Lo que no puede decidir se deja y se cuenta.",
+    ),
+    (
+        "{} corners welded into their neighbours",
+        "{} esquinas unidas a las vecinas",
+    ),
+    (
+        "{} triangles with no area removed",
+        "{} triángulos sin área quitados",
+    ),
+    (
+        "{} repeated triangles removed",
+        "{} triángulos repetidos quitados",
+    ),
+    (
+        "{} triangles turned to agree with their neighbours",
+        "{} triángulos girados para concordar con sus vecinos",
+    ),
+    (
+        "{} closed pieces turned right way out",
+        "{} piezas cerradas puestas del derecho",
+    ),
+    (
+        "{} holes filled with {} triangles",
+        "{} agujeros rellenados con {} triángulos",
+    ),
+    ("Nothing needed repairing.", "No hacía falta reparar nada."),
+    (
+        "The surface is now closed and consistently wound: {} triangles.",
+        "La superficie ya es cerrada y coherente: {} triángulos.",
+    ),
+    (
+        "Still not closed: {} open edges, {} shared by more than two triangles, {} edges wound against their neighbour.",
+        "Sigue sin cerrarse: {} aristas abiertas, {} compartidas por más de dos triángulos, {} aristas orientadas al revés que su vecina.",
     ),
     (
         "Reference length (0: along the stream)",

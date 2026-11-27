@@ -91,7 +91,7 @@ impl Kind {
                 "A duct whose wall you dimension in a sketch: lines and arcs held by lengths, heights and radii, meshed by Vortia itself and run as a nozzle (rhoSimpleFoam). The sketch is kept in the case."
             }
             Kind::Imported => {
-                "A body read from a file in a wind tunnel built around it: an STL, OBJ or STEP surface is meshed in 3D by octree refinement (Spalart–Allmaras or k-ω SST), a DXF drawing, say the side of a car or a wing section, in 2D with triangles (laminar, incompressible). The drag is the force on the patch `body`."
+                "A body read from a file in a wind tunnel built around it: an STL, OBJ, PLY, glTF or STEP surface is meshed in 3D by octree refinement (Spalart–Allmaras or k-ω SST), a DXF drawing, say the side of a car or a wing section, in 2D with triangles (laminar, incompressible). The drag is the force on the patch `body`."
             }
             Kind::Modelled => {
                 "A part you model here with Nodalia's own kernel, like the ones of Torno and Forja: boxes, cylinders, cones, spheres, tori, a wing section or a DXF outline pushed along an axis, an outline turned about it, each added to the part, cut out of it or intersected with it. The flow around it is meshed in 3D by octree refinement (Spalart–Allmaras or k-ω SST); the part can also be saved as an STL. The drag is the force on the patch `body`."
