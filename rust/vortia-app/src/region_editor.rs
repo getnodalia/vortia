@@ -604,7 +604,7 @@ impl RegionEditor {
         let edges = self.drawing();
         let (x0, x1, y0, y1) = bounds(&edges).unwrap_or((0.0, 400.0, 0.0, 200.0));
         let (w, h) = ((x1 - x0).max(50.0), (y1 - y0).max(50.0));
-        self.view = (x0 - 0.15 * w, x1 + 0.15 * w, y0 - 0.15 * h, y1 + 0.15 * h);
+        self.view = (x0 - 0.08 * w, x1 + 0.08 * w, y0 - 0.08 * h, y1 + 0.08 * h);
     }
 
     /// Where a click at `(x, y)` lands: on the point of the sketch within `tolerance`, else on

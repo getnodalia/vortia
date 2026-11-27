@@ -683,6 +683,7 @@ pub const ES: &[(&str, &str)] = &[
     ("Display", "Mostrar"),
     ("Show the case panel", "Mostrar el panel del caso"),
     ("Hide the case panel", "Ocultar el panel del caso"),
+    ("Properties", "Propiedades"),
     ("Wall by part", "Pared por pieza"),
     (
         "A wall for each of the {} parts, to read their forces apart",

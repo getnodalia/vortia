@@ -6,6 +6,7 @@ use eframe::egui::{
     self, Color32, CornerRadius, Mesh, PointerButton, Pos2, Sense, Stroke, Vec2, vec2,
 };
 
+use nodalia_theme::{Palette, for_egui, icons};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Receiver;
@@ -28,8 +29,14 @@ pub fn set_default_cell_edges(on: bool) {
     DEFAULT_CELL_EDGES.store(on, Ordering::Relaxed);
 }
 
-/// The width of the list of patches beside the picture.
-const LEGEND: f32 = 220.0;
+/// The width of the display panel's controls.
+const PANEL: f32 = 248.0;
+/// The width of the colour scale shown while the panel is shut.
+const SCALE: f32 = 200.0;
+/// The room between what floats and the picture's edge.
+const GAP: f32 = 12.0;
+/// The height of the pill that opens the panel, frame included.
+const PILL: f32 = 40.0;
 
 /// The colours of the patches, in turn; the ones that close the domain in 2-D are grey.
 const PALETTE: [Color32; 7] = [
@@ -548,41 +555,48 @@ impl Viewer {
         self.overlay(ui, muted, source);
     }
 
-    /// The choices over the picture's top right corner: a button that opens them, and the
-    /// colour scale along the bottom while they are shut.
+    /// The choices over the picture's top right corner: a pill that opens them, the panel
+    /// under it, and the colour scale along the bottom while the panel is shut.
     fn overlay(&mut self, ui: &mut egui::Ui, muted: Color32, source: &Source) {
         let rect = self.picture_rect;
         let ctx = ui.ctx().clone();
+        let p = crate::app::palette(&ctx);
+        let id = ui.scope_id().with("viewer-overlay");
         let open = self.legend_open;
         let mut toggle = false;
-        egui::Area::new(egui::Id::unique("viewer-overlay"))
+        egui::Area::new(id.with("pill"))
             .order(egui::Order::Foreground)
-            .fixed_pos(rect.right_top() + vec2(-8.0, 8.0))
+            .fixed_pos(rect.right_top() + vec2(-GAP, GAP))
             .pivot(egui::Align2::RIGHT_TOP)
-            .show(&ctx, |ui| {
-                ui.set_max_width(LEGEND + 24.0);
-                // An area's room is what it took last frame, so ask for the picture's height
-                // or the scroll area inside would never grow past its first size.
-                ui.set_max_height((rect.height() - 16.0).max(80.0));
-                egui::Frame::popup(ui.style()).show(ui, |ui| {
-                    ui.set_width(if open { LEGEND + 6.0 } else { 90.0 });
-                    ui.horizontal(|ui| {
-                        let label = if open { tr("Hide") } else { tr("Display") };
-                        toggle = ui.small_button(label).clicked();
-                    });
-                    if open {
-                        ui.add_space(4.0);
+            .show(&ctx, |ui| toggle = display_pill(ui, &p, open));
+        if open {
+            let top = GAP + PILL + 8.0;
+            let room = (rect.height() - top - GAP).max(120.0);
+            egui::Area::new(id.with("panel"))
+                .order(egui::Order::Foreground)
+                .fixed_pos(rect.right_top() + vec2(-GAP, top))
+                .pivot(egui::Align2::RIGHT_TOP)
+                .show(&ctx, |ui| {
+                    // An area's room is what it took last frame, so ask for the picture's
+                    // height or the scroll area inside would never grow past its first size.
+                    ui.set_max_height(room);
+                    floating(&p, 12.0).show(ui, |ui| {
+                        ui.set_width(PANEL);
                         egui::ScrollArea::vertical()
                             .id_salt("viewer-legend")
-                            .max_height((rect.height() - 70.0).max(80.0))
-                            .show(ui, |ui| self.legend(ui, muted, source));
-                    }
+                            .max_height(room - 28.0)
+                            .show(ui, |ui| {
+                                ui.set_width(PANEL - 16.0);
+                                self.legend(ui, &p, muted, source);
+                            });
+                    });
                 });
-            });
+        }
         if toggle {
             self.legend_open = !self.legend_open;
         }
-        // With the choices shut the colour scale still says what the colours mean.
+        // With the panel shut the colour scale still says what the colours mean. It sits above
+        // the hint, which owns the bottom edge.
         let scale = match (&self.paint, &self.values) {
             (Some(paint), _) => Some((paint.name.clone(), paint.range())),
             (None, Some(Ok(values))) => Some((
@@ -598,13 +612,13 @@ impl Viewer {
         if !self.legend_open
             && let Some((what, range)) = scale
         {
-            egui::Area::new(egui::Id::unique("viewer-scale"))
+            egui::Area::new(id.with("scale"))
                 .order(egui::Order::Foreground)
-                .fixed_pos(rect.left_bottom() + vec2(8.0, -8.0))
+                .fixed_pos(rect.left_bottom() + vec2(GAP, -34.0))
                 .pivot(egui::Align2::LEFT_BOTTOM)
                 .show(&ctx, |ui| {
-                    egui::Frame::popup(ui.style()).show(ui, |ui| {
-                        ui.set_width(LEGEND - 12.0);
+                    floating(&p, 10.0).show(ui, |ui| {
+                        ui.set_width(SCALE);
                         scale_bar(ui, &what, range, muted);
                     });
                 });
@@ -813,19 +827,21 @@ impl Viewer {
     }
 
     /// The choice of field and time, and the colour scale of the field read.
-    fn field_choices(&mut self, ui: &mut egui::Ui, muted: Color32, source: &Source) {
+    fn field_choices(&mut self, ui: &mut egui::Ui, p: &Palette, muted: Color32, source: &Source) {
         if let Some(paint) = &self.paint {
             scale_bar(ui, &paint.name, paint.range(), muted);
-            ui.add_space(4.0);
+            ui.add_space(6.0);
             if ui.button(tr("Back to the field")).clicked() {
                 self.paint = None;
             }
-            ui.add_space(10.0);
+            ui.add_space(8.0);
         }
-        ui.label(egui::RichText::new(tr("Colour by")).color(muted));
+        ui.label(caption(tr("Colour by"), muted));
+        ui.add_space(4.0);
         let current = self.field.clone();
+        let width = ui.available_width();
         egui::ComboBox::from_id_salt("viewer-field")
-            .width(LEGEND - 12.0)
+            .width(width)
             .selected_text(current.as_deref().unwrap_or(tr("Patches")))
             .show_ui(ui, |ui| {
                 ui.selectable_value(&mut self.field, None, tr("Patches"));
@@ -834,93 +850,106 @@ impl Viewer {
                     ui.selectable_value(&mut self.field, Some(name.clone()), name);
                 }
             });
-        if self.field.is_some() {
-            let shown = self
-                .time
-                .clone()
-                .or_else(|| source.times.last().cloned())
-                .unwrap_or_else(|| "0".to_owned());
-            ui.add_space(4.0);
-            egui::ComboBox::from_id_salt("viewer-time")
-                .width(LEGEND - 12.0)
-                .selected_text(trf("Time {}", &[&shown]))
-                .show_ui(ui, |ui| {
-                    for time in source.times.iter().rev() {
-                        ui.selectable_value(&mut self.time, Some(time.clone()), time);
-                    }
-                });
-            ui.add_space(6.0);
-            match &self.values {
-                Some(Ok(values)) => {
-                    let what = if values.kind == "vector" {
-                        format!("{}, length", values.name)
-                    } else {
-                        values.name.clone()
-                    };
-                    scale_bar(ui, &what, values.range, muted);
+        if self.field.is_none() {
+            return;
+        }
+        let shown = self
+            .time
+            .clone()
+            .or_else(|| source.times.last().cloned())
+            .unwrap_or_else(|| "0".to_owned());
+        ui.add_space(4.0);
+        egui::ComboBox::from_id_salt("viewer-time")
+            .width(width)
+            .selected_text(trf("Time {}", &[&shown]))
+            .show_ui(ui, |ui| {
+                for time in source.times.iter().rev() {
+                    ui.selectable_value(&mut self.time, Some(time.clone()), time);
+                }
+            });
+        ui.add_space(8.0);
+        match &self.values {
+            Some(Ok(values)) => {
+                let what = if values.kind == "vector" {
+                    format!("{}, length", values.name)
+                } else {
+                    values.name.clone()
+                };
+                scale_bar(ui, &what, values.range, muted);
+                let vector = values.kind == "vector";
+                self.slice_controls(ui, p, muted);
+                if vector {
                     ui.add_space(6.0);
-                    ui.checkbox(&mut self.slice, tr("Slice"));
-                    if self.slice {
-                        ui.horizontal(|ui| {
-                            for (axis, name) in ["X", "Y", "Z"].into_iter().enumerate() {
-                                ui.selectable_value(&mut self.slice_axis, axis, name);
-                            }
-                        });
-                        ui.spacing_mut().slider_width = LEGEND - 12.0;
-                        ui.add(egui::Slider::new(&mut self.slice_pos, 0.0..=1.0).show_value(false));
-                        match &self.section {
-                            Some(Ok(s)) => {
-                                ui.label(
-                                    egui::RichText::new(format!(
-                                        "{} = {}",
-                                        ["x", "y", "z"].get(s.axis).copied().unwrap_or("?"),
-                                        fieldview::label(s.offset)
-                                    ))
-                                    .size(11.0)
-                                    .color(muted),
-                                );
-                            }
-                            Some(Err(message)) => {
-                                ui.label(egui::RichText::new(message).size(11.0).color(muted));
-                            }
-                            None => {
-                                ui.horizontal(|ui| {
-                                    ui.spinner();
-                                    ui.label(egui::RichText::new(tr("Cutting…")).color(muted));
-                                });
-                            }
+                    ui.checkbox(&mut self.lines, tr("Streamlines"));
+                    ui.checkbox(&mut self.arrows, tr("Arrows"));
+                    match &self.flow {
+                        Some(Err(message)) => {
+                            ui.label(egui::RichText::new(message).size(11.0).color(muted));
                         }
-                    }
-                    if values.kind == "vector" {
-                        ui.add_space(6.0);
-                        ui.checkbox(&mut self.lines, tr("Streamlines"));
-                        ui.checkbox(&mut self.arrows, tr("Arrows"));
-                        match &self.flow {
-                            Some(Err(message)) => {
-                                ui.label(egui::RichText::new(message).size(11.0).color(muted));
-                            }
-                            None if self.lines || self.arrows => {
-                                ui.horizontal(|ui| {
-                                    ui.spinner();
-                                    ui.label(egui::RichText::new(tr("Following…")).color(muted));
-                                });
-                            }
-                            _ => {}
+                        None if self.lines || self.arrows => {
+                            ui.horizontal(|ui| {
+                                ui.spinner();
+                                ui.label(egui::RichText::new(tr("Following…")).color(muted));
+                            });
                         }
+                        _ => {}
                     }
-                }
-                Some(Err(message)) => {
-                    ui.label(egui::RichText::new(message).size(11.0).color(muted));
-                }
-                None => {
-                    ui.horizontal(|ui| {
-                        ui.spinner();
-                        ui.label(egui::RichText::new(tr("Reading…")).color(muted));
-                    });
                 }
             }
+            Some(Err(message)) => {
+                ui.label(egui::RichText::new(message).size(11.0).color(muted));
+            }
+            None => {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label(egui::RichText::new(tr("Reading…")).color(muted));
+                });
+            }
         }
+    }
+
+    /// The slice: whether, along which axis, and where.
+    fn slice_controls(&mut self, ui: &mut egui::Ui, p: &Palette, muted: Color32) {
         ui.add_space(10.0);
+        ui.checkbox(&mut self.slice, tr("Slice"));
+        if !self.slice {
+            return;
+        }
+        ui.add_space(4.0);
+        let gap = ui.spacing().item_spacing.x;
+        let width = ((ui.available_width() - 2.0 * gap) / 3.0).floor();
+        ui.horizontal(|ui| {
+            for (axis, name) in ["X", "Y", "Z"].into_iter().enumerate() {
+                let button = egui::Button::selectable(self.slice_axis == axis, name);
+                if ui.add_sized([width, 26.0], button).clicked() {
+                    self.slice_axis = axis;
+                }
+            }
+        });
+        rail_slider(ui, p, &mut self.slice_pos);
+        match &self.section {
+            Some(Ok(s)) => {
+                ui.label(
+                    egui::RichText::new(format!(
+                        "{} = {}",
+                        ["x", "y", "z"].get(s.axis).copied().unwrap_or("?"),
+                        fieldview::label(s.offset)
+                    ))
+                    .monospace()
+                    .size(11.0)
+                    .color(muted),
+                );
+            }
+            Some(Err(message)) => {
+                ui.label(egui::RichText::new(message).size(11.0).color(muted));
+            }
+            None => {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label(egui::RichText::new(tr("Cutting…")).color(muted));
+                });
+            }
+        }
     }
 
     /// "Save picture" and what came of the last one.
@@ -933,8 +962,12 @@ impl Viewer {
         }
         let waiting = self.picture_rx.is_some();
         let ready = !waiting && !source.dir.as_os_str().is_empty();
+        let button = egui::Button::new(tr("Save picture"));
         if ui
-            .add_enabled(ready, egui::Button::new(tr("Save picture")))
+            .add_enabled_ui(ready, |ui| {
+                ui.add_sized([ui.available_width(), 28.0], button)
+            })
+            .inner
             .clicked()
         {
             let time = self
@@ -968,46 +1001,145 @@ impl Viewer {
                     .color(color),
             );
         }
-        ui.add_space(6.0);
     }
 
-    fn legend(&mut self, ui: &mut egui::Ui, muted: Color32, source: &Source) {
-        self.field_choices(ui, muted, source);
+    fn legend(&mut self, ui: &mut egui::Ui, p: &Palette, muted: Color32, source: &Source) {
+        self.field_choices(ui, p, muted, source);
+        ui.add_space(10.0);
         if self.surface.face_count() <= MAX_OUTLINED_FACES {
             ui.checkbox(&mut self.outlines, tr("Cell edges"));
             ui.add_space(6.0);
         }
         self.picture_button(ui, muted, source);
-        ui.label(egui::RichText::new(tr("Patches")).color(muted));
+        ui.add_space(12.0);
+        ui.label(caption(tr("Patches"), muted));
+        for (index, (patch, shown)) in self
+            .surface
+            .patches
+            .iter()
+            .zip(self.visible.iter_mut())
+            .enumerate()
         {
-            {
-                for (index, (patch, shown)) in self
-                    .surface
-                    .patches
-                    .iter()
-                    .zip(self.visible.iter_mut())
-                    .enumerate()
-                {
-                    ui.add_space(4.0);
-                    ui.horizontal(|ui| {
-                        let (swatch, _) = ui.allocate_exact_size(Vec2::splat(12.0), Sense::hover());
-                        ui.painter().rect_filled(
-                            swatch,
-                            CornerRadius::same(3),
-                            patch_color(&patch.kind, index),
-                        );
-                        ui.checkbox(shown, &patch.name);
-                    });
-                    ui.add_space(-4.0);
-                    ui.label(
-                        egui::RichText::new(format!("{}  ·  {} faces", patch.kind, patch.faces))
-                            .size(11.0)
-                            .color(muted),
-                    );
-                }
-            }
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                let (swatch, _) = ui.allocate_exact_size(Vec2::splat(12.0), Sense::hover());
+                ui.painter().rect_filled(
+                    swatch,
+                    CornerRadius::same(3),
+                    patch_color(&patch.kind, index),
+                );
+                ui.checkbox(shown, &patch.name);
+            });
+            ui.add_space(-4.0);
+            ui.label(
+                egui::RichText::new(format!("{}  ·  {} faces", patch.kind, patch.faces))
+                    .size(11.0)
+                    .color(muted),
+            );
         }
     }
+}
+
+/// A section's title in the display panel.
+fn caption(text: &str, muted: Color32) -> egui::RichText {
+    egui::RichText::new(text).size(11.0).strong().color(muted)
+}
+
+/// The frame of what floats over the picture: the raised surface, a hairline, rounded.
+fn floating(p: &Palette, margin: f32) -> egui::Frame {
+    egui::Frame::NONE
+        .fill(for_egui::color(p.surface_raised))
+        .stroke(Stroke::new(1.0, for_egui::color(p.border_subtle)))
+        .corner_radius(CornerRadius::same(12))
+        .inner_margin(egui::Margin::same(margin as i8))
+}
+
+/// The pill over the picture's corner that opens and shuts the display panel; true when it was
+/// pressed this frame.
+fn display_pill(ui: &mut egui::Ui, p: &Palette, open: bool) -> bool {
+    let mut pressed = false;
+    egui::Frame::NONE
+        .fill(for_egui::color(p.surface_raised))
+        .stroke(Stroke::new(1.0, for_egui::color(p.border_subtle)))
+        .corner_radius(CornerRadius::same(20))
+        .inner_margin(egui::Margin::symmetric(4, 4))
+        .show(ui, |ui| {
+            let label = if open { tr("Hide") } else { tr("Display") };
+            let ink = for_egui::color(if open { p.accent_text } else { p.text_primary });
+            let galley = ui.painter().layout_no_wrap(
+                label.to_owned(),
+                egui::FontId::proportional(13.0),
+                ink,
+            );
+            let width = 12.0 + 18.0 + 6.0 + galley.size().x + 14.0;
+            let (rect, response) = ui.allocate_exact_size(vec2(width, 30.0), Sense::click());
+            response
+                .widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, open, label));
+            let painter = ui.painter();
+            if open {
+                painter.rect_filled(rect, 15.0, for_egui::color(p.accent_subtle));
+            } else if response.hovered() {
+                painter.rect_filled(rect, 15.0, for_egui::color(p.control_bg_hover));
+            }
+            if let Some(glyph) = icons::get("layers") {
+                let at = egui::Rect::from_center_size(
+                    Pos2::new(rect.left() + 12.0 + 9.0, rect.center().y),
+                    Vec2::splat(18.0),
+                );
+                icons::paint(painter, at, glyph, icons::Style::regular(ink));
+            }
+            painter.galley(
+                Pos2::new(
+                    rect.left() + 12.0 + 18.0 + 6.0,
+                    rect.center().y - galley.size().y / 2.0,
+                ),
+                galley,
+                ink,
+            );
+            pressed = response.clicked();
+        });
+    pressed
+}
+
+/// Where along a rail that starts at `from` and is `span` long a pointer at `x` stands, 0 to 1.
+fn rail_value(x: f32, from: f32, span: f32) -> f32 {
+    ((x - from) / span.max(1.0)).clamp(0.0, 1.0)
+}
+
+/// A slider with its rail in sight: the track, the part before the handle in the accent, and a
+/// handle the size of a thumb.
+fn rail_slider(ui: &mut egui::Ui, p: &Palette, value: &mut f32) {
+    const HANDLE: f32 = 8.0;
+    let (rect, response) =
+        ui.allocate_exact_size(vec2(ui.available_width(), 24.0), Sense::click_and_drag());
+    let from = rect.left() + HANDLE;
+    let span = (rect.width() - 2.0 * HANDLE).max(1.0);
+    if (response.dragged() || response.clicked())
+        && let Some(at) = response.interact_pointer_pos()
+    {
+        *value = rail_value(at.x, from, span);
+    }
+    let t = value.clamp(0.0, 1.0);
+    let x = from + span * t;
+    let y = rect.center().y;
+    let painter = ui.painter();
+    painter.rect_filled(
+        egui::Rect::from_min_max(Pos2::new(from, y - 2.0), Pos2::new(from + span, y + 2.0)),
+        2.0,
+        for_egui::color(p.control_track),
+    );
+    painter.rect_filled(
+        egui::Rect::from_min_max(Pos2::new(from, y - 2.0), Pos2::new(x, y + 2.0)),
+        2.0,
+        for_egui::color(p.accent_default),
+    );
+    let lit = response.hovered() || response.dragged();
+    painter.circle(
+        Pos2::new(x, y),
+        if lit { HANDLE } else { HANDLE - 1.0 },
+        for_egui::color(p.surface_raised),
+        Stroke::new(2.0, for_egui::color(p.accent_default)),
+    );
 }
 
 /// The colour scale as a bar, with the range under it.
@@ -1020,7 +1152,7 @@ fn scale_bar(ui: &mut egui::Ui, what: &str, range: Option<(f32, f32)>, muted: Co
         );
         return;
     };
-    let (rect, _) = ui.allocate_exact_size(vec2(LEGEND - 12.0, 12.0), Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 12.0), Sense::hover());
     let mut mesh = Mesh::default();
     const STEPS: usize = 24;
     for step in 0..=STEPS {
@@ -1073,6 +1205,36 @@ mod tests {
         assert_eq!(shade(c, 0.5), Color32::from_rgb(100, 50, 25));
         assert_eq!(shade(c, 7.0), c);
         assert_eq!(shade(c, f32::NAN.max(-1.0)), Color32::BLACK);
+    }
+
+    #[test]
+    fn a_pointer_on_the_rail_reads_as_a_place_from_one_end_to_the_other() {
+        assert_eq!(rail_value(8.0, 8.0, 100.0), 0.0);
+        assert_eq!(rail_value(58.0, 8.0, 100.0), 0.5);
+        assert_eq!(rail_value(-40.0, 8.0, 100.0), 0.0);
+        assert_eq!(rail_value(900.0, 8.0, 100.0), 1.0);
+        // A rail with no length still answers with a number in range.
+        assert!((0.0..=1.0).contains(&rail_value(10.0, 8.0, 0.0)));
+    }
+
+    #[test]
+    fn the_display_pill_and_the_slice_rail_draw_in_both_themes_and_change_nothing_unasked() {
+        use nodalia_theme::{Accent, Mode};
+        for mode in [Mode::Light, Mode::Dark] {
+            let p = mode.palette_with(Accent::Vortia);
+            let ctx = egui::Context::default();
+            for open in [false, true] {
+                let mut at = 0.4_f32;
+                for _ in 0..2 {
+                    let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+                        assert!(!display_pill(ui, &p, open));
+                        rail_slider(ui, &p, &mut at);
+                    });
+                    out.textures_delta.clear();
+                }
+                assert_eq!(at, 0.4);
+            }
+        }
     }
 
     #[test]

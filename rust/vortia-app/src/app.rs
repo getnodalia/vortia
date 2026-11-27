@@ -1549,7 +1549,7 @@ fn tone_colors(p: &Palette, tone: Tone) -> (Color32, Color32) {
     (for_egui::color(fg), for_egui::color(bg))
 }
 
-fn palette(ctx: &Context) -> Palette {
+pub(crate) fn palette(ctx: &Context) -> Palette {
     let mode = if ctx.global_style().visuals.dark_mode {
         Mode::Dark
     } else {
