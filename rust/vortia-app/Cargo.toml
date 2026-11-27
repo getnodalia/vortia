@@ -35,4 +35,6 @@ tempfile = "3"
 
 # The shell's global menu, over D-Bus.
 [target.'cfg(target_os = "linux")'.dependencies]
-zbus = "5"
+zbus = "6"
+# The runtime zbus 6 runs on, to wait for its calls from the menu's own threads.
+zruntime = "0.2"
