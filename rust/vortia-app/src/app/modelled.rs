@@ -10,13 +10,14 @@ use std::sync::mpsc::{Receiver, TryRecvError, channel};
 use std::time::Duration;
 
 use eframe::egui::{self, DragValue, Ui};
+use nodalia_theme::engineering::{self as eng, Look};
 use nodalia_theme::{Palette, component, for_egui, space};
 use vortia_cad::part::{self, Feature, Join, Part, Shape};
 use vortia_cases::{Body, Geometry};
 use vortia_mesh::stl::{Stl, Summary};
 
 use super::imported::body_fields;
-use super::newcase::{region_canvas, region_toolbar, row, value};
+use super::newcase::{grid, region_canvas, region_toolbar, row, value};
 use crate::edgepick::{self, FeatureEdge};
 use crate::i18n::{tr, trf};
 use crate::region_editor::{self, RegionEditor};
@@ -32,6 +33,24 @@ const PICK_CHORD: f64 = 1.0e-4;
 
 /// The height of the picture of the part.
 const VIEW_HEIGHT: f32 = 360.0;
+
+/// What the ribbon and the buttons add, in the order `new_shape` numbers them: the title and
+/// the icon of each.
+const SHAPE_TOOLS: [(&str, &str); 11] = [
+    ("Box", "box"),
+    ("Cylinder", "cylinder"),
+    ("Cone", "cone"),
+    ("Sphere", "sphere"),
+    ("Torus", "torus"),
+    ("Extruded outline", "extrude"),
+    ("Turned outline", "revolve"),
+    ("Round edges", "fillet"),
+    ("Chamfer edges", "chamfer"),
+    ("Row of copies", "pattern-rect"),
+    ("Copies round an axis", "pattern-circ"),
+];
+
+const WING_HINT: &str = "A wing of constant NACA 2412 section: a metre of chord, two of span.";
 
 /// The model, as the kernel made it.
 struct Built {
@@ -364,138 +383,135 @@ fn shape_fields(
     picking: bool,
 ) -> bool {
     let mut pick = false;
-    egui::Grid::new(id)
-        .num_columns(2)
-        .spacing([space::MD, space::SM])
-        .show(ui, |ui| match shape {
-            Shape::Box { origin, size } => {
-                row(ui, tr("Lower corner"), |ui| vec3(ui, origin));
-                row(ui, tr("Size"), |ui| vec3(ui, size));
-            }
-            Shape::Cylinder {
-                origin,
-                radius,
-                height,
-            } => {
-                row(ui, tr("Centre of the base"), |ui| vec3(ui, origin));
-                row(ui, tr("Radius"), |ui| value(ui, radius, "m"));
-                row(ui, tr("Height"), |ui| value(ui, height, "m"));
-            }
-            Shape::Cone {
-                origin,
-                base_radius,
-                top_radius,
-                height,
-            } => {
-                row(ui, tr("Centre of the base"), |ui| vec3(ui, origin));
-                row(ui, tr("Radius at the base"), |ui| {
-                    value(ui, base_radius, "m")
-                });
-                row(ui, tr("Radius at the top"), |ui| value(ui, top_radius, "m"));
-                row(ui, tr("Height"), |ui| value(ui, height, "m"));
-            }
-            Shape::Sphere { center, radius } => {
-                row(ui, tr("Centre"), |ui| vec3(ui, center));
-                row(ui, tr("Radius"), |ui| value(ui, radius, "m"));
-            }
-            Shape::Torus {
-                center,
-                major_radius,
-                minor_radius,
-            } => {
-                row(ui, tr("Centre"), |ui| vec3(ui, center));
-                row(ui, tr("Radius of the ring"), |ui| {
-                    value(ui, major_radius, "m")
-                });
-                row(ui, tr("Radius of the tube"), |ui| {
-                    value(ui, minor_radius, "m")
-                });
-            }
-            Shape::Extrude { corners, z, height } => {
-                row(ui, tr("Plane of the outline (z)"), |ui| value(ui, z, "m"));
-                row(ui, tr("Length it is pushed along z"), |ui| {
-                    value(ui, height, "m")
-                });
-                row(ui, tr("Outline"), |ui| {
-                    ui.vertical(|ui| {
-                        corners_ui(
-                            ui,
-                            id.with("corners"),
-                            corners,
-                            ["x", "y"],
-                            tr("The corners in order, in the plane of the outline."),
-                        );
-                        outline_helpers(ui, id.with("helpers"), corners, helpers);
-                    });
-                });
-            }
-            Shape::Round { points, size } | Shape::Chamfer { points, size } => {
-                row(ui, tr("Size"), |ui| value(ui, size, "m"));
-                row(ui, tr("A point on each edge"), |ui| {
-                    pick = points_ui(ui, id.with("points"), points, picking);
-                });
-            }
-            Shape::LinearPattern { count, step } => {
-                row(ui, tr("Copies in all"), |ui| copies(ui, count));
-                row(ui, tr("Step between copies"), |ui| vec3(ui, step));
-            }
-            Shape::CircularPattern {
-                count,
-                center,
-                angle,
-            } => {
-                row(ui, tr("Copies in all"), |ui| copies(ui, count));
-                row(ui, tr("A point of the axis (along z)"), |ui| {
-                    vec3(ui, center)
-                });
-                row(ui, tr("Angle between copies"), |ui| {
-                    let mut degrees = angle.to_degrees();
-                    if ui
-                        .add(
-                            DragValue::new(&mut degrees)
-                                .range(-360.0..=360.0)
-                                .speed(1.0)
-                                .suffix(" °"),
-                        )
-                        .changed()
-                    {
-                        *angle = degrees.to_radians();
-                    }
-                });
-            }
-            Shape::Revolve {
-                corners,
-                center,
-                angle,
-            } => {
-                row(ui, tr("A point of the axis (along z)"), |ui| {
-                    vec3(ui, center)
-                });
-                row(ui, tr("Turned through"), |ui| {
-                    let mut degrees = angle.to_degrees();
-                    if ui
-                        .add(
-                            DragValue::new(&mut degrees)
-                                .range(1.0..=360.0)
-                                .speed(1.0)
-                                .suffix(" °"),
-                        )
-                        .changed()
-                    {
-                        *angle = degrees.to_radians();
-                    }
-                });
-                row(ui, tr("Profile"), |ui| {
+    grid(ui, id, |ui| match shape {
+        Shape::Box { origin, size } => {
+            row(ui, tr("Lower corner"), |ui| vec3(ui, origin));
+            row(ui, tr("Size"), |ui| vec3(ui, size));
+        }
+        Shape::Cylinder {
+            origin,
+            radius,
+            height,
+        } => {
+            row(ui, tr("Centre of the base"), |ui| vec3(ui, origin));
+            row(ui, tr("Radius"), |ui| value(ui, radius, "m"));
+            row(ui, tr("Height"), |ui| value(ui, height, "m"));
+        }
+        Shape::Cone {
+            origin,
+            base_radius,
+            top_radius,
+            height,
+        } => {
+            row(ui, tr("Centre of the base"), |ui| vec3(ui, origin));
+            row(ui, tr("Radius at the base"), |ui| {
+                value(ui, base_radius, "m")
+            });
+            row(ui, tr("Radius at the top"), |ui| value(ui, top_radius, "m"));
+            row(ui, tr("Height"), |ui| value(ui, height, "m"));
+        }
+        Shape::Sphere { center, radius } => {
+            row(ui, tr("Centre"), |ui| vec3(ui, center));
+            row(ui, tr("Radius"), |ui| value(ui, radius, "m"));
+        }
+        Shape::Torus {
+            center,
+            major_radius,
+            minor_radius,
+        } => {
+            row(ui, tr("Centre"), |ui| vec3(ui, center));
+            row(ui, tr("Radius of the ring"), |ui| {
+                value(ui, major_radius, "m")
+            });
+            row(ui, tr("Radius of the tube"), |ui| {
+                value(ui, minor_radius, "m")
+            });
+        }
+        Shape::Extrude { corners, z, height } => {
+            row(ui, tr("Plane of the outline (z)"), |ui| value(ui, z, "m"));
+            row(ui, tr("Length it is pushed along z"), |ui| {
+                value(ui, height, "m")
+            });
+            row(ui, tr("Outline"), |ui| {
+                ui.vertical(|ui| {
                     corners_ui(
                         ui,
                         id.with("corners"),
                         corners,
-                        ["r", "z"],
-                        tr("The corners in order: the distance from the axis, then the height."),
+                        ["x", "y"],
+                        tr("The corners in order, in the plane of the outline."),
                     );
+                    outline_helpers(ui, id.with("helpers"), corners, helpers);
                 });
-            }
-        });
+            });
+        }
+        Shape::Round { points, size } | Shape::Chamfer { points, size } => {
+            row(ui, tr("Size"), |ui| value(ui, size, "m"));
+            row(ui, tr("A point on each edge"), |ui| {
+                pick = points_ui(ui, id.with("points"), points, picking);
+            });
+        }
+        Shape::LinearPattern { count, step } => {
+            row(ui, tr("Copies in all"), |ui| copies(ui, count));
+            row(ui, tr("Step between copies"), |ui| vec3(ui, step));
+        }
+        Shape::CircularPattern {
+            count,
+            center,
+            angle,
+        } => {
+            row(ui, tr("Copies in all"), |ui| copies(ui, count));
+            row(ui, tr("A point of the axis (along z)"), |ui| {
+                vec3(ui, center)
+            });
+            row(ui, tr("Angle between copies"), |ui| {
+                let mut degrees = angle.to_degrees();
+                if ui
+                    .add(
+                        DragValue::new(&mut degrees)
+                            .range(-360.0..=360.0)
+                            .speed(1.0)
+                            .suffix(" °"),
+                    )
+                    .changed()
+                {
+                    *angle = degrees.to_radians();
+                }
+            });
+        }
+        Shape::Revolve {
+            corners,
+            center,
+            angle,
+        } => {
+            row(ui, tr("A point of the axis (along z)"), |ui| {
+                vec3(ui, center)
+            });
+            row(ui, tr("Turned through"), |ui| {
+                let mut degrees = angle.to_degrees();
+                if ui
+                    .add(
+                        DragValue::new(&mut degrees)
+                            .range(1.0..=360.0)
+                            .speed(1.0)
+                            .suffix(" °"),
+                    )
+                    .changed()
+                {
+                    *angle = degrees.to_radians();
+                }
+            });
+            row(ui, tr("Profile"), |ui| {
+                corners_ui(
+                    ui,
+                    id.with("corners"),
+                    corners,
+                    ["r", "z"],
+                    tr("The corners in order: the distance from the axis, then the height."),
+                );
+            });
+        }
+    });
     pick
 }
 
@@ -769,41 +785,146 @@ impl Modelled {
         ui.horizontal_wrapped(|ui| {
             ui.label(tr("Add"));
             let full = self.part.features.len() >= part::MAX_FEATURES;
-            let names = [
-                tr("Box"),
-                tr("Cylinder"),
-                tr("Cone"),
-                tr("Sphere"),
-                tr("Torus"),
-                tr("Extruded outline"),
-                tr("Turned outline"),
-                tr("Round edges"),
-                tr("Chamfer edges"),
-                tr("Row of copies"),
-                tr("Copies round an axis"),
-            ];
-            for (which, name) in names.into_iter().enumerate() {
-                if ui.add_enabled(!full, egui::Button::new(name)).clicked()
-                    && let Some(shape) = new_shape(which)
-                {
-                    self.part.features.push(Feature {
-                        shape,
-                        join: Join::Add,
-                    });
+            for (which, (name, _)) in SHAPE_TOOLS.into_iter().enumerate() {
+                if ui.add_enabled(!full, egui::Button::new(tr(name))).clicked() {
+                    self.add_shape(which);
                 }
             }
             ui.add_space(space::MD);
             if ui
                 .add_enabled(!full, egui::Button::new(tr("A wing")))
-                .on_hover_text(tr(
-                    "A wing of constant NACA 2412 section: a metre of chord, two of span.",
-                ))
+                .on_hover_text(tr(WING_HINT))
                 .clicked()
-                && let Some(feature) = wing()
             {
-                self.part.features.push(feature);
+                self.add_wing();
             }
         });
+    }
+
+    fn add_shape(&mut self, which: usize) {
+        if let Some(shape) = new_shape(which) {
+            self.part.features.push(Feature {
+                shape,
+                join: Join::Add,
+            });
+        }
+    }
+
+    fn add_wing(&mut self) {
+        if let Some(feature) = wing() {
+            self.part.features.push(feature);
+        }
+    }
+
+    pub(super) fn feature_count(&self) -> usize {
+        self.part.features.len()
+    }
+
+    /// Before the panels of the studio are drawn: the thread results and the picked edges.
+    pub(super) fn begin(&mut self, ctx: &egui::Context) {
+        self.refresh(ctx);
+        self.refresh_pick(ctx);
+    }
+
+    /// The Part tab of the studio's ribbon: what can be added, each a tool with its icon.
+    pub(super) fn studio_ribbon(&mut self, ui: &mut Ui, look: &Look) {
+        let full = self.part.features.len() >= part::MAX_FEATURES;
+        ui.add_enabled_ui(!full, |ui| {
+            eng::ribbon_group(ui, look, tr("Solids"), |ui| {
+                for (which, (name, icon)) in SHAPE_TOOLS.into_iter().enumerate().take(5) {
+                    if eng::ribbon_tool_3d(ui, look, icon, tr(name), false).clicked() {
+                        self.add_shape(which);
+                    }
+                }
+            });
+            eng::ribbon_group(ui, look, tr("From an outline"), |ui| {
+                for (which, (name, icon)) in SHAPE_TOOLS.into_iter().enumerate().skip(5).take(2) {
+                    if eng::ribbon_tool_3d(ui, look, icon, tr(name), false).clicked() {
+                        self.add_shape(which);
+                    }
+                }
+            });
+            eng::ribbon_group(ui, look, tr("Modify"), |ui| {
+                for (which, (name, icon)) in SHAPE_TOOLS.into_iter().enumerate().skip(7) {
+                    if eng::ribbon_tool_3d(ui, look, icon, tr(name), false).clicked() {
+                        self.add_shape(which);
+                    }
+                }
+            });
+            eng::ribbon_group(ui, look, tr("Library"), |ui| {
+                if eng::ribbon_tool_3d(ui, look, "loft", tr("A wing"), false)
+                    .on_hover_text(tr(WING_HINT))
+                    .clicked()
+                {
+                    self.add_wing();
+                }
+            });
+        });
+    }
+
+    /// The Browser of the studio: the features of the part, each with its numbers.
+    pub(super) fn studio_browser(&mut self, ui: &mut Ui, look: &Look) {
+        eng::panel_header(ui, look, tr("Features"), |ui| {
+            ui.label(egui::RichText::new(self.part.features.len().to_string()).weak());
+        });
+        egui::ScrollArea::both()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                if self.part.features.is_empty() {
+                    ui.label(tr(
+                        "Nothing yet. Add a shape, or a wing to start from; each next shape can be added to the part, cut out of it or intersected with it.",
+                    ));
+                }
+                self.feature_list(ui);
+            });
+    }
+
+    /// The picture of the part, as large as the studio's canvas is.
+    pub(super) fn studio_canvas(&mut self, ui: &mut Ui, p: &Palette) {
+        if self.built.is_none() && self.pick.is_none() && self.job.is_none() {
+            // Nothing to show yet: the canvas says how to begin.
+            let rect = ui.available_rect_before_wrap();
+            ui.allocate_rect(rect, egui::Sense::hover());
+            ui.painter()
+                .rect_filled(rect, 12.0, for_egui::color(p.surface_sunken));
+            ui.painter().rect_stroke(
+                rect,
+                12.0,
+                egui::Stroke::new(1.0, for_egui::color(p.border_subtle)),
+                egui::StrokeKind::Inside,
+            );
+            ui.painter().text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                tr("Add a shape from the ribbon to start the part."),
+                egui::FontId::proportional(15.0),
+                for_egui::color(p.text_secondary),
+            );
+            return;
+        }
+        let height = (ui.available_height() - 4.0).max(VIEW_HEIGHT / 2.0);
+        self.picture(ui, p, height);
+    }
+
+    /// Properties of the studio: the part's file, the flow around it, and what can be taken away.
+    pub(super) fn studio_properties(&mut self, ui: &mut Ui, look: &Look) {
+        eng::panel_header(ui, look, tr("Part"), |_| {});
+        // Both ways: what the flow's rows cannot fit in stays inside the panel, never over the canvas.
+        egui::ScrollArea::both()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                self.file_row(ui);
+                self.export(ui);
+                self.note(ui);
+                if let Some(built) = &self.built {
+                    ui.add_space(space::MD);
+                    eng::panel_header(ui, look, tr("The flow"), |_| {});
+                    ui.label(tr("The flow comes along x."));
+                    grid(ui, "new_modelled_flow", |ui| {
+                        body_fields(ui, &mut self.flow, &built.summary, 1.0)
+                    });
+                }
+            });
     }
 
     fn feature_list(&mut self, ui: &mut Ui) {
@@ -812,47 +933,57 @@ impl Modelled {
         let picking = self.pick.as_ref().map(|p| p.feature);
         for (i, feature) in self.part.features.iter_mut().enumerate() {
             let id = ui.make_persistent_id(("modelled_feature", i));
-            ui.group(|ui| {
-                ui.horizontal(|ui| {
-                    ui.label(
-                        egui::RichText::new(format!("{}  {}", i + 1, shape_title(&feature.shape)))
+            egui::Frame::group(ui.style())
+                .corner_radius(10.0)
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "{}  {}",
+                                i + 1,
+                                shape_title(&feature.shape)
+                            ))
                             .strong(),
-                    );
-                    if i == 0 || works_on_part(&feature.shape) {
-                        // The first has nothing to cut or keep: it starts the part. A round, a
-                        // chamfer or a pattern works on what is there (a pattern joins as the
-                        // feature it repeats did).
-                        feature.join = Join::Add;
-                    } else {
-                        egui::ComboBox::from_id_salt(id.with("join"))
-                            .selected_text(join_title(feature.join))
-                            .show_ui(ui, |ui| {
-                                for join in [Join::Add, Join::Cut, Join::Keep] {
-                                    ui.selectable_value(&mut feature.join, join, join_title(join));
-                                }
-                            });
-                    }
-                    if i > 0 && ui.small_button(tr("Move up")).clicked() {
-                        edit = Some(Edit::Up(i));
-                    }
-                    if i < last && ui.small_button(tr("Move down")).clicked() {
-                        edit = Some(Edit::Down(i));
-                    }
-                    if ui.small_button(tr("Remove")).clicked() {
-                        edit = Some(Edit::Remove(i));
+                        );
+                        if i == 0 || works_on_part(&feature.shape) {
+                            // The first has nothing to cut or keep: it starts the part. A round, a
+                            // chamfer or a pattern works on what is there (a pattern joins as the
+                            // feature it repeats did).
+                            feature.join = Join::Add;
+                        } else {
+                            egui::ComboBox::from_id_salt(id.with("join"))
+                                .selected_text(join_title(feature.join))
+                                .show_ui(ui, |ui| {
+                                    for join in [Join::Add, Join::Cut, Join::Keep] {
+                                        ui.selectable_value(
+                                            &mut feature.join,
+                                            join,
+                                            join_title(join),
+                                        );
+                                    }
+                                });
+                        }
+                        if i > 0 && ui.small_button(tr("Move up")).clicked() {
+                            edit = Some(Edit::Up(i));
+                        }
+                        if i < last && ui.small_button(tr("Move down")).clicked() {
+                            edit = Some(Edit::Down(i));
+                        }
+                        if ui.small_button(tr("Remove")).clicked() {
+                            edit = Some(Edit::Remove(i));
+                        }
+                    });
+                    if shape_fields(
+                        ui,
+                        id,
+                        &mut feature.shape,
+                        &mut self.helpers,
+                        picking == Some(i),
+                    ) && i > 0
+                    {
+                        edit = Some(Edit::Pick(i));
                     }
                 });
-                if shape_fields(
-                    ui,
-                    id,
-                    &mut feature.shape,
-                    &mut self.helpers,
-                    picking == Some(i),
-                ) && i > 0
-                {
-                    edit = Some(Edit::Pick(i));
-                }
-            });
         }
         match edit {
             Some(Edit::Remove(i)) => {
@@ -872,7 +1003,7 @@ impl Modelled {
         }
     }
 
-    fn picture(&mut self, ui: &mut Ui, p: &Palette) {
+    fn picture(&mut self, ui: &mut Ui, p: &Palette, height: f32) {
         let working = self.job.is_some();
         if working {
             ui.horizontal(|ui| {
@@ -884,7 +1015,7 @@ impl Modelled {
             ui.colored_label(ui.visuals().error_fg_color, problem);
         }
         if self.pick.is_some() {
-            self.pick_picture(ui, p);
+            self.pick_picture(ui, p, height);
             return;
         }
         let Some(built) = &mut self.built else {
@@ -909,7 +1040,7 @@ impl Modelled {
             ));
         }
         let width = ui.available_width();
-        ui.allocate_ui(egui::vec2(width, VIEW_HEIGHT), |ui| {
+        ui.allocate_ui(egui::vec2(width, height), |ui| {
             built.viewer.show(
                 ui,
                 for_egui::color(p.surface_sunken),
@@ -921,7 +1052,7 @@ impl Modelled {
     }
 
     /// The part as it is before the round or chamfer being filled in, with its edges to click.
-    fn pick_picture(&mut self, ui: &mut Ui, p: &Palette) {
+    fn pick_picture(&mut self, ui: &mut Ui, p: &Palette, height: f32) {
         let Some(pick) = &mut self.pick else {
             return;
         };
@@ -952,7 +1083,7 @@ impl Modelled {
         if let Some(viewer) = &mut pick.viewer {
             viewer.set_chosen(&chosen);
             let width = ui.available_width();
-            ui.allocate_ui(egui::vec2(width, VIEW_HEIGHT), |ui| {
+            ui.allocate_ui(egui::vec2(width, height), |ui| {
                 viewer.show(
                     ui,
                     for_egui::color(p.surface_sunken),
@@ -1060,18 +1191,15 @@ impl Modelled {
         }
         self.feature_list(ui);
         ui.add_space(space::SM);
-        self.picture(ui, p);
+        self.picture(ui, p, VIEW_HEIGHT);
         self.export(ui);
         self.note(ui);
         if let Some(built) = &self.built {
             ui.add_space(space::SM);
             ui.label(tr("The flow comes along x."));
-            egui::Grid::new("new_modelled_flow")
-                .num_columns(2)
-                .spacing([12.0, 6.0])
-                .show(ui, |ui| {
-                    body_fields(ui, &mut self.flow, &built.summary, 1.0)
-                });
+            grid(ui, "new_modelled_flow", |ui| {
+                body_fields(ui, &mut self.flow, &built.summary, 1.0)
+            });
         }
     }
 }

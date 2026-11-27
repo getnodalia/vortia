@@ -23,7 +23,7 @@ fn main() -> eframe::Result {
         "Vortia",
         options,
         Box::new(|cc| {
-            // `vortia-app CASE [--run] [--mesh] [--field NAME [--slice AXIS FRACTION] [--solid]] [--results] [--conditions] [--numerics] [--schemes] [--settings] [--fluid] [--turbulence] [--viscosity] [--new-sketch] [--preferences [SECTION]]`: open a case,
+            // `vortia-app CASE [--run] [--mesh] [--field NAME [--slice AXIS FRACTION] [--solid]] [--results] [--conditions] [--numerics] [--schemes] [--settings] [--fluid] [--turbulence] [--viscosity] [--new [KIND]] [--new-sketch] [--preferences [SECTION]]`: open a case,
             // start it at once, or show its mesh (coloured with a field), conditions or settings.
             let mut args: Vec<_> = std::env::args_os().skip(1).collect();
             let case = if args
@@ -47,6 +47,9 @@ fn main() -> eframe::Result {
                 app.show_preferences(section.as_deref().unwrap_or("general"));
             } else if has("--report") {
                 app.show_report();
+            } else if let Some(at) = flags.iter().position(|a| a == "--new") {
+                let key = flags.get(at + 1).map(|s| s.to_string_lossy().into_owned());
+                app.show_new(key.as_deref().unwrap_or("gallery"));
             } else if has("--new-sketch") {
                 app.show_new_sketch();
             } else if let Some(at) = flags.iter().position(|a| a == "--field")
