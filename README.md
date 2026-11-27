@@ -1,11 +1,11 @@
 <div align="center">
   <a href="https://getnodalia.com">
-    <img src="https://raw.githubusercontent.com/danielmigueltejedor/nodalia-web/main/assets/brand/nodalia-wordmark-badge.svg" width="150" alt="Nodalia">
+    <img src="https://raw.githubusercontent.com/getnodalia/nodalia-web/main/assets/brand/nodalia-wordmark-badge.svg" width="150" alt="Nodalia">
   </a>
   <br><br>
-  <img src="https://raw.githubusercontent.com/danielmigueltejedor/vortia/main/resources/icons/vortia.png" width="192" alt="Vortia">
+  <img src="resources/icons/vortia.png" width="192" alt="Vortia">
   <h1>Vortia</h1>
-  <p><strong>A free desktop application for CFD simulation, from geometry to post-processing, written in Rust with its own engine.</strong></p>
+  <p><strong>The CFD simulation application of the Nodalia suite.</strong></p>
 
   <p>
     <img src="https://img.shields.io/badge/version-0.15.0-3D9BFF" alt="Version 0.15.0">
@@ -36,7 +36,8 @@
 
 ## Overview
 
-**Vortia** is a desktop application written entirely in Rust, with a
+**Vortia** is the CFD simulation application of [Nodalia](https://getnodalia.com): a free desktop
+application, from geometry to post-processing, written entirely in Rust, with a
 finite-volume CFD engine of its own derived from OpenFOAM's methods, that takes
 one workflow from geometry to results: sketch or box → mesh → physics →
 supervised run → results, without touching the terminal. It needs no OpenFOAM,
@@ -102,7 +103,7 @@ full table, with what "evidence" means, is in the capability matrix.
 
 ## Installation
 
-Packages are published on the [Releases page](https://github.com/danielmigueltejedor/vortia/releases).
+Packages are published on the [Releases page](https://github.com/getnodalia/vortia/releases).
 
 | System | File | Requirements |
 |---|---|---|
@@ -179,6 +180,12 @@ sets the rules; the three that are not negotiable:
 1. **No façades.** Every feature has real, tested behaviour or is explicitly labelled as not implemented.
 2. **Scientific rigour.** No CFD capability is announced without verification or validation documented in `docs/VALIDATION.md`.
 3. **No fictitious data** in flows presented as real. Test doubles live only in `tests/`.
+
+## The Nodalia suite
+
+Vortia is one of the applications of [Nodalia](https://getnodalia.com), an independent software
+project developed in public by [Daniel Miguel Tejedor](https://danielmigueltejedor.com). It belongs
+to the Engineering suite, with Forja, Torno, Circuito, Ábaco and Código.
 
 ## License
 
