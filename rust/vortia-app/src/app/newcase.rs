@@ -3,14 +3,16 @@
 use crate::i18n::{tr, trf};
 use std::path::{Path, PathBuf};
 
-use eframe::egui::{self, DragValue, Ui};
-use nodalia_theme::engineering::Look;
+use eframe::egui::{self, DragValue, Frame, Margin, RichText, Ui};
+use nodalia_theme::engineering::{self as eng, Look, layout};
 use nodalia_theme::office;
-use nodalia_theme::{Palette, space};
+use nodalia_theme::{Palette, for_egui, icons, space};
 use vortia_cases::{
     Airfoil, AirfoilModel, Cavity, Channel, Drawn, Geometry, Jet, Nozzle, NozzleKind, Plate,
 };
 use vortia_sketch::Measure;
+
+mod studio;
 
 use super::imported::Imported;
 use super::modelled::Modelled;
@@ -34,6 +36,7 @@ pub(super) enum Kind {
 }
 
 impl Kind {
+    #[cfg(test)]
     const ALL: [Kind; 11] = [
         Kind::Channel,
         Kind::Cavity,
@@ -63,6 +66,64 @@ impl Kind {
             Kind::Modelled => tr("Model a part"),
         }
     }
+
+    /// The CAD icon of the shared set the card and the page wear.
+    fn icon(self) -> &'static str {
+        match self {
+            Kind::Channel => "arrows-horizontal",
+            Kind::Cavity => "square",
+            Kind::Plate => "line",
+            Kind::Airfoil => "curvature",
+            Kind::PlanarNozzle => "nozzle",
+            Kind::AxisymmetricNozzle => "revolve",
+            Kind::Jet => "flare",
+            Kind::Sketch => "sketch",
+            Kind::Region => "region",
+            Kind::Imported => "import",
+            Kind::Modelled => "cube",
+        }
+    }
+
+    /// The line under the name on its card.
+    fn tagline(self) -> &'static str {
+        match self {
+            Kind::Channel => tr("Laminar flow in a duct"),
+            Kind::Cavity => tr("Lid-driven square box"),
+            Kind::Plate => tr("Boundary layer on a plate"),
+            Kind::Airfoil => tr("NACA 4-digit, any angle"),
+            Kind::PlanarNozzle => tr("Compressible slot nozzle"),
+            Kind::AxisymmetricNozzle => tr("Compressible, as a wedge"),
+            Kind::Jet => tr("Orifice into the open air"),
+            Kind::Sketch => tr("A duct wall you dimension"),
+            Kind::Region => tr("Outline with named edges"),
+            Kind::Imported => tr("STL, OBJ, STEP, DXF…"),
+            Kind::Modelled => tr("With Nodalia's own kernel"),
+        }
+    }
+
+    /// Whether the case is drawn in the studio, with the ribbon, the Browser and the canvas of a
+    /// CAD, rather than filled in on a page.
+    pub(super) fn studio(self) -> bool {
+        matches!(self, Kind::Region | Kind::Modelled)
+    }
+
+    /// The groups the gallery lists, with what each holds.
+    const GROUPS: [(&'static str, &'static [Kind]); 3] = [
+        (
+            "Ready-made cases",
+            &[
+                Kind::Channel,
+                Kind::Cavity,
+                Kind::Plate,
+                Kind::Airfoil,
+                Kind::PlanarNozzle,
+                Kind::AxisymmetricNozzle,
+                Kind::Jet,
+            ],
+        ),
+        ("Draw the region", &[Kind::Sketch, Kind::Region]),
+        ("Bring or model a part", &[Kind::Imported, Kind::Modelled]),
+    ];
 
     fn about(self) -> &'static str {
         match self {
@@ -129,6 +190,10 @@ pub(super) struct NewCase {
     imported: Imported,
     /// The part modelled here.
     modelled: Modelled,
+    /// Whether a kind was picked: until then the form is the gallery of kinds.
+    chosen: bool,
+    /// Where the pointer is over the studio's canvas, in millimetres, as of the last frame.
+    cursor: Option<(f64, f64)>,
 }
 
 /// What the form asks for.
@@ -159,6 +224,8 @@ impl NewCase {
             drawn: Drawn::default(),
             imported: Imported::default(),
             modelled: Modelled::default(),
+            chosen: false,
+            cursor: None,
         };
         form.propose(base);
         form
@@ -200,8 +267,53 @@ impl NewCase {
     }
 
     pub(super) fn choose_sketch(&mut self) {
-        self.kind = Kind::Sketch;
-        self.propose(&Self::default_base());
+        self.choose(Kind::Sketch);
+    }
+
+    /// Starts the case of `kind`: the form leaves the gallery for it.
+    pub(super) fn choose(&mut self, kind: Kind) {
+        let base = Path::new(self.folder.trim())
+            .parent()
+            .map_or_else(Self::default_base, Path::to_path_buf);
+        self.kind = kind;
+        self.chosen = true;
+        self.propose(&base);
+    }
+
+    /// Starts the kind a command line names (`channel`, `region`, `model`…); false if it names
+    /// none, which leaves the gallery.
+    pub(super) fn choose_named(&mut self, key: &str) -> bool {
+        let kind = match key {
+            "channel" => Kind::Channel,
+            "cavity" => Kind::Cavity,
+            "plate" => Kind::Plate,
+            "airfoil" => Kind::Airfoil,
+            "planar" => Kind::PlanarNozzle,
+            "nozzle" => Kind::AxisymmetricNozzle,
+            "jet" => Kind::Jet,
+            "sketch" => Kind::Sketch,
+            "region" => Kind::Region,
+            "body" => Kind::Imported,
+            "model" => Kind::Modelled,
+            _ => return false,
+        };
+        self.choose(kind);
+        true
+    }
+
+    /// Back to the gallery of kinds.
+    fn leave(&mut self) {
+        self.chosen = false;
+    }
+
+    /// Whether the gallery is showing, rather than the form of a kind.
+    pub(super) fn in_gallery(&self) -> bool {
+        !self.chosen
+    }
+
+    /// Whether the case is being drawn in the studio, which takes the whole window.
+    pub(super) fn in_studio(&self) -> bool {
+        self.chosen && self.kind.studio()
     }
 
     pub(super) fn geometry(&self) -> Result<Geometry, String> {
@@ -269,44 +381,92 @@ impl NewCase {
         Ok(dir)
     }
 
+    /// The page of New: the gallery of kinds, then the form of the one picked. The studio kinds
+    /// are drawn by [`NewCase::studio`] instead, which takes the whole window.
     pub(super) fn ui(&mut self, ui: &mut Ui, look: &Look, p: &Palette) -> Ask {
-        let home = nodalia_theme::engineering::home_look(look);
-        let mut ask = Ask::Nothing;
-        office::section(ui, &home, tr("New case"), |ui| {
-            ui.horizontal_wrapped(|ui| {
-                for kind in Kind::ALL {
-                    if ui
-                        .selectable_label(self.kind == kind, kind.title())
-                        .clicked()
-                        && self.kind != kind
-                    {
-                        let base = Path::new(self.folder.trim())
-                            .parent()
-                            .map_or_else(Self::default_base, Path::to_path_buf);
-                        self.kind = kind;
-                        self.propose(&base);
-                    }
+        if self.chosen {
+            self.detail(ui, look, p)
+        } else {
+            self.gallery(ui, look);
+            Ask::Nothing
+        }
+    }
+
+    /// Every kind of case on a card, in the groups they belong to.
+    fn gallery(&mut self, ui: &mut Ui, look: &Look) {
+        let home = eng::home_look(look);
+        let mut picked = None;
+        for (heading, kinds) in Kind::GROUPS {
+            office::section(ui, &home, tr(heading), |ui| {
+                let cards: Vec<eng::StartCard> = kinds
+                    .iter()
+                    .map(|kind| eng::StartCard {
+                        icon: kind.icon(),
+                        name: kind.title(),
+                        detail: kind.tagline(),
+                    })
+                    .collect();
+                if let Some(i) = eng::start_cards(ui, look, &cards) {
+                    picked = kinds.get(i).copied();
                 }
             });
-            ui.add_space(space::SM);
-            ui.label(tr(self.kind.about()));
-            ui.add_space(space::SM);
-            match self.kind {
-                Kind::Channel => channel_fields(ui, &mut self.channel),
-                Kind::Cavity => cavity_fields(ui, &mut self.cavity),
-                Kind::Plate => plate_fields(ui, &mut self.plate),
-                Kind::Airfoil => airfoil_fields(ui, &mut self.airfoil),
-                Kind::PlanarNozzle => nozzle_fields(ui, &mut self.planar),
-                Kind::AxisymmetricNozzle => nozzle_fields(ui, &mut self.wedge),
-                Kind::Jet => jet_fields(ui, &mut self.jet),
-                Kind::Sketch => self.sketch_fields(ui),
-                Kind::Region => self.region_fields(ui),
-                Kind::Imported => self.imported.ui(ui),
-                Kind::Modelled => self.modelled.ui(ui, p),
+        }
+        if let Some(kind) = picked {
+            self.choose(kind);
+        }
+    }
+
+    /// The form of the kind picked: its numbers beside what the case is, and where it goes.
+    fn detail(&mut self, ui: &mut Ui, look: &Look, p: &Palette) -> Ask {
+        let mut ask = Ask::Nothing;
+        let palette = &look.palette;
+        ui.horizontal(|ui| {
+            if ui
+                .add(
+                    egui::Button::new(
+                        RichText::new(format!("‹  {}", tr("All cases")))
+                            .color(for_egui::color(palette.accent_text)),
+                    )
+                    .frame(false),
+                )
+                .clicked()
+            {
+                self.leave();
             }
-            ui.add_space(space::SM);
+        });
+        ui.add_space(space::SM);
+        ui.label(
+            RichText::new(self.kind.title())
+                .font(eng::page_title())
+                .color(for_egui::color(palette.text_primary)),
+        );
+        ui.add_space(space::MD);
+        let total = ui.available_width();
+        let side = (total * 0.36).clamp(240.0, 340.0);
+        let main = (total - side - 16.0).max(240.0);
+        ui.horizontal_top(|ui| {
+            ui.spacing_mut().item_spacing.x = 16.0;
+            ui.allocate_ui_with_layout(
+                egui::vec2(main, 0.0),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
+                    card(ui, look, tr("Settings"), |ui| self.fields(ui, p));
+                },
+            );
+            ui.allocate_ui_with_layout(
+                egui::vec2(side, 0.0),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
+                    card(ui, look, tr("About this case"), |ui| {
+                        self.about_card(ui, look)
+                    });
+                },
+            );
+        });
+        ui.add_space(space::MD);
+        card(ui, look, tr("Where it is saved"), |ui| {
             ui.horizontal(|ui| {
-                let width = (ui.available_width() - 120.0).clamp(160.0, 420.0);
+                let width = (ui.available_width() - 140.0).max(160.0);
                 ui.add(
                     egui::TextEdit::singleline(&mut self.folder)
                         .hint_text(tr("Folder for the new case"))
@@ -319,6 +479,67 @@ impl NewCase {
         });
         ask
     }
+
+    /// The numbers of the kind picked.
+    fn fields(&mut self, ui: &mut Ui, p: &Palette) {
+        match self.kind {
+            Kind::Channel => channel_fields(ui, &mut self.channel),
+            Kind::Cavity => cavity_fields(ui, &mut self.cavity),
+            Kind::Plate => plate_fields(ui, &mut self.plate),
+            Kind::Airfoil => airfoil_fields(ui, &mut self.airfoil),
+            Kind::PlanarNozzle => nozzle_fields(ui, &mut self.planar),
+            Kind::AxisymmetricNozzle => nozzle_fields(ui, &mut self.wedge),
+            Kind::Jet => jet_fields(ui, &mut self.jet),
+            Kind::Sketch => self.sketch_fields(ui),
+            Kind::Region => self.region_fields(ui),
+            Kind::Imported => self.imported.ui(ui),
+            Kind::Modelled => self.modelled.ui(ui, p),
+        }
+    }
+
+    /// What the case is: the icon of its kind, the words and, for a sketch, its wall.
+    fn about_card(&self, ui: &mut Ui, look: &Look) {
+        let palette = &look.palette;
+        let (badge, _) = ui.allocate_exact_size(egui::vec2(48.0, 48.0), egui::Sense::hover());
+        ui.painter()
+            .rect_filled(badge, 12.0, for_egui::color(palette.accent_subtle));
+        if let Some(glyph) = icons::get(self.kind.icon()) {
+            icons::paint(
+                ui.painter(),
+                badge.shrink(10.0),
+                glyph,
+                icons::Style {
+                    accent: Some(for_egui::color(palette.accent_default)),
+                    ..icons::Style::regular(for_egui::color(palette.text_primary))
+                },
+            );
+        }
+        ui.add_space(space::SM);
+        ui.label(
+            RichText::new(tr(self.kind.about())).color(for_egui::color(palette.text_secondary)),
+        );
+    }
+}
+
+/// A titled card of the page: a raised surface with a hairline edge.
+fn card<R>(ui: &mut Ui, look: &Look, title: &str, body: impl FnOnce(&mut Ui) -> R) -> R {
+    let p = &look.palette;
+    Frame::NONE
+        .fill(for_egui::color(p.surface_raised))
+        .stroke(egui::Stroke::new(1.0, for_egui::color(p.border_subtle)))
+        .corner_radius(layout::ISLAND_RADIUS)
+        .inner_margin(Margin::same(14))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.label(
+                RichText::new(title)
+                    .font(eng::panel_title())
+                    .color(for_egui::color(p.text_primary)),
+            );
+            ui.add_space(space::SM);
+            body(ui)
+        })
+        .inner
 }
 
 impl NewCase {
@@ -354,51 +575,48 @@ impl NewCase {
         let mut edit = None;
         let mut remove = None;
         let mut rename = None;
-        egui::Grid::new("new_region_dimensions")
-            .num_columns(2)
-            .spacing([space::MD, space::SM])
-            .show(ui, |ui| {
-                for mut d in self.region.dimensions() {
-                    let speed = 0.01 * d.value.abs().max(1.0);
-                    row(ui, &d.label, |ui| {
-                        if ui
-                            .add(
-                                DragValue::new(&mut d.value)
-                                    .speed(speed)
-                                    .suffix(format!(" {}", d.unit))
-                                    .max_decimals(4),
-                            )
-                            .changed()
-                        {
-                            edit = Some((d.index, d.value));
-                        }
-                        if ui.small_button("✕").clicked() {
-                            remove = Some(d.index);
-                        }
-                    });
-                }
-                for (entity, mut name) in self.region.names() {
-                    row(ui, &trf("Name of edge {}", &[&entity]), |ui| {
-                        let answer = ui.add(
-                            egui::TextEdit::singleline(&mut name)
-                                .id_salt(("region_edge", entity))
-                                .desired_width(140.0),
-                        );
-                        if answer.changed() {
-                            rename = Some((entity, name.clone()));
-                        }
-                    });
-                }
-                row(ui, tr("Size of the triangles"), |ui| {
-                    value(ui, &mut self.drawn.cell_size, "mm")
+        grid(ui, "new_region_dimensions", |ui| {
+            for mut d in self.region.dimensions() {
+                let speed = 0.01 * d.value.abs().max(1.0);
+                row(ui, &d.label, |ui| {
+                    if ui
+                        .add(
+                            DragValue::new(&mut d.value)
+                                .speed(speed)
+                                .suffix(format!(" {}", d.unit))
+                                .max_decimals(4),
+                        )
+                        .changed()
+                    {
+                        edit = Some((d.index, d.value));
+                    }
+                    if ui.small_button("✕").clicked() {
+                        remove = Some(d.index);
+                    }
                 });
-                row(ui, tr("Inlet speed"), |ui| {
-                    value(ui, &mut self.drawn.speed, "m/s")
+            }
+            for (entity, mut name) in self.region.names() {
+                row(ui, &trf("Name of edge {}", &[&entity]), |ui| {
+                    let answer = ui.add(
+                        egui::TextEdit::singleline(&mut name)
+                            .id_salt(("region_edge", entity))
+                            .desired_width(140.0),
+                    );
+                    if answer.changed() {
+                        rename = Some((entity, name.clone()));
+                    }
                 });
-                row(ui, tr("Viscosity"), |ui| {
-                    value(ui, &mut self.drawn.viscosity, "m²/s")
-                });
+            }
+            row(ui, tr("Size of the triangles"), |ui| {
+                value(ui, &mut self.drawn.cell_size, "mm")
             });
+            row(ui, tr("Inlet speed"), |ui| {
+                value(ui, &mut self.drawn.speed, "m/s")
+            });
+            row(ui, tr("Viscosity"), |ui| {
+                value(ui, &mut self.drawn.viscosity, "m²/s")
+            });
+        });
         // A refused edit keeps the sketch as it was and says why above the dimensions.
         if let Some((index, v)) = edit {
             let _ = self.region.set_dimension(index, v);
@@ -440,43 +658,40 @@ impl NewCase {
         }
         ui.add_space(space::SM);
         let mut edit = None;
-        egui::Grid::new("new_sketch_dimensions")
-            .num_columns(2)
-            .spacing([space::MD, space::SM])
-            .show(ui, |ui| {
-                for mut d in self.sketch.dimensions() {
-                    let speed = 0.01 * d.value.abs().max(1.0);
-                    row(ui, &d.label, |ui| {
-                        if ui
-                            .add(
-                                DragValue::new(&mut d.value)
-                                    .speed(speed)
-                                    .suffix(format!(" {}", d.unit))
-                                    .max_decimals(4),
-                            )
-                            .changed()
-                        {
-                            edit = Some((d.index, d.value));
-                        }
-                    });
-                }
-                row(ui, tr("Blocks along the wall"), |ui| {
-                    ui.add(DragValue::new(&mut self.segments).speed(0.5).range(2..=400));
+        grid(ui, "new_sketch_dimensions", |ui| {
+            for mut d in self.sketch.dimensions() {
+                let speed = 0.01 * d.value.abs().max(1.0);
+                row(ui, &d.label, |ui| {
+                    if ui
+                        .add(
+                            DragValue::new(&mut d.value)
+                                .speed(speed)
+                                .suffix(format!(" {}", d.unit))
+                                .max_decimals(4),
+                        )
+                        .changed()
+                    {
+                        edit = Some((d.index, d.value));
+                    }
                 });
-                row(ui, tr("Cells across"), |ui| {
-                    count(ui, &mut self.sketched.radial_cells)
-                });
-                mesh_rows(ui, &mut self.sketched);
-                row(ui, tr("Inlet speed"), |ui| {
-                    value(ui, &mut self.sketched.inlet_speed, "m/s")
-                });
-                row(ui, tr("Inlet temperature"), |ui| {
-                    value(ui, &mut self.sketched.inlet_temperature, "K")
-                });
-                row(ui, tr("Outlet pressure"), |ui| {
-                    value(ui, &mut self.sketched.outlet_pressure, "Pa")
-                });
+            }
+            row(ui, tr("Blocks along the wall"), |ui| {
+                ui.add(DragValue::new(&mut self.segments).speed(0.5).range(2..=400));
             });
+            row(ui, tr("Cells across"), |ui| {
+                count(ui, &mut self.sketched.radial_cells)
+            });
+            mesh_rows(ui, &mut self.sketched);
+            row(ui, tr("Inlet speed"), |ui| {
+                value(ui, &mut self.sketched.inlet_speed, "m/s")
+            });
+            row(ui, tr("Inlet temperature"), |ui| {
+                value(ui, &mut self.sketched.inlet_temperature, "K")
+            });
+            row(ui, tr("Outlet pressure"), |ui| {
+                value(ui, &mut self.sketched.outlet_pressure, "Pa")
+            });
+        });
         if let Some((index, v)) = edit {
             // A refused edit keeps the sketch as it was and says why above the dimensions.
             let _ = self.sketch.set_dimension(index, v);
@@ -690,8 +905,16 @@ fn tool_button(ui: &mut Ui, icon: Option<&str>, text: &str, active: bool) -> egu
 /// its name makes it, with the name beside it.
 pub(super) fn region_canvas(ui: &mut Ui, editor: &mut RegionEditor) {
     let width = ui.available_width().clamp(240.0, 1100.0);
-    let (rect, response) =
-        ui.allocate_exact_size(egui::vec2(width, 440.0), egui::Sense::click_and_drag());
+    region_canvas_in(ui, editor, egui::vec2(width, 440.0));
+}
+
+/// The drawing, in a box of `size`; where the pointer is over it, in millimetres.
+pub(super) fn region_canvas_in(
+    ui: &mut Ui,
+    editor: &mut RegionEditor,
+    size: egui::Vec2,
+) -> Option<(f64, f64)> {
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click_and_drag());
     let canvas = Canvas::new(
         f64::from(rect.left()),
         f64::from(rect.top()),
@@ -740,7 +963,13 @@ pub(super) fn region_canvas(ui: &mut Ui, editor: &mut RegionEditor) {
     }
     let painter = ui.painter_at(rect);
     let visuals = ui.visuals().clone();
-    painter.rect_filled(rect, 6.0, visuals.extreme_bg_color);
+    painter.rect_filled(rect, 12.0, visuals.extreme_bg_color);
+    painter.rect_stroke(
+        rect,
+        12.0,
+        visuals.widgets.noninteractive.bg_stroke,
+        egui::StrokeKind::Inside,
+    );
     if editor.grid > 0.0 && canvas.millimetres(1.0) * editor.grid >= 8.0 {
         let (x0, y1) = canvas.to_world(f64::from(rect.left()), f64::from(rect.top()));
         let (x1, y0) = canvas.to_world(f64::from(rect.right()), f64::from(rect.bottom()));
@@ -758,31 +987,55 @@ pub(super) fn region_canvas(ui: &mut Ui, editor: &mut RegionEditor) {
             count += 1;
         }
     }
-    for edge in editor.drawing() {
-        let color = match Role::of(&edge.patch) {
-            Role::Inlet => visuals.selection.stroke.color,
-            Role::Outlet => visuals.warn_fg_color,
-            Role::Symmetry => visuals.weak_text_color(),
-            Role::Wall => visuals.text_color(),
-        };
-        let line: Vec<_> = edge.points.iter().map(|&(x, y)| screen(x, y)).collect();
+    // The axes through the origin, faint, so the drawing has a place to be measured from.
+    let axis = egui::Stroke::new(1.0, visuals.weak_text_color().gamma_multiply(0.3));
+    let origin = screen(0.0, 0.0);
+    if rect.x_range().contains(origin.x) {
+        painter.line_segment(
+            [
+                egui::pos2(origin.x, rect.top()),
+                egui::pos2(origin.x, rect.bottom()),
+            ],
+            axis,
+        );
+    }
+    if rect.y_range().contains(origin.y) {
+        painter.line_segment(
+            [
+                egui::pos2(rect.left(), origin.y),
+                egui::pos2(rect.right(), origin.y),
+            ],
+            axis,
+        );
+    }
+    let edges = editor.drawing();
+    let lines: Vec<Vec<egui::Pos2>> = edges
+        .iter()
+        .map(|e| e.points.iter().map(|&(x, y)| screen(x, y)).collect())
+        .collect();
+    let colour_of = |patch: &str| match Role::of(patch) {
+        Role::Inlet => visuals.selection.stroke.color,
+        Role::Outlet => visuals.warn_fg_color,
+        Role::Symmetry => visuals.weak_text_color(),
+        Role::Wall => visuals.text_color(),
+    };
+    for (edge, line) in edges.iter().zip(&lines) {
         painter.add(egui::Shape::line(
             line.clone(),
-            egui::Stroke::new(2.0, color),
+            egui::Stroke::new(2.0, colour_of(&edge.patch)),
         ));
-        // Only an edge with a name of its own is labelled: every other one is a plain wall.
-        if edge.patch != vortia_sketch::DEFAULT_PATCH
-            && let Some((x, y)) = edge.middle()
-        {
-            painter.text(
-                screen(x, y) + egui::vec2(0.0, -9.0),
-                egui::Align2::CENTER_CENTER,
-                &edge.patch,
-                egui::FontId::proportional(11.0),
-                color,
-            );
-        }
     }
+    // The middle of the drawing, which what is written beside an edge keeps away from.
+    let points_on_screen: Vec<egui::Pos2> = lines.iter().flatten().copied().collect();
+    let centre = if points_on_screen.is_empty() {
+        rect.center()
+    } else {
+        let n = points_on_screen.len() as f32;
+        egui::pos2(
+            points_on_screen.iter().map(|p| p.x).sum::<f32>() / n,
+            points_on_screen.iter().map(|p| p.y).sum::<f32>() / n,
+        )
+    };
     for (x, y, fixed) in editor.points() {
         let c = screen(x, y);
         if fixed {
@@ -795,11 +1048,20 @@ pub(super) fn region_canvas(ui: &mut Ui, editor: &mut RegionEditor) {
             painter.circle_filled(c, 3.5, visuals.selection.stroke.color);
         }
     }
-    // What each constraint holds, marked where it holds.
+    // What each constraint holds, marked where it holds: a chip on the inner side of the nearest
+    // edge, and the next one along when two hold the same place.
+    let mut chips: Vec<egui::Rect> = Vec::new();
     for marker in editor.markers() {
         let at = screen(marker.at.0, marker.at.1);
-        let chip =
-            egui::Rect::from_center_size(at + egui::vec2(0.0, -11.0), egui::vec2(16.0, 16.0));
+        let (along, inward) = side_of(&lines, at, centre);
+        let mut chip = egui::Rect::from_center_size(at + inward * 13.0, egui::vec2(18.0, 18.0));
+        for _ in 0..6 {
+            if !chips.iter().any(|c| c.expand(1.0).intersects(chip)) {
+                break;
+            }
+            chip = chip.translate(along * 19.0);
+        }
+        chips.push(chip);
         painter.rect_filled(chip, 4.0, visuals.extreme_bg_color);
         painter.rect_stroke(
             chip,
@@ -809,10 +1071,50 @@ pub(super) fn region_canvas(ui: &mut Ui, editor: &mut RegionEditor) {
         );
         super::paint_icon(
             &painter,
-            chip.shrink(2.0),
+            chip.shrink(2.5),
             marker.relation.icon(),
             visuals.warn_fg_color,
         );
+    }
+    // Only an edge with a name of its own is labelled: every other one is a plain wall. The
+    // name sits in a pill on the outer side of its edge, pushed further out where it would
+    // cover another name or a chip.
+    let mut taken = chips;
+    let mut named: Vec<&str> = Vec::new();
+    for (edge, line) in edges.iter().zip(&lines) {
+        // One name for each patch is enough: the edges of a block are all `block`.
+        if edge.patch == vortia_sketch::DEFAULT_PATCH || named.contains(&edge.patch.as_str()) {
+            continue;
+        }
+        named.push(&edge.patch);
+        let Some((x, y)) = edge.middle() else {
+            continue;
+        };
+        let colour = colour_of(&edge.patch);
+        let galley =
+            painter.layout_no_wrap(edge.patch.clone(), egui::FontId::proportional(11.5), colour);
+        let pill = galley.size() + egui::vec2(12.0, 6.0);
+        let mid = screen(x, y);
+        let outward = outward_of(line, mid, centre);
+        let reach = outward.x.abs() * pill.x / 2.0 + outward.y.abs() * pill.y / 2.0 + 7.0;
+        let mut at = mid + outward * reach;
+        let mut label = egui::Rect::from_center_size(at, pill);
+        for _ in 0..6 {
+            if !taken.iter().any(|t| t.expand(2.0).intersects(label)) {
+                break;
+            }
+            at += outward * (pill.y + 4.0);
+            label = egui::Rect::from_center_size(at, pill);
+        }
+        taken.push(label);
+        painter.rect_filled(label, 5.0, visuals.extreme_bg_color.gamma_multiply(0.92));
+        painter.rect_stroke(
+            label,
+            5.0,
+            egui::Stroke::new(1.0, colour.gamma_multiply(0.7)),
+            egui::StrokeKind::Inside,
+        );
+        painter.galley(label.center() - galley.size() / 2.0, galley, colour);
     }
     // What the tool has been given, and the shape it would make where the pointer is.
     for &picked in editor.picked() {
@@ -833,10 +1135,88 @@ pub(super) fn region_canvas(ui: &mut Ui, editor: &mut RegionEditor) {
             painter.circle_stroke(screen(hx, hy), 4.0, stroke);
         }
     }
+    response.hover_pos().map(world)
 }
 
+/// The unit direction from `from` to `to`; none when they are the same point.
+fn unit(from: egui::Pos2, to: egui::Pos2) -> Option<egui::Vec2> {
+    let d = to - from;
+    (d.length() > 1.0e-3).then(|| d.normalized())
+}
+
+/// Which way is out of the drawing at `mid` on `line`: the normal of the edge, turned to face
+/// away from the middle of the drawing.
+fn outward_of(line: &[egui::Pos2], mid: egui::Pos2, centre: egui::Pos2) -> egui::Vec2 {
+    let chord = line
+        .first()
+        .zip(line.last())
+        .and_then(|(a, b)| unit(*a, *b));
+    let away = unit(centre, mid);
+    match (chord, away) {
+        (Some(d), Some(away)) => {
+            let n = egui::vec2(-d.y, d.x);
+            if n.dot(away) < 0.0 { -n } else { n }
+        }
+        (Some(d), None) => egui::vec2(-d.y, d.x),
+        (None, Some(away)) => away,
+        (None, None) => egui::vec2(0.0, -1.0),
+    }
+}
+
+/// The direction of the edge nearest `at` and the normal of it that faces the middle of the
+/// drawing, for what is set on the inner side of an edge.
+fn side_of(
+    lines: &[Vec<egui::Pos2>],
+    at: egui::Pos2,
+    centre: egui::Pos2,
+) -> (egui::Vec2, egui::Vec2) {
+    let mut best: Option<(f32, egui::Vec2)> = None;
+    for line in lines {
+        for pair in line.windows(2) {
+            let (Some(&a), Some(&b)) = (pair.first(), pair.get(1)) else {
+                continue;
+            };
+            let ab = b - a;
+            let len2 = ab.length_sq();
+            let t = if len2 > 0.0 {
+                ((at - a).dot(ab) / len2).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            let d = (at - (a + ab * t)).length();
+            if best.is_none_or(|(near, _)| d < near)
+                && let Some(dir) = unit(a, b)
+            {
+                best = Some((d, dir));
+            }
+        }
+    }
+    let along = best.map_or(egui::vec2(1.0, 0.0), |(_, d)| d);
+    let n = egui::vec2(-along.y, along.x);
+    let inward = unit(at, centre).map_or(n, |to| if n.dot(to) < 0.0 { -n } else { n });
+    (along, inward)
+}
+
+/// A grid of settings in the engineering suite's measure: the labels in a column of their own,
+/// wrapping when long, and the controls starting at one x.
+pub(super) fn grid<R>(
+    ui: &mut Ui,
+    id: impl std::hash::Hash + std::fmt::Debug,
+    rows: impl FnOnce(&mut Ui) -> R,
+) -> R {
+    egui::Grid::new(id)
+        .num_columns(2)
+        .min_col_width(layout::PROPERTY_LABEL)
+        .max_col_width(176.0)
+        .min_row_height(layout::PROPERTY_ROW)
+        .spacing([10.0, 2.0])
+        .show(ui, rows)
+        .inner
+}
+
+/// A setting: its label (secondary ink) and its control.
 pub(super) fn row(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui)) {
-    ui.label(label);
+    ui.label(RichText::new(label).weak());
     add(ui);
     ui.end_row();
 }
@@ -856,33 +1236,27 @@ fn count(ui: &mut Ui, v: &mut usize) {
 }
 
 fn channel_fields(ui: &mut Ui, c: &mut Channel) {
-    egui::Grid::new("new_channel")
-        .num_columns(2)
-        .spacing([space::MD, space::SM])
-        .show(ui, |ui| {
-            row(ui, tr("Length"), |ui| value(ui, &mut c.length, "m"));
-            row(ui, tr("Height"), |ui| value(ui, &mut c.height, "m"));
-            row(ui, tr("Cells along"), |ui| count(ui, &mut c.cells_x));
-            row(ui, tr("Cells across"), |ui| count(ui, &mut c.cells_y));
-            row(ui, tr("Inlet speed"), |ui| value(ui, &mut c.speed, "m/s"));
-            row(ui, tr("Viscosity"), |ui| {
-                value(ui, &mut c.viscosity, "m²/s")
-            });
+    grid(ui, "new_channel", |ui| {
+        row(ui, tr("Length"), |ui| value(ui, &mut c.length, "m"));
+        row(ui, tr("Height"), |ui| value(ui, &mut c.height, "m"));
+        row(ui, tr("Cells along"), |ui| count(ui, &mut c.cells_x));
+        row(ui, tr("Cells across"), |ui| count(ui, &mut c.cells_y));
+        row(ui, tr("Inlet speed"), |ui| value(ui, &mut c.speed, "m/s"));
+        row(ui, tr("Viscosity"), |ui| {
+            value(ui, &mut c.viscosity, "m²/s")
         });
+    });
 }
 
 fn cavity_fields(ui: &mut Ui, c: &mut Cavity) {
-    egui::Grid::new("new_cavity")
-        .num_columns(2)
-        .spacing([space::MD, space::SM])
-        .show(ui, |ui| {
-            row(ui, tr("Side"), |ui| value(ui, &mut c.side, "m"));
-            row(ui, tr("Cells along a side"), |ui| count(ui, &mut c.cells));
-            row(ui, tr("Lid speed"), |ui| value(ui, &mut c.lid_speed, "m/s"));
-            row(ui, tr("Viscosity"), |ui| {
-                value(ui, &mut c.viscosity, "m²/s")
-            });
+    grid(ui, "new_cavity", |ui| {
+        row(ui, tr("Side"), |ui| value(ui, &mut c.side, "m"));
+        row(ui, tr("Cells along a side"), |ui| count(ui, &mut c.cells));
+        row(ui, tr("Lid speed"), |ui| value(ui, &mut c.lid_speed, "m/s"));
+        row(ui, tr("Viscosity"), |ui| {
+            value(ui, &mut c.viscosity, "m²/s")
         });
+    });
 }
 
 fn plate_fields(ui: &mut Ui, p: &mut Plate) {
@@ -898,37 +1272,34 @@ fn plate_fields(ui: &mut Ui, p: &mut Plate) {
             Plate::default()
         };
     }
-    egui::Grid::new("new_plate")
-        .num_columns(2)
-        .spacing([space::MD, space::SM])
-        .show(ui, |ui| {
-            row(ui, tr("Plate length"), |ui| value(ui, &mut p.length, "m"));
-            if !p.turbulent {
-                row(ui, tr("Slip wall ahead"), |ui| {
-                    value(ui, &mut p.upstream, "m")
-                });
-            }
-            row(ui, tr("Height"), |ui| value(ui, &mut p.height, "m"));
-            row(ui, tr("Cells along the plate"), |ui| {
-                count(ui, &mut p.cells_x)
+    grid(ui, "new_plate", |ui| {
+        row(ui, tr("Plate length"), |ui| value(ui, &mut p.length, "m"));
+        if !p.turbulent {
+            row(ui, tr("Slip wall ahead"), |ui| {
+                value(ui, &mut p.upstream, "m")
             });
-            if !p.turbulent {
-                row(ui, tr("Cells ahead"), |ui| count(ui, &mut p.cells_up));
-            }
-            row(ui, tr("Cells across"), |ui| count(ui, &mut p.cells_y));
-            row(ui, tr("Stream speed"), |ui| value(ui, &mut p.speed, "m/s"));
-            row(ui, tr("Viscosity"), |ui| {
-                value(ui, &mut p.viscosity, "m²/s")
-            });
-            if p.turbulent {
-                row(ui, tr("Turbulence intensity"), |ui| {
-                    value(ui, &mut p.intensity, "")
-                });
-                row(ui, tr("Mixing length"), |ui| {
-                    value(ui, &mut p.length_scale, "m")
-                });
-            }
+        }
+        row(ui, tr("Height"), |ui| value(ui, &mut p.height, "m"));
+        row(ui, tr("Cells along the plate"), |ui| {
+            count(ui, &mut p.cells_x)
         });
+        if !p.turbulent {
+            row(ui, tr("Cells ahead"), |ui| count(ui, &mut p.cells_up));
+        }
+        row(ui, tr("Cells across"), |ui| count(ui, &mut p.cells_y));
+        row(ui, tr("Stream speed"), |ui| value(ui, &mut p.speed, "m/s"));
+        row(ui, tr("Viscosity"), |ui| {
+            value(ui, &mut p.viscosity, "m²/s")
+        });
+        if p.turbulent {
+            row(ui, tr("Turbulence intensity"), |ui| {
+                value(ui, &mut p.intensity, "")
+            });
+            row(ui, tr("Mixing length"), |ui| {
+                value(ui, &mut p.length_scale, "m")
+            });
+        }
+    });
 }
 
 fn airfoil_fields(ui: &mut Ui, a: &mut Airfoil) {
@@ -943,81 +1314,75 @@ fn airfoil_fields(ui: &mut Ui, a: &mut Airfoil) {
             }
         }
     });
-    egui::Grid::new("new_airfoil")
-        .num_columns(2)
-        .spacing([space::MD, space::SM])
-        .show(ui, |ui| {
-            row(ui, tr("NACA profile"), |ui| {
-                ui.add(egui::DragValue::new(&mut a.naca).speed(0.2).range(1..=9999));
-            });
-            row(ui, tr("Angle of attack"), |ui| {
-                ui.add(
-                    egui::DragValue::new(&mut a.alpha)
-                        .speed(0.1)
-                        .range(-45.0..=45.0)
-                        .suffix(" °"),
-                );
-            });
-            row(ui, tr("Chord"), |ui| value(ui, &mut a.chord, "m"));
-            row(ui, tr("Stream speed"), |ui| value(ui, &mut a.speed, "m/s"));
-            row(ui, tr("Reynolds number"), |ui| {
-                value(ui, &mut a.reynolds, "")
-            });
-            row(ui, tr("Distance to the far field"), |ui| {
-                value(ui, &mut a.far, "chords")
-            });
-            row(ui, tr("Wake length"), |ui| value(ui, &mut a.wake, "chords"));
-            row(ui, tr("Cells along each surface"), |ui| {
-                count(ui, &mut a.cells_chord)
-            });
-            row(ui, tr("Cells to the far field"), |ui| {
-                count(ui, &mut a.cells_normal)
-            });
-            row(ui, tr("Cells along the wake"), |ui| {
-                count(ui, &mut a.cells_wake)
-            });
-            row(ui, tr("First cell y+"), |ui| value(ui, &mut a.yplus, ""));
-            if a.model == AirfoilModel::KOmegaSst {
-                row(ui, tr("Turbulence intensity"), |ui| {
-                    value(ui, &mut a.intensity, "")
-                });
-            }
+    grid(ui, "new_airfoil", |ui| {
+        row(ui, tr("NACA profile"), |ui| {
+            ui.add(egui::DragValue::new(&mut a.naca).speed(0.2).range(1..=9999));
         });
+        row(ui, tr("Angle of attack"), |ui| {
+            ui.add(
+                egui::DragValue::new(&mut a.alpha)
+                    .speed(0.1)
+                    .range(-45.0..=45.0)
+                    .suffix(" °"),
+            );
+        });
+        row(ui, tr("Chord"), |ui| value(ui, &mut a.chord, "m"));
+        row(ui, tr("Stream speed"), |ui| value(ui, &mut a.speed, "m/s"));
+        row(ui, tr("Reynolds number"), |ui| {
+            value(ui, &mut a.reynolds, "")
+        });
+        row(ui, tr("Distance to the far field"), |ui| {
+            value(ui, &mut a.far, "chords")
+        });
+        row(ui, tr("Wake length"), |ui| value(ui, &mut a.wake, "chords"));
+        row(ui, tr("Cells along each surface"), |ui| {
+            count(ui, &mut a.cells_chord)
+        });
+        row(ui, tr("Cells to the far field"), |ui| {
+            count(ui, &mut a.cells_normal)
+        });
+        row(ui, tr("Cells along the wake"), |ui| {
+            count(ui, &mut a.cells_wake)
+        });
+        row(ui, tr("First cell y+"), |ui| value(ui, &mut a.yplus, ""));
+        if a.model == AirfoilModel::KOmegaSst {
+            row(ui, tr("Turbulence intensity"), |ui| {
+                value(ui, &mut a.intensity, "")
+            });
+        }
+    });
 }
 
 fn jet_fields(ui: &mut Ui, j: &mut Jet) {
-    egui::Grid::new("new_jet")
-        .num_columns(2)
-        .spacing([space::MD, space::SM])
-        .show(ui, |ui| {
-            row(ui, tr("Orifice radius"), |ui| {
-                value(ui, &mut j.orifice_radius, "mm")
-            });
-            row(ui, tr("Atmosphere length"), |ui| {
-                value(ui, &mut j.length, "mm")
-            });
-            row(ui, tr("Atmosphere radius"), |ui| {
-                value(ui, &mut j.radius, "mm")
-            });
-            row(ui, tr("Total pressure"), |ui| {
-                value(ui, &mut j.total_pressure, "Pa")
-            });
-            row(ui, tr("Total temperature"), |ui| {
-                value(ui, &mut j.total_temperature, "K")
-            });
-            row(ui, tr("Ambient pressure"), |ui| {
-                value(ui, &mut j.ambient_pressure, "Pa")
-            });
-            row(ui, tr("Cells along the axis"), |ui| {
-                count(ui, &mut j.cells_axial)
-            });
-            row(ui, tr("Cells across the orifice"), |ui| {
-                count(ui, &mut j.cells_orifice)
-            });
-            row(ui, tr("Cells outside the orifice"), |ui| {
-                count(ui, &mut j.cells_outer)
-            });
+    grid(ui, "new_jet", |ui| {
+        row(ui, tr("Orifice radius"), |ui| {
+            value(ui, &mut j.orifice_radius, "mm")
         });
+        row(ui, tr("Atmosphere length"), |ui| {
+            value(ui, &mut j.length, "mm")
+        });
+        row(ui, tr("Atmosphere radius"), |ui| {
+            value(ui, &mut j.radius, "mm")
+        });
+        row(ui, tr("Total pressure"), |ui| {
+            value(ui, &mut j.total_pressure, "Pa")
+        });
+        row(ui, tr("Total temperature"), |ui| {
+            value(ui, &mut j.total_temperature, "K")
+        });
+        row(ui, tr("Ambient pressure"), |ui| {
+            value(ui, &mut j.ambient_pressure, "Pa")
+        });
+        row(ui, tr("Cells along the axis"), |ui| {
+            count(ui, &mut j.cells_axial)
+        });
+        row(ui, tr("Cells across the orifice"), |ui| {
+            count(ui, &mut j.cells_orifice)
+        });
+        row(ui, tr("Cells outside the orifice"), |ui| {
+            count(ui, &mut j.cells_outer)
+        });
+    });
 }
 
 /// The choice of mesh: blocks, or triangles made by the engine's own mesher at a cell size.
@@ -1037,47 +1402,73 @@ fn mesh_rows(ui: &mut Ui, n: &mut Nozzle) {
 }
 
 fn nozzle_fields(ui: &mut Ui, n: &mut Nozzle) {
-    egui::Grid::new("new_nozzle")
-        .num_columns(2)
-        .spacing([space::MD, space::SM])
-        .show(ui, |ui| {
-            row(ui, tr("Inlet diameter"), |ui| {
-                value(ui, &mut n.inlet_diameter, "mm")
-            });
-            row(ui, tr("Throat diameter"), |ui| {
-                value(ui, &mut n.throat_diameter, "mm")
-            });
-            row(ui, tr("Outlet diameter"), |ui| {
-                value(ui, &mut n.outlet_diameter, "mm")
-            });
-            row(ui, tr("Converging length"), |ui| {
-                value(ui, &mut n.converging_length, "mm")
-            });
-            row(ui, tr("Diverging length"), |ui| {
-                value(ui, &mut n.diverging_length, "mm")
-            });
-            row(ui, tr("Inlet speed"), |ui| {
-                value(ui, &mut n.inlet_speed, "m/s")
-            });
-            row(ui, tr("Inlet temperature"), |ui| {
-                value(ui, &mut n.inlet_temperature, "K")
-            });
-            row(ui, tr("Outlet pressure"), |ui| {
-                value(ui, &mut n.outlet_pressure, "Pa")
-            });
-            row(ui, tr("Cells across"), |ui| count(ui, &mut n.radial_cells));
-            mesh_rows(ui, n);
-            if n.kind == vortia_cases::NozzleKind::Planar {
-                row(ui, tr("Half section"), |ui| {
-                    ui.checkbox(&mut n.half, tr("Symmetry plane on the axis"));
-                });
-            }
+    grid(ui, "new_nozzle", |ui| {
+        row(ui, tr("Inlet diameter"), |ui| {
+            value(ui, &mut n.inlet_diameter, "mm")
         });
+        row(ui, tr("Throat diameter"), |ui| {
+            value(ui, &mut n.throat_diameter, "mm")
+        });
+        row(ui, tr("Outlet diameter"), |ui| {
+            value(ui, &mut n.outlet_diameter, "mm")
+        });
+        row(ui, tr("Converging length"), |ui| {
+            value(ui, &mut n.converging_length, "mm")
+        });
+        row(ui, tr("Diverging length"), |ui| {
+            value(ui, &mut n.diverging_length, "mm")
+        });
+        row(ui, tr("Inlet speed"), |ui| {
+            value(ui, &mut n.inlet_speed, "m/s")
+        });
+        row(ui, tr("Inlet temperature"), |ui| {
+            value(ui, &mut n.inlet_temperature, "K")
+        });
+        row(ui, tr("Outlet pressure"), |ui| {
+            value(ui, &mut n.outlet_pressure, "Pa")
+        });
+        row(ui, tr("Cells across"), |ui| count(ui, &mut n.radial_cells));
+        mesh_rows(ui, n);
+        if n.kind == vortia_cases::NozzleKind::Planar {
+            row(ui, tr("Half section"), |ui| {
+                ui.checkbox(&mut n.half, tr("Symmetry plane on the axis"));
+            });
+        }
+    });
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_gallery_lists_every_kind_once_and_each_has_an_icon_of_the_shared_set() {
+        let listed: Vec<Kind> = Kind::GROUPS
+            .iter()
+            .flat_map(|(_, kinds)| kinds.iter().copied())
+            .collect();
+        assert_eq!(listed.len(), Kind::ALL.len());
+        for kind in Kind::ALL {
+            assert_eq!(listed.iter().filter(|k| **k == kind).count(), 1, "{kind:?}");
+            assert!(icons::get(kind.icon()).is_some(), "{kind:?}");
+            assert!(!kind.tagline().is_empty());
+        }
+    }
+
+    #[test]
+    fn a_kind_named_on_the_command_line_opens_and_a_stranger_leaves_the_gallery() {
+        let base = tempfile::tempdir().unwrap();
+        let mut form = NewCase::new(base.path());
+        assert!(form.in_gallery());
+        assert!(!form.choose_named("nonsense"));
+        assert!(form.in_gallery());
+        assert!(form.choose_named("region"));
+        assert!(form.in_studio() && !form.in_gallery());
+        assert!(form.choose_named("channel"));
+        assert!(!form.in_studio() && !form.in_gallery());
+        form.leave();
+        assert!(form.in_gallery());
+    }
 
     #[test]
     fn every_kind_makes_a_case_the_app_opens() {

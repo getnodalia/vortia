@@ -570,6 +570,14 @@ impl VortiaApp {
         self.new_case = Some(form);
     }
 
+    /// Opens New on the kind of case `key` names, or on the gallery of kinds when it names none.
+    pub fn show_new(&mut self, key: &str) {
+        let mut form = newcase::NewCase::new(&newcase::NewCase::default_base());
+        form.choose_named(key);
+        self.new_case = Some(form);
+        self.home = true;
+    }
+
     /// Switches the open case to one of its tabs.
     pub fn show_tab(&mut self, tab: TabName) {
         if let Screen::Case(case) = &mut self.screen {

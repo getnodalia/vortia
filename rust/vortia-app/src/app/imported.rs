@@ -11,7 +11,7 @@ use vortia_cad::dxf::{self, Drawing, Outline, Tunnel};
 use vortia_cases::{Body, BodyModel, Drawn, Geometry};
 use vortia_mesh::stl::Summary;
 
-use super::newcase::{row, value};
+use super::newcase::{grid, row, value};
 use crate::i18n::{tr, trf};
 
 /// What was read from the file.
@@ -160,34 +160,31 @@ impl Imported {
             return;
         };
         ui.add_space(8.0);
-        egui::Grid::new("new_imported")
-            .num_columns(2)
-            .spacing([12.0, 6.0])
-            .show(ui, |ui| {
-                let (a, b) = (
-                    tr("Scale of the file"),
-                    tr(
-                        "Multiplies every length of the file: 0.001 turns the millimetres of an STL, OBJ, PLY or glTF into metres. A STEP file carries its own unit.",
-                    ),
-                );
-                ui.label(a).on_hover_text(b);
-                ui.add(
-                    DragValue::new(&mut self.scale)
-                        .speed(0.0001)
-                        .range(1.0e-9..=1.0e9)
-                        .max_decimals(9),
-                );
-                ui.end_row();
-                match loaded {
-                    Loaded::Body { body, summary, .. } => body_fields(ui, body, summary, scale),
-                    Loaded::Section {
-                        drawing,
-                        drawn,
-                        tunnel,
-                        cell_size,
-                    } => section_fields(ui, drawing, drawn, tunnel, cell_size),
-                }
-            });
+        grid(ui, "new_imported", |ui| {
+            let (a, b) = (
+                tr("Scale of the file"),
+                tr(
+                    "Multiplies every length of the file: 0.001 turns the millimetres of an STL, OBJ, PLY or glTF into metres. A STEP file carries its own unit.",
+                ),
+            );
+            ui.label(a).on_hover_text(b);
+            ui.add(
+                DragValue::new(&mut self.scale)
+                    .speed(0.0001)
+                    .range(1.0e-9..=1.0e9)
+                    .max_decimals(9),
+            );
+            ui.end_row();
+            match loaded {
+                Loaded::Body { body, summary, .. } => body_fields(ui, body, summary, scale),
+                Loaded::Section {
+                    drawing,
+                    drawn,
+                    tunnel,
+                    cell_size,
+                } => section_fields(ui, drawing, drawn, tunnel, cell_size),
+            }
+        });
         match loaded {
             Loaded::Section { drawing, .. } => {
                 ui.add_space(8.0);
@@ -358,7 +355,7 @@ pub(super) fn body_fields(ui: &mut Ui, body: &mut Body, summary: &Summary, scale
         );
     }
     row(ui, tr("Turbulence"), |ui| {
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             for (model, name) in [
                 (BodyModel::Laminar, tr("Laminar")),
                 (BodyModel::SpalartAllmaras, "Spalart–Allmaras"),

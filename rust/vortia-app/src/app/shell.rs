@@ -574,41 +574,52 @@ impl VortiaApp {
         let new_case = &mut self.new_case;
         let stl = &mut self.stl;
         let stl_input = &mut self.stl_input;
-        let nav_pick = office::file_view(ui, &home, &nav, |ui| {
-            eng::home_header(ui, look, Some(icon), "Vortia", &version);
-            if let Some(form) = new_case {
-                create = matches!(form.ui(ui, look, p), newcase::Ask::Create);
-                if let Some(notice) = &self.notice {
-                    ui.add_space(space::SM);
-                    ui.colored_label(for_egui::color(p.status_danger_fg), notice);
+        // A drawn region or a modelled part takes the window as a studio: no navigation beside it.
+        if let Some(form) = new_case.as_mut().filter(|form| form.in_studio()) {
+            let ask = form.studio(ui, look, p, self.notice.as_deref());
+            create = matches!(ask, newcase::Ask::Create);
+        }
+        let studio = new_case.as_ref().is_some_and(|form| form.in_studio());
+        let nav_pick = if studio {
+            None
+        } else {
+            office::file_view(ui, &home, &nav, |ui| {
+                if new_case.as_ref().is_none_or(|form| form.in_gallery()) {
+                    eng::home_header(ui, look, Some(icon), "Vortia", &version);
                 }
-                return;
-            }
-            if let Some(view) = stl {
-                close_stl = stl_page(ui, look, view);
-                return;
-            }
-            office::section(ui, &home, tr("Open a case"), |ui| {
-                ui.horizontal(|ui| {
-                    let width = (ui.available_width() - 120.0).clamp(160.0, 420.0);
-                    let field = ui.add(
-                        egui::TextEdit::singleline(&mut self.path_input)
-                            .hint_text(tr("Folder of a case"))
-                            .desired_width(width),
-                    );
-                    if focus {
-                        field.request_focus();
+                if let Some(form) = new_case {
+                    create = matches!(form.ui(ui, look, p), newcase::Ask::Create);
+                    if let Some(notice) = &self.notice {
+                        ui.add_space(space::SM);
+                        ui.colored_label(for_egui::color(p.status_danger_fg), notice);
                     }
-                    open |= field.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
-                    open |= super::accent_button(ui, p, tr("Open case")).clicked();
-                });
-                if let Some(notice) = &self.notice {
-                    ui.add_space(space::SM);
-                    ui.colored_label(for_egui::color(p.status_danger_fg), notice);
+                    return;
                 }
-            });
-            office::section(ui, &home, tr("Open a geometry"), |ui| {
-                ui.horizontal(|ui| {
+                if let Some(view) = stl {
+                    close_stl = stl_page(ui, look, view);
+                    return;
+                }
+                office::section(ui, &home, tr("Open a case"), |ui| {
+                    ui.horizontal(|ui| {
+                        let width = (ui.available_width() - 120.0).clamp(160.0, 420.0);
+                        let field = ui.add(
+                            egui::TextEdit::singleline(&mut self.path_input)
+                                .hint_text(tr("Folder of a case"))
+                                .desired_width(width),
+                        );
+                        if focus {
+                            field.request_focus();
+                        }
+                        open |= field.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
+                        open |= super::accent_button(ui, p, tr("Open case")).clicked();
+                    });
+                    if let Some(notice) = &self.notice {
+                        ui.add_space(space::SM);
+                        ui.colored_label(for_egui::color(p.status_danger_fg), notice);
+                    }
+                });
+                office::section(ui, &home, tr("Open a geometry"), |ui| {
+                    ui.horizontal(|ui| {
                     let width = (ui.available_width() - 120.0).clamp(160.0, 420.0);
                     let field = ui.add(
                         egui::TextEdit::singleline(stl_input)
@@ -622,26 +633,27 @@ impl VortiaApp {
                         stl_path = Some(PathBuf::from(stl_input.trim()));
                     }
                 });
-            });
-            office::section(ui, &home, tr("Recent"), |ui| {
-                let docs: Vec<eng::RecentDocument> = recent
-                    .iter()
-                    .map(|(name, folder)| eng::RecentDocument {
-                        name,
-                        folder,
-                        when: "",
-                        icon: "nozzle",
-                        thumbnail: None,
-                    })
-                    .collect();
-                picked = eng::recent_documents(
-                    ui,
-                    look,
-                    &docs,
-                    tr("Nothing here yet. Open a case folder to get started."),
-                );
-            });
-        });
+                });
+                office::section(ui, &home, tr("Recent"), |ui| {
+                    let docs: Vec<eng::RecentDocument> = recent
+                        .iter()
+                        .map(|(name, folder)| eng::RecentDocument {
+                            name,
+                            folder,
+                            when: "",
+                            icon: "nozzle",
+                            thumbnail: None,
+                        })
+                        .collect();
+                    picked = eng::recent_documents(
+                        ui,
+                        look,
+                        &docs,
+                        tr("Nothing here yet. Open a case folder to get started."),
+                    );
+                });
+            })
+        };
         if let Some(path) = stl_path {
             self.show_stl(ctx, path);
         }
@@ -2079,6 +2091,30 @@ mod tests {
             app.search = Some("run".into());
             frame(&mut app, &ctx);
             assert!(app.search.is_some());
+        }
+    }
+
+    #[test]
+    fn every_kind_of_new_case_draws_in_both_themes_in_its_studio_or_on_its_page() {
+        for theme in [crate::prefs::Theme::Light, crate::prefs::Theme::Dark] {
+            let ctx = Context::default();
+            let mut app = VortiaApp::with_prefs(
+                Prefs {
+                    theme,
+                    ..Prefs::default()
+                },
+                None,
+            );
+            app.show_new("");
+            frame(&mut app, &ctx);
+            for key in [
+                "channel", "cavity", "plate", "airfoil", "planar", "nozzle", "jet", "sketch",
+                "region", "body", "model",
+            ] {
+                app.show_new(key);
+                frame(&mut app, &ctx);
+                frame(&mut app, &ctx);
+            }
         }
     }
 
