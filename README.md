@@ -80,6 +80,9 @@ limit is listed in
 | <img src="docs/screenshots/cad-sketch-dark.webp" alt="The region editor: ribbon of tools, Browser, canvas with named edges and constraints, properties and status bar"> | <img src="docs/screenshots/cad-part-dark.webp" alt="The part modeller: a NACA wing built on Nodalia's solid kernel, with its features on the left and the flow settings on the right"> |
 | The region editor: ribbon, Browser, canvas, dimensions and degrees of freedom | The part modeller: a wing, its features and the flow around it |
 
+| <img src="docs/screenshots/viewer-display-dark.webp" alt="The 3D view with its Display panel open: colour field, slice plane and scale, floating over the picture"> |
+| The 3D view's Display panel floats over the picture and folds into one button |
+
 The sphere pictures come from `vortia new body DIR sphere.stl model=0 reynolds=100 levels=6` and `vortia solve DIR`
 (124 276 cells, converged in 197 iterations). The jet's results view shows the `examples/nozzle-practice-2026` case; the sketch is a
 nozzle made with the sketch's generator. The airfoil pictures come from
