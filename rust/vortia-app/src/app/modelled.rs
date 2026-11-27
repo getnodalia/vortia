@@ -159,12 +159,20 @@ fn build_with(part: &Part, chord: f64) -> Result<Stl, String> {
         .map_err(|e| e.to_string())
 }
 
+/// Three coordinates side by side: each named by a prefix of its own, the unit said once.
 fn vec3(ui: &mut Ui, v: &mut [f64; 3]) {
     ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 4.0;
         for (name, c) in ["x", "y", "z"].into_iter().zip(v.iter_mut()) {
-            ui.label(name);
-            value(ui, c, "m");
+            let speed = 0.01 * c.abs().max(0.001);
+            ui.add(
+                DragValue::new(c)
+                    .speed(speed)
+                    .prefix(format!("{name} "))
+                    .max_decimals(4),
+            );
         }
+        ui.label(egui::RichText::new("m").weak());
     });
 }
 
@@ -1040,6 +1048,8 @@ impl Modelled {
             ));
         }
         let width = ui.available_width();
+        // What the lines above took is not the picture's: it ends where the panels beside it do.
+        let height = height.min(ui.available_height()).max(120.0);
         ui.allocate_ui(egui::vec2(width, height), |ui| {
             built.viewer.show(
                 ui,
@@ -1083,6 +1093,7 @@ impl Modelled {
         if let Some(viewer) = &mut pick.viewer {
             viewer.set_chosen(&chosen);
             let width = ui.available_width();
+            let height = height.min(ui.available_height()).max(120.0);
             ui.allocate_ui(egui::vec2(width, height), |ui| {
                 viewer.show(
                     ui,

@@ -194,6 +194,9 @@ pub(super) struct NewCase {
     chosen: bool,
     /// Where the pointer is over the studio's canvas, in millimetres, as of the last frame.
     cursor: Option<(f64, f64)>,
+    /// Whether the studio's Browser, or its Properties, is put away to leave the canvas the room.
+    browser_shut: bool,
+    properties_shut: bool,
 }
 
 /// What the form asks for.
@@ -226,6 +229,8 @@ impl NewCase {
             modelled: Modelled::default(),
             chosen: false,
             cursor: None,
+            browser_shut: false,
+            properties_shut: false,
         };
         form.propose(base);
         form
@@ -908,6 +913,75 @@ pub(super) fn region_canvas(ui: &mut Ui, editor: &mut RegionEditor) {
     region_canvas_in(ui, editor, egui::vec2(width, 440.0));
 }
 
+/// The step the grid is drawn at: `grid` millimetres, grown by 2, 2.5 and 2 again (so 1, 2.5, 5,
+/// 10, 25…) until its dots are at least 10 points apart at `scale` points to the millimetre.
+fn grid_step(grid: f64, scale: f64) -> f64 {
+    const MIN_GAP: f64 = 10.0;
+    if !(grid > 0.0 && grid.is_finite() && scale > 0.0 && scale.is_finite()) {
+        return grid;
+    }
+    let mut step = grid;
+    let mut grow = [2.0, 2.5, 2.0].into_iter().cycle();
+    while step * scale < MIN_GAP && step.is_finite() && step < 1e9 {
+        step *= grow.next().unwrap_or(2.0);
+    }
+    step
+}
+
+/// The grid as a CAD draws it: dots at the step, a faint line at every fifth, and a step that
+/// grows by 1, 2.5, 5 as the drawing is zoomed out, so the dots never crowd into a grey wash.
+fn draw_grid(
+    painter: &egui::Painter,
+    canvas: &Canvas,
+    visuals: &egui::Visuals,
+    rect: egui::Rect,
+    grid: f64,
+) {
+    const MAJOR: i64 = 5;
+    let step = grid_step(grid, 1.0 / canvas.millimetres(1.0));
+    if !(step > 0.0 && step.is_finite()) {
+        return;
+    }
+    let (x0, y1) = canvas.to_world(f64::from(rect.left()), f64::from(rect.top()));
+    let (x1, y0) = canvas.to_world(f64::from(rect.right()), f64::from(rect.bottom()));
+    let screen = |x: f64, y: f64| {
+        let (px, py) = canvas.to_screen(x, y);
+        egui::pos2(px as f32, py as f32)
+    };
+    let dots = visuals.weak_text_color().gamma_multiply(0.45);
+    let lines = egui::Stroke::new(1.0, visuals.weak_text_color().gamma_multiply(0.14));
+    let (first_x, first_y) = ((x0 / step).ceil() as i64, (y0 / step).ceil() as i64);
+    let (last_x, last_y) = ((x1 / step).floor() as i64, (y1 / step).floor() as i64);
+    if last_x.saturating_sub(first_x) > 400 || last_y.saturating_sub(first_y) > 400 {
+        return;
+    }
+    for ix in first_x..=last_x {
+        if ix % MAJOR == 0 {
+            let x = screen(ix as f64 * step, 0.0).x;
+            painter.line_segment(
+                [egui::pos2(x, rect.top()), egui::pos2(x, rect.bottom())],
+                lines,
+            );
+        }
+    }
+    for iy in first_y..=last_y {
+        if iy % MAJOR == 0 {
+            let y = screen(0.0, iy as f64 * step).y;
+            painter.line_segment(
+                [egui::pos2(rect.left(), y), egui::pos2(rect.right(), y)],
+                lines,
+            );
+        }
+    }
+    for ix in first_x..=last_x {
+        for iy in first_y..=last_y {
+            if ix % MAJOR != 0 && iy % MAJOR != 0 {
+                painter.circle_filled(screen(ix as f64 * step, iy as f64 * step), 0.9, dots);
+            }
+        }
+    }
+}
+
 /// The drawing, in a box of `size`; where the pointer is over it, in millimetres.
 pub(super) fn region_canvas_in(
     ui: &mut Ui,
@@ -970,22 +1044,8 @@ pub(super) fn region_canvas_in(
         visuals.widgets.noninteractive.bg_stroke,
         egui::StrokeKind::Inside,
     );
-    if editor.grid > 0.0 && canvas.millimetres(1.0) * editor.grid >= 8.0 {
-        let (x0, y1) = canvas.to_world(f64::from(rect.left()), f64::from(rect.top()));
-        let (x1, y0) = canvas.to_world(f64::from(rect.right()), f64::from(rect.bottom()));
-        let step = editor.grid;
-        let (mut gx, count) = ((x0 / step).ceil() * step, 0);
-        let dots = visuals.weak_text_color().gamma_multiply(0.35);
-        let mut count: usize = count;
-        while gx <= x1 && count < 400 {
-            let mut gy = (y0 / step).ceil() * step;
-            while gy <= y1 {
-                painter.circle_filled(screen(gx, gy), 1.0, dots);
-                gy += step;
-            }
-            gx += step;
-            count += 1;
-        }
+    if editor.grid > 0.0 {
+        draw_grid(&painter, &canvas, &visuals, rect, editor.grid);
     }
     // The axes through the origin, faint, so the drawing has a place to be measured from.
     let axis = egui::Stroke::new(1.0, visuals.weak_text_color().gamma_multiply(0.3));
@@ -1007,6 +1067,31 @@ pub(super) fn region_canvas_in(
             ],
             axis,
         );
+    }
+    // Where the axes meet: x to the right, y up, each as long as a thumb.
+    if rect.contains(origin) {
+        let arm = 26.0;
+        for (to, tint, name) in [
+            (
+                egui::vec2(arm, 0.0),
+                egui::Color32::from_rgb(0xd0, 0x4a, 0x4a),
+                "x",
+            ),
+            (
+                egui::vec2(0.0, -arm),
+                egui::Color32::from_rgb(0x3f, 0xa3, 0x5b),
+                "y",
+            ),
+        ] {
+            painter.line_segment([origin, origin + to], egui::Stroke::new(2.0, tint));
+            painter.text(
+                origin + to * 1.0 + to.normalized() * 8.0,
+                egui::Align2::CENTER_CENTER,
+                name,
+                egui::FontId::proportional(11.0),
+                tint,
+            );
+        }
     }
     let edges = editor.drawing();
     let lines: Vec<Vec<egui::Pos2>> = edges
@@ -1198,25 +1283,44 @@ fn side_of(
 }
 
 /// A grid of settings in the engineering suite's measure: the labels in a column of their own,
-/// wrapping when long, and the controls starting at one x.
+/// wrapping when long, and the controls starting at one x. In a narrow panel (a studio's side
+/// panel) the label goes above its control instead, so nothing is squeezed or cut off.
 pub(super) fn grid<R>(
     ui: &mut Ui,
     id: impl std::hash::Hash + std::fmt::Debug,
     rows: impl FnOnce(&mut Ui) -> R,
 ) -> R {
-    egui::Grid::new(id)
-        .num_columns(2)
-        .min_col_width(layout::PROPERTY_LABEL)
-        .max_col_width(176.0)
+    let stacked = ui.available_width() < STACK_BELOW;
+    let flag = egui::Id::NULL.with("new_grid_stacked");
+    ui.data_mut(|d| d.insert_temp(flag, stacked));
+    let answer = egui::Grid::new(id)
+        .num_columns(if stacked { 1 } else { 2 })
+        .min_col_width(if stacked {
+            ui.available_width()
+        } else {
+            layout::PROPERTY_LABEL
+        })
+        .max_col_width(if stacked { f32::INFINITY } else { 176.0 })
         .min_row_height(layout::PROPERTY_ROW)
-        .spacing([10.0, 2.0])
+        .spacing([10.0, if stacked { 4.0 } else { 2.0 }])
         .show(ui, rows)
-        .inner
+        .inner;
+    ui.data_mut(|d| d.insert_temp(flag, false));
+    answer
 }
+
+/// The width of room under which a grid of settings stacks its labels over its controls.
+const STACK_BELOW: f32 = 330.0;
 
 /// A setting: its label (secondary ink) and its control.
 pub(super) fn row(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui)) {
+    let stacked = ui
+        .data(|d| d.get_temp::<bool>(egui::Id::NULL.with("new_grid_stacked")))
+        .unwrap_or(false);
     ui.label(RichText::new(label).weak());
+    if stacked {
+        ui.end_row();
+    }
     add(ui);
     ui.end_row();
 }
@@ -1440,6 +1544,19 @@ fn nozzle_fields(ui: &mut Ui, n: &mut Nozzle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_grid_keeps_its_step_while_it_is_legible_and_grows_as_the_drawing_shrinks() {
+        assert_eq!(grid_step(5.0, 4.0), 5.0);
+        assert_eq!(grid_step(5.0, 2.0), 5.0);
+        // 5 mm at 1.6 points a millimetre is 8 points: one step up, to 10 mm.
+        assert_eq!(grid_step(5.0, 1.6), 10.0);
+        let far = grid_step(5.0, 0.01);
+        assert!(far * 0.01 >= 10.0 && far.is_finite());
+        // A nonsense grid terminates and stays finite.
+        assert!(grid_step(0.0, 1.0).is_finite());
+        assert!(grid_step(f64::NAN, 1.0).is_nan() || grid_step(f64::NAN, 1.0).is_finite());
+    }
 
     #[test]
     fn the_gallery_lists_every_kind_once_and_each_has_an_icon_of_the_shared_set() {

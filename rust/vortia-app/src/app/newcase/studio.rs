@@ -15,13 +15,16 @@ use crate::i18n::{tr, trf};
 use crate::region_editor::{Outline, RegionEditor, Relation, Role, Tool};
 
 /// The width of the Browser and of Properties of a drawn region.
-const BROWSER: f32 = layout::BROWSER_WIDTH;
-const PROPERTIES: f32 = layout::PROPERTIES_WIDTH + 16.0;
+///
+/// The canvas is what the studio is for, so the side panels take what their rows need and no
+/// more: the drawing gets the rest of the window, and each panel can be put away.
+const BROWSER: f32 = 208.0;
+const PROPERTIES: f32 = 252.0;
 
 /// The width the part's Browser (its features, each with its numbers) and Properties (the flow)
 /// need.
-const PART_BROWSER: f32 = 372.0;
-const PART_PROPERTIES: f32 = 352.0;
+const PART_BROWSER: f32 = 264.0;
+const PART_PROPERTIES: f32 = 252.0;
 
 /// The icon of the shared set a tool is drawn with in the ribbon.
 fn icon_of(tool: Tool) -> &'static str {
@@ -76,52 +79,56 @@ impl NewCase {
             }))
             .show(ui, |ui| ask = self.ribbon(ui, look, p));
 
-        egui::Panel::left("new_studio_browser")
-            .exact_size(if part { PART_BROWSER } else { BROWSER } + 16.0 + layout::GAP)
-            .resizable(false)
-            .show_separator_line(false)
-            .frame(island().outer_margin(Margin {
-                left: g,
-                right: 0,
-                top: 0,
-                bottom: g,
-            }))
-            .show(ui, |ui| {
-                if part {
-                    self.modelled.studio_browser(ui, look);
-                } else {
-                    self.region_browser(ui, look);
-                }
-            });
+        if !self.browser_shut {
+            egui::Panel::left("new_studio_browser")
+                .exact_size(if part { PART_BROWSER } else { BROWSER } + 16.0 + layout::GAP)
+                .resizable(false)
+                .show_separator_line(false)
+                .frame(island().outer_margin(Margin {
+                    left: g,
+                    right: 0,
+                    top: 0,
+                    bottom: g,
+                }))
+                .show(ui, |ui| {
+                    if part {
+                        self.modelled.studio_browser(ui, look);
+                    } else {
+                        self.region_browser(ui, look);
+                    }
+                });
+        }
 
-        egui::Panel::right("new_studio_properties")
-            .exact_size(if part { PART_PROPERTIES } else { PROPERTIES } + 16.0 + layout::GAP)
-            .resizable(false)
-            .show_separator_line(false)
-            .frame(island().outer_margin(Margin {
-                left: g,
-                right: g,
-                top: 0,
-                bottom: g,
-            }))
-            .show(ui, |ui| {
-                // The folder and the button at the foot, the rest in the room that is left.
-                ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
-                    self.save_row(ui, look, p, &mut ask);
-                    ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
-                        if part {
-                            self.modelled.studio_properties(ui, look);
-                        } else {
-                            self.region_properties(ui, look);
-                        }
+        if !self.properties_shut {
+            egui::Panel::right("new_studio_properties")
+                .exact_size(if part { PART_PROPERTIES } else { PROPERTIES } + 16.0 + layout::GAP)
+                .resizable(false)
+                .show_separator_line(false)
+                .frame(island().outer_margin(Margin {
+                    left: g,
+                    right: g,
+                    top: 0,
+                    bottom: g,
+                }))
+                .show(ui, |ui| {
+                    // The folder and the button at the foot, the rest in the room that is left.
+                    ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
+                        self.save_row(ui, look, p, &mut ask);
+                        ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                            if part {
+                                self.modelled.studio_properties(ui, look);
+                            } else {
+                                self.region_properties(ui, look);
+                            }
+                        });
                     });
                 });
-            });
+        }
 
         egui::CentralPanel::default()
             .frame(Frame::NONE.outer_margin(Margin {
                 left: g,
-                right: 0,
+                right: if self.properties_shut { g } else { 0 },
                 top: 0,
                 bottom: g,
             }))
@@ -263,7 +270,7 @@ impl NewCase {
                 ui.add_space(space::MD);
 
                 eng::panel_header(ui, look, tr("Dimensions"), |_| {});
-                self.dimensions(ui);
+                self.dimensions(ui, look);
                 ui.add_space(space::MD);
 
                 eng::panel_header(ui, look, tr("Sketch"), |_| {});
@@ -333,7 +340,7 @@ impl NewCase {
     }
 
     /// The dimensions that hold the sketch, each editable and removable.
-    fn dimensions(&mut self, ui: &mut Ui) {
+    fn dimensions(&mut self, ui: &mut Ui, look: &Look) {
         let mut edit = None;
         let mut remove = None;
         let dimensions = self.region.dimensions();
@@ -362,7 +369,10 @@ impl NewCase {
                 {
                     edit = Some((d.index, d.value));
                 }
-                if ui.small_button("✕").clicked() {
+                if eng::status_toggle(ui, look, "close", tr("Remove"), false)
+                    .on_hover_text(tr("Remove"))
+                    .clicked()
+                {
                     remove = Some(d.index);
                 }
             });
@@ -486,6 +496,7 @@ impl NewCase {
         let danger = for_egui::color(p.status_danger_fg);
         let cursor = self.cursor;
         let features = self.modelled.feature_count();
+        let (browser_shut, properties_shut) = (&mut self.browser_shut, &mut self.properties_shut);
         let editor = &mut self.region;
         let warn = ui.visuals().warn_fg_color;
         let secondary = for_egui::color(p.text_secondary);
@@ -515,10 +526,23 @@ impl NewCase {
                 ui.label(RichText::new(text).color(colour));
             },
             |ui| {
+                // Drawn from the right edge: the first thing is the last on the bar, so the
+                // panels' switches stand where the panels do.
+                for (switch, icon, name) in [
+                    (&mut *properties_shut, "panel-right", tr("Properties")),
+                    (&mut *browser_shut, "sidebar", tr("Browser")),
+                ] {
+                    if eng::status_toggle(ui, look, icon, name, !*switch)
+                        .on_hover_text(name)
+                        .clicked()
+                    {
+                        *switch = !*switch;
+                    }
+                }
+                ui.add_space(space::SM);
                 if part {
                     return;
                 }
-                // Drawn from the right edge: the first thing is the last on the bar.
                 if let Some((x, y)) = cursor {
                     eng::status_value(ui, look, &format!("x {x:.2}   y {y:.2} mm"));
                 }
@@ -591,4 +615,47 @@ fn region_tools(ui: &mut Ui, look: &Look, editor: &mut RegionEditor) {
             editor.fit();
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nodalia_theme::{Accent, Mode};
+
+    #[test]
+    fn the_studio_draws_in_both_themes_with_either_side_panel_put_away() {
+        let base = tempfile::tempdir().unwrap();
+        for mode in [Mode::Light, Mode::Dark] {
+            let p = mode.palette_with(Accent::Vortia);
+            let look = Look::new(p);
+            for key in ["region", "model"] {
+                for (browser_shut, properties_shut) in
+                    [(false, false), (true, false), (false, true), (true, true)]
+                {
+                    let mut form = NewCase::new(base.path());
+                    assert!(form.choose_named(key));
+                    form.browser_shut = browser_shut;
+                    form.properties_shut = properties_shut;
+                    let ctx = egui::Context::default();
+                    for _ in 0..2 {
+                        let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+                            let _ = form.studio(ui, &look, &p, None);
+                        });
+                        out.textures_delta.clear();
+                    }
+                    assert_eq!(form.browser_shut, browser_shut);
+                    assert_eq!(form.properties_shut, properties_shut);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_side_panels_leave_the_canvas_most_of_a_laptop_screen() {
+        // A 1280 point window: what is not a side panel, a margin or a gap is the drawing's.
+        let sides = BROWSER + PROPERTIES + 2.0 * (16.0 + layout::GAP);
+        assert!(1280.0 - sides > 0.55 * 1280.0, "{sides}");
+        let part = PART_BROWSER + PART_PROPERTIES + 2.0 * (16.0 + layout::GAP);
+        assert!(1280.0 - part > 0.5 * 1280.0, "{part}");
+    }
 }

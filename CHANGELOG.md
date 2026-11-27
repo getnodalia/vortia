@@ -7,6 +7,16 @@ texto de la release en GitHub. Este registro sigue siendo el detalle para quien 
 
 ## [Unreleased]
 
+## [0.16.1] — 2026-11-27
+
+### Corregido
+
+- **Los cuadros «Mostrar» y «Ocultar» del visor:** el botón suelto con texto pequeño y la lista a pelo sobre la imagen se han sustituido por una píldora con icono (`Mostrar` / `Ocultar`, teñida del acento mientras está abierta) y un panel flotante de la misma superficie que las islas del resto de la aplicación: secciones con título, un desplegable por campo, la barra de colores con su rango, los cortes con X, Y y Z como botones y un deslizador con el riel a la vista (antes el riel era invisible), y las partes con su muestra de color. Con el panel cerrado, la escala de colores ya no se pisa con la ayuda del pie. Probado: el valor del deslizador según el puntero y que la píldora y el deslizador se dibujan en tema claro y oscuro sin cambiar nada sin que se pida.
+- **El botón que pliega el panel del caso:** eran dos signos `«` y `»` apretados en un carril de 14 píxeles. Ahora es el icono de panel derecho del juego compartido (el mismo de la barra de estado de Torno y Forja), teñido mientras el panel está abierto, en un carril del ancho de un botón, con su nombre al posar el puntero.
+- **El lienzo del editor de CAD tiene el protagonismo:** el Browser y las Propiedades pasan de 264 + 304 a 208 + 252 puntos (la pieza, de 372 + 352 a 264 + 252), así que en una ventana de 1280 el dibujo ocupa más del 59 % del ancho en vez del 49 %; cada panel se puede guardar con un interruptor en la barra de estado (junto al interruptor de la rejilla) y el croquis se ajusta con un margen del 8 % en vez del 15 %. Los ajustes se apilan (la etiqueta sobre el campo) cuando el panel es estrecho, así que nada se aprieta ni se corta: la esquina y el tamaño de una caja ya no se salían del panel, y las tres coordenadas caben en una fila con su unidad dicha una sola vez.
+- **Una rejilla de CAD de verdad:** los puntos se dibujaban solo con el dibujo muy alejado (la condición estaba al revés) y por eso casi nunca se veían. Ahora son puntos al paso de la rejilla con una línea tenue cada cinco pasos, que crece 1, 2,5, 5, 10… al alejar para no formar una mancha gris, y los ejes salen del origen con una x roja y una y verde.
+- **Pequeños errores del editor:** el botón de quitar una cota era un `✕` que se dibujaba como un cuadro vacío; ahora es el icono de cerrar. La imagen del modelador de piezas ya no se sale por debajo de los paneles de al lado.
+
 ## [0.16.0] — 2026-11-27
 
 ### Añadido

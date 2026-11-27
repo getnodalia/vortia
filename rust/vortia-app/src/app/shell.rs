@@ -1188,20 +1188,26 @@ fn browser(ui: &mut egui::Ui, look: &Look, case: &mut CaseView) {
 
 // --- Properties ------------------------------------------------------------------------------
 
-/// The width of the Case panel while it is shut: a rail with one button to open it.
-const RAIL_WIDTH: f32 = 30.0;
+/// The width of the Case panel while it is shut: a rail with one button to open it, the
+/// island's padding around it included.
+const RAIL_WIDTH: f32 = 24.0 + 16.0;
+
+/// The button that shuts the Case panel or opens it again: the panel-on-the-right icon, tinted
+/// while the panel is open, with its name when the pointer rests on it.
+fn panel_toggle(ui: &mut egui::Ui, look: &Look, open: bool) -> egui::Response {
+    let name = if open {
+        tr("Hide the case panel")
+    } else {
+        tr("Show the case panel")
+    };
+    eng::status_toggle(ui, look, "panel-right", name, open).on_hover_text(name)
+}
 
 fn properties(ui: &mut egui::Ui, look: &Look, case: &mut CaseView) {
     if !case.properties_open {
-        ui.vertical_centered(|ui| {
-            if ui
-                .small_button("«")
-                .on_hover_text(tr("Show the case panel"))
-                .clicked()
-            {
-                case.properties_open = true;
-            }
-        });
+        if panel_toggle(ui, look, false).clicked() {
+            case.properties_open = true;
+        }
         return;
     }
     let title = match &case.selection {
@@ -1211,10 +1217,7 @@ fn properties(ui: &mut egui::Ui, look: &Look, case: &mut CaseView) {
     };
     let mut shut = false;
     eng::panel_header(ui, look, title, |ui| {
-        shut = ui
-            .small_button("»")
-            .on_hover_text(tr("Hide the case panel"))
-            .clicked();
+        shut = panel_toggle(ui, look, true).clicked();
     });
     if shut {
         case.properties_open = false;
