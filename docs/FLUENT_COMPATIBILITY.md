@@ -18,6 +18,13 @@ archivos reales (ver `docs/VALIDATION.md`).
 | Workbench | `.wbpj` | XML del índice | ✅ abre el caso o la malla de `<nombre>_files` (resuelto > Setup > malla) | según el archivo | según el archivo | P1 |
 | Workbench archivado / Fluent | `.wbpz` / `.flprj` | extensión | ⬜ P2 | n/a | n/a | P2 |
 
+## Exportación
+
+| Formato | Comando | Estado |
+|---|---|---|
+| Malla tradicional `.msh` (ASCII) | `vortia foamtofluent [-type PATCH=TYPE]... FILE [CASE]` | ✅ 3D (tet/hex/pirámide/cuña/poliedro) y 2D (extrusión recta en z); ida y vuelta con el lector propio verificada. **No abierto todavía en Fluent.** Tipos de contorno: `wall` y `symmetry` por el tipo del parche; el resto por el nombre (`inlet`) o `-type`, avisando de cada suposición. Sin parches periódicos, procesador ni cuña. |
+| Caso `.cas`/`.dat`, `.msh.h5`, CGNS, VTK/EnSight | — | ⬜ pendiente |
+
 ## Herramientas disponibles en esta máquina (macOS ARM64)
 
 - `fluentMeshToFoam`, `fluent3DMeshToFoam`, `checkMesh`, `blockMesh`: **no disponibles**

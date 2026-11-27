@@ -27,6 +27,7 @@ pub mod cgns;
 pub mod check;
 pub mod error;
 pub mod fluent;
+pub mod fluent_write;
 pub mod geometry;
 pub mod gltf;
 pub mod gmsh;
