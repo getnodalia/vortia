@@ -14,10 +14,10 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use zbus::blocking::Connection;
-use zbus::blocking::connection::Builder;
-use zbus::zvariant::{ObjectPath, OwnedValue, Value};
-use zbus::{fdo, interface};
+use zbus::connection::Builder;
+use zbus::wire::{OwnedVariant, StructureBuilder, Variant};
+use zbus::{Connection, ObjectPath, fdo, interface};
+use zruntime::block_on;
 
 const REGISTRAR: &str = "com.canonical.AppMenu.Registrar";
 const REGISTRAR_PATH: &str = "/com/canonical/AppMenu/Registrar";
@@ -115,10 +115,10 @@ fn label(text: &str) -> String {
 }
 
 /// `(ia{sv}av)`: an item, its properties and its children, each child a variant of the same.
-type Layout = (i32, HashMap<String, OwnedValue>, Vec<OwnedValue>);
+type Layout = (i32, HashMap<String, OwnedVariant>, Vec<OwnedVariant>);
 
-fn owned<'a>(value: impl Into<Value<'a>>) -> Option<OwnedValue> {
-    OwnedValue::try_from(value.into()).ok()
+fn owned<'a>(value: impl Into<Variant<'a>>) -> Option<OwnedVariant> {
+    OwnedVariant::try_from(value.into()).ok()
 }
 
 struct State {
@@ -159,9 +159,9 @@ impl State {
         out
     }
 
-    fn properties(&self, node: &Node) -> HashMap<String, OwnedValue> {
+    fn properties(&self, node: &Node) -> HashMap<String, OwnedVariant> {
         let mut p = HashMap::new();
-        let mut put = |key: &str, value: Option<OwnedValue>| {
+        let mut put = |key: &str, value: Option<OwnedVariant>| {
             if let Some(value) = value {
                 p.insert(key.to_owned(), value);
             }
@@ -217,27 +217,27 @@ impl State {
 }
 
 /// A layout as the variant its parent holds it in.
-fn layout_value(layout: Layout) -> Value<'static> {
+fn layout_value(layout: Layout) -> Variant<'static> {
     let (id, properties, children) = layout;
-    let mut dict = zbus::zvariant::Dict::new(
-        <String as zbus::zvariant::Type>::SIGNATURE,
-        <OwnedValue as zbus::zvariant::Type>::SIGNATURE,
+    let mut dict = zbus::Dict::new(
+        <String as zbus::Type>::SIGNATURE,
+        <OwnedVariant as zbus::Type>::SIGNATURE,
     );
     for (key, value) in properties {
         // A key and a value of the right types cannot be refused.
-        let _ = dict.append(Value::from(key), Value::from(value));
+        let _ = dict.append(Variant::from(key), Variant::from(value));
     }
-    let mut array = zbus::zvariant::Array::new(<OwnedValue as zbus::zvariant::Type>::SIGNATURE);
+    let mut array = zbus::Array::new(<OwnedVariant as zbus::Type>::SIGNATURE);
     for child in children {
-        let _ = array.append(Value::from(child));
+        let _ = array.append(Variant::from(child));
     }
-    Value::Structure(
-        zbus::zvariant::StructureBuilder::new()
+    Variant::Structure(
+        StructureBuilder::new()
             .add_field(id)
-            .append_field(Value::Dict(dict))
-            .append_field(Value::Array(array))
+            .append_field(Variant::Dict(dict))
+            .append_field(Variant::Array(array))
             .build()
-            .unwrap_or_else(|_| zbus::zvariant::Structure::from((0_i32,))),
+            .unwrap_or_else(|_| zbus::Structure::from((0_i32,))),
     )
 }
 
@@ -316,7 +316,7 @@ impl DbusMenu {
         &self,
         ids: Vec<i32>,
         _property_names: Vec<String>,
-    ) -> Vec<(i32, HashMap<String, OwnedValue>)> {
+    ) -> Vec<(i32, HashMap<String, OwnedVariant>)> {
         let state = self.shared.state();
         // An empty list asks for every item.
         let ids = if ids.is_empty() { state.ids() } else { ids };
@@ -325,7 +325,7 @@ impl DbusMenu {
             .collect()
     }
 
-    fn get_property(&self, id: i32, name: String) -> fdo::Result<OwnedValue> {
+    fn get_property(&self, id: i32, name: String) -> fdo::Result<OwnedVariant> {
         let state = self.shared.state();
         let node = state
             .find(id)
@@ -336,13 +336,13 @@ impl DbusMenu {
             .ok_or_else(|| fdo::Error::InvalidArgs(format!("item {id} has no '{name}'")))
     }
 
-    fn event(&self, id: i32, event_id: String, _data: OwnedValue, _timestamp: u32) {
+    fn event(&self, id: i32, event_id: String, _data: OwnedVariant, _timestamp: u32) {
         if event_id == "clicked" {
             self.shared.click(id);
         }
     }
 
-    fn event_group(&self, events: Vec<(i32, String, OwnedValue, u32)>) -> Vec<i32> {
+    fn event_group(&self, events: Vec<(i32, String, OwnedVariant, u32)>) -> Vec<i32> {
         for (id, event_id, _, _) in events {
             if event_id == "clicked" {
                 self.shared.click(id);
@@ -376,7 +376,7 @@ impl GlobalMenu {
     /// Exports `menus` on the session bus; `None` when there is no bus. `wake` is called after
     /// each click, so the window can poll again.
     pub fn start(menus: &[Menu], wake: impl Fn() + Send + Sync + 'static) -> Option<Self> {
-        Self::start_on(Builder::session().ok()?, menus, wake)
+        Self::start_on(Builder::session(), menus, wake)
     }
 
     fn start_on(
@@ -394,16 +394,17 @@ impl GlobalMenu {
             clicks: tx,
             wake: Box::new(wake),
         });
-        let connection = builder
-            .serve_at(
-                PATH,
-                DbusMenu {
-                    shared: shared.clone(),
-                },
-            )
-            .ok()?
-            .build()
-            .ok()?;
+        let connection = block_on(
+            builder
+                .serve_at(
+                    PATH,
+                    DbusMenu {
+                        shared: shared.clone(),
+                    },
+                )
+                .build(),
+        )
+        .ok()?;
         let watcher = connection.clone();
         let spawned = std::thread::Builder::new()
             .name("vortia-global-menu".into())
@@ -438,19 +439,19 @@ impl GlobalMenu {
             state.revision
         };
         // A shell that is gone is not an error for the app.
-        let _ = self.connection.emit_signal(
+        let _ = block_on(self.connection.emit_signal(
             None::<&str>,
             PATH,
             INTERFACE,
             "LayoutUpdated",
             &(revision, 0_i32),
-        );
+        ));
     }
 }
 
 /// Registers the menu with the registrar whenever one appears or is replaced.
 fn watch_registrar(connection: &Connection) {
-    let Ok(bus) = zbus::blocking::fdo::DBusProxy::new(connection) else {
+    let Ok(bus) = block_on(zbus::fdo::DBusProxy::new(connection)) else {
         return;
     };
     let Ok(name) = zbus::names::BusName::try_from(REGISTRAR) else {
@@ -458,8 +459,7 @@ fn watch_registrar(connection: &Connection) {
     };
     let mut registered: Option<String> = None;
     loop {
-        let owner = bus
-            .get_name_owner(name.clone())
+        let owner = block_on(bus.get_name_owner(name.clone()))
             .ok()
             .map(|owner| owner.to_string());
         if owner != registered {
@@ -476,13 +476,16 @@ fn register(connection: &Connection) {
     let Ok(path) = ObjectPath::try_from(PATH) else {
         return;
     };
-    let Ok(registrar) =
-        zbus::blocking::Proxy::new(connection, REGISTRAR, REGISTRAR_PATH, REGISTRAR)
-    else {
+    let Ok(registrar) = block_on(zbus::Proxy::new(
+        connection,
+        REGISTRAR,
+        REGISTRAR_PATH,
+        REGISTRAR,
+    )) else {
         return;
     };
     // A registrar that went away between the lookup and the call is found again next round.
-    let _: Result<(), _> = registrar.call("RegisterWindow", &(std::process::id(), path));
+    let _: Result<(), _> = block_on(registrar.call("RegisterWindow", &(std::process::id(), path)));
 }
 
 #[cfg(test)]
@@ -549,7 +552,7 @@ mod tests {
         }
 
         fn connect(&self) -> Builder<'static> {
-            Builder::address(self.address.as_str()).expect("the daemon printed an address")
+            Builder::address(self.address.as_str())
         }
     }
 
@@ -599,60 +602,54 @@ mod tests {
 
         // The registrar appears after the app, as it does when the shell restarts.
         let windows = Arc::new(Mutex::new(Vec::new()));
-        let registrar = bus
-            .connect()
-            .name(REGISTRAR)
-            .unwrap()
-            .serve_at(
-                REGISTRAR_PATH,
-                FakeRegistrar {
-                    windows: windows.clone(),
-                },
-            )
-            .unwrap()
-            .build()
-            .expect("the registrar starts");
+        let registrar = block_on(
+            bus.connect()
+                .name(REGISTRAR)
+                .serve_at(
+                    REGISTRAR_PATH,
+                    FakeRegistrar {
+                        windows: windows.clone(),
+                    },
+                )
+                .build(),
+        )
+        .expect("the registrar starts");
         let seen = wait_for(|| windows.lock().unwrap().first().cloned());
         assert_eq!(seen, Some((std::process::id(), PATH.to_owned())));
 
         // A client reads the layout the way the shell does.
-        let client = bus.connect().build().unwrap();
+        let client = block_on(bus.connect().build()).unwrap();
         let name = menu.connection.unique_name().unwrap().to_string();
-        let proxy = zbus::blocking::Proxy::new(&client, name.as_str(), PATH, INTERFACE).unwrap();
-        let (revision, (root, _, children)): (u32, Layout) = proxy
-            .call("GetLayout", &(0_i32, -1_i32, Vec::<String>::new()))
-            .unwrap();
+        let proxy = block_on(zbus::Proxy::new(&client, name.as_str(), PATH, INTERFACE)).unwrap();
+        let (revision, (root, _, children)): (u32, Layout) =
+            block_on(proxy.call("GetLayout", &(0_i32, -1_i32, Vec::<String>::new()))).unwrap();
         assert_eq!((revision, root, children.len()), (1, 0, 2));
-        let all: Vec<(i32, HashMap<String, OwnedValue>)> = proxy
-            .call(
-                "GetGroupProperties",
-                &(Vec::<i32>::new(), Vec::<String>::new()),
-            )
-            .unwrap();
+        let all: Vec<(i32, HashMap<String, OwnedVariant>)> = block_on(proxy.call(
+            "GetGroupProperties",
+            &(Vec::<i32>::new(), Vec::<String>::new()),
+        ))
+        .unwrap();
         assert_eq!(all.len(), 6);
-        let label: String = proxy
-            .call::<_, _, OwnedValue>("GetProperty", &(4_i32, "label"))
-            .unwrap()
-            .try_into()
-            .unwrap();
+        let label: String =
+            block_on(proxy.call::<_, _, OwnedVariant>("GetProperty", &(4_i32, "label")))
+                .unwrap()
+                .try_into()
+                .unwrap();
         assert_eq!(label, "Quit");
 
         // A click arrives as the action's name, and wakes the window.
-        let _: () = proxy
-            .call("Event", &(4_i32, "clicked", Value::from(0_i32), 0_u32))
+        let _: () = block_on(proxy.call("Event", &(4_i32, "clicked", Variant::from(0_i32), 0_u32)))
             .unwrap();
         assert!(wait_for(|| (*woken.lock().unwrap() > 0).then_some(())).is_some());
         assert_eq!(menu.poll(), ["quit"]);
 
         // A disabled action does not click, and the change is announced.
         menu.set_enabled("quit", false);
-        let _: () = proxy
-            .call("Event", &(4_i32, "clicked", Value::from(0_i32), 0_u32))
+        let _: () = block_on(proxy.call("Event", &(4_i32, "clicked", Variant::from(0_i32), 0_u32)))
             .unwrap();
         assert!(menu.poll().is_empty());
-        let (revision, _): (u32, Layout) = proxy
-            .call("GetLayout", &(0_i32, 1_i32, Vec::<String>::new()))
-            .unwrap();
+        let (revision, _): (u32, Layout) =
+            block_on(proxy.call("GetLayout", &(0_i32, 1_i32, Vec::<String>::new()))).unwrap();
         assert_eq!(revision, 2);
         drop(registrar);
     }
